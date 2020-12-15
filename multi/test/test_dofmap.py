@@ -2,7 +2,7 @@
 
 import numpy as np
 import pygmsh
-from dofmap import DofMap
+from multi import DofMap
 
 
 def build_mesh(NX, NY, LCAR=0.1, order=1):

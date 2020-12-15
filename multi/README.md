@@ -10,7 +10,3 @@ heterogeneous structures.
 git clone https://git.bam.de/mechanics/pdiercks/multicode.git && cd multi
 pip install .
 ```
-* using conda
-```
-conda insall --name <your-env> --channel pdiercks multi
-```

@@ -13,7 +13,6 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="",
     packages=setuptools.find_packages(),
-    install_requires=["fenics_helpers @ https://github.com/BAMresearch/fenics_helpers/tarball/use_find_packages"],
     classifiers=[
             "Programming Language :: Python :: 3",
             "License :: OSI Approved :: MIT License",
