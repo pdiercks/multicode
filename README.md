@@ -7,7 +7,7 @@ The library contains
 
 ## Usage
 
-To use the library you need to install all software dependencies which are listed in the below command using conda.
+To use the library you need to install all software dependencies which are listed in the below command(s) (using conda and pip).
 ```
 conda create -n <env-name> fenics=2019.1.0 gmsh=4.6.0 doit meshio=4.3.1 matplotlib pyaml line_profiler pymor=2020.1.2 pytest
 conda activate <env-name> && conda install -c pdiercks pygmsh
