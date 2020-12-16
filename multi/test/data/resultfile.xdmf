@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<Xdmf Version="3.0">
+  <Domain>
+    <Grid GridType="Collection" CollectionType="Temporal" Name="f">
+      <Grid Name="f_0" GridType="Uniform">
+        <Topology NumberOfElements="128" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="128 3" NumberType="UInt" Format="HDF">resultfile.h5:f/f_0/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="81 2" Format="HDF">resultfile.h5:f/f_0/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.000000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="1" ElementCell="triangle" Name="f" Center="Other" AttributeType="Scalar">
+          <DataItem Dimensions="384 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_0/cell_dofs</DataItem>
+          <DataItem Dimensions="81 1" NumberType="Float" Format="HDF">resultfile.h5:f/f_0/vector</DataItem>
+          <DataItem Dimensions="129 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_0/x_cell_dofs</DataItem>
+          <DataItem Dimensions="128 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_0/cells</DataItem>
+        </Attribute>
+      </Grid>
+      <Grid Name="f_1" GridType="Uniform">
+        <Topology NumberOfElements="128" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="128 3" NumberType="UInt" Format="HDF">resultfile.h5:f/f_1/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="81 2" Format="HDF">resultfile.h5:f/f_1/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.200000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="1" ElementCell="triangle" Name="f" Center="Other" AttributeType="Scalar">
+          <DataItem Dimensions="384 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_1/cell_dofs</DataItem>
+          <DataItem Dimensions="81 1" NumberType="Float" Format="HDF">resultfile.h5:f/f_1/vector</DataItem>
+          <DataItem Dimensions="129 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_1/x_cell_dofs</DataItem>
+          <DataItem Dimensions="128 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_1/cells</DataItem>
+        </Attribute>
+      </Grid>
+      <Grid Name="f_2" GridType="Uniform">
+        <Topology NumberOfElements="128" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="128 3" NumberType="UInt" Format="HDF">resultfile.h5:f/f_2/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="81 2" Format="HDF">resultfile.h5:f/f_2/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.400000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="1" ElementCell="triangle" Name="f" Center="Other" AttributeType="Scalar">
+          <DataItem Dimensions="384 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_2/cell_dofs</DataItem>
+          <DataItem Dimensions="81 1" NumberType="Float" Format="HDF">resultfile.h5:f/f_2/vector</DataItem>
+          <DataItem Dimensions="129 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_2/x_cell_dofs</DataItem>
+          <DataItem Dimensions="128 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_2/cells</DataItem>
+        </Attribute>
+      </Grid>
+      <Grid Name="f_3" GridType="Uniform">
+        <Topology NumberOfElements="128" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="128 3" NumberType="UInt" Format="HDF">resultfile.h5:f/f_3/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="81 2" Format="HDF">resultfile.h5:f/f_3/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.600000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="1" ElementCell="triangle" Name="f" Center="Other" AttributeType="Scalar">
+          <DataItem Dimensions="384 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_3/cell_dofs</DataItem>
+          <DataItem Dimensions="81 1" NumberType="Float" Format="HDF">resultfile.h5:f/f_3/vector</DataItem>
+          <DataItem Dimensions="129 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_3/x_cell_dofs</DataItem>
+          <DataItem Dimensions="128 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_3/cells</DataItem>
+        </Attribute>
+      </Grid>
+      <Grid Name="f_4" GridType="Uniform">
+        <Topology NumberOfElements="128" TopologyType="Triangle" NodesPerElement="3">
+          <DataItem Dimensions="128 3" NumberType="UInt" Format="HDF">resultfile.h5:f/f_4/mesh/topology</DataItem>
+        </Topology>
+        <Geometry GeometryType="XY">
+          <DataItem Dimensions="81 2" Format="HDF">resultfile.h5:f/f_4/mesh/geometry</DataItem>
+        </Geometry>
+        <Time Value="0.800000" />
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="CG" ElementDegree="1" ElementCell="triangle" Name="f" Center="Other" AttributeType="Scalar">
+          <DataItem Dimensions="384 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_4/cell_dofs</DataItem>
+          <DataItem Dimensions="81 1" NumberType="Float" Format="HDF">resultfile.h5:f/f_4/vector</DataItem>
+          <DataItem Dimensions="129 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_4/x_cell_dofs</DataItem>
+          <DataItem Dimensions="128 1" NumberType="UInt" Format="HDF">resultfile.h5:f/f_4/cells</DataItem>
+        </Attribute>
+      </Grid>
+    </Grid>
+  </Domain>
+</Xdmf>
