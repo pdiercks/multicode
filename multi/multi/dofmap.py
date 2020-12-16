@@ -130,6 +130,8 @@ class DofMap:
         subdomains_celltype = (
             subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
         )
+        if not subdomains_celltype == "quad8":
+            raise NotImplementedError("Currently only cell type 'quad8' is supported.")
 
         if subdomains_celltype is not None:
             subdomains_cells = mesh.get_cells_type(subdomains_celltype)
@@ -177,13 +179,13 @@ class DofMap:
         """
         self._cell.set_entity_dofs(dofs_per_vert, dofs_per_edge, dofs_per_face)
         entity_dofs = self._cell.entity_dofs
-        # FIXME assumes cell type "quad8"
         dimension = list(range(self.tdim + 1))
         x_dofs = []
         self._dm = {dim: {} for dim in dimension}
         DoF = 0
         for ci, cell in enumerate(self.cells):
             for dim in dimension:
+                # FIXME assumes cell type "quad8"
                 if dim == 0:
                     entities = cell[:4]
                 elif dim == 1:
