@@ -1,4 +1,5 @@
 import dolfin as df
+import numpy as np
 
 # adapted version of MechanicsBCs by Thomas Titscher
 
@@ -134,3 +135,47 @@ class MechanicsBCs:
         for force_expression, marker in self._boundary_forces:
             r += df.dot(force_expression, self._v) * self._ds(marker)
         return r
+
+
+def apply_bcs(lhs, rhs, bc_indices, bc_values):
+    """
+    Applies dirichlet bcs (in-place) using the algorithm described here
+    http://www.math.colostate.edu/~bangerth/videos/676/slides.21.65.pdf
+
+    Parameters
+    ----------
+    lhs
+        The left hand side of the system.
+    rhs
+        The right hand side of the system.
+    bc_indices
+        DOF indices where bcs should be applied.
+    bc_values
+        The boundary data.
+
+    Returns
+    -------
+    None
+    """
+    assert isinstance(lhs, np.ndarray)
+    assert isinstance(rhs, np.ndarray)
+    assert isinstance(bc_indices, (list, np.ndarray))
+    if isinstance(bc_indices, list):
+        bc_indices = np.array(bc_indices)
+    assert isinstance(bc_values, (list, np.ndarray))
+    if isinstance(bc_values, list):
+        bc_values = np.array(bc_values)
+
+    rhs.shape = (rhs.size,)
+    values = np.zeros(rhs.size)
+    values[bc_indices] = bc_values
+    # substract bc values from right hand side
+    rhs -= np.dot(lhs[:, bc_indices], values[bc_indices])
+    # set columns to zero
+    lhs[:, bc_indices] = np.zeros((rhs.size, bc_indices.size))
+    # set rows to zero
+    lhs[bc_indices, :] = np.zeros((bc_indices.size, rhs.size))
+    # set diagonal entries to 1.
+    lhs[bc_indices, bc_indices] = np.ones(bc_indices.size)
+    # set bc_values on right hand side
+    rhs[bc_indices] = values[bc_indices]
