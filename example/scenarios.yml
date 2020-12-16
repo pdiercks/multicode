@@ -1,0 +1,4 @@
+0:
+  basis_type: empirical
+  degree: 2
+  disc: 5
