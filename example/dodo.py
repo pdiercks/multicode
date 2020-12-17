@@ -7,8 +7,10 @@ from pathlib import Path
 import yaml
 
 example = Path(__file__).parent
-preprocessing = example.absolute().parent / "preprocessing"
+multicode = example.absolute().parent
+preprocessing = multicode / "preprocessing"
 scenarios = example / "scenarios.yml"
+metadata = example / "rve.yml"
 
 
 def task_create_scenarios():
@@ -64,7 +66,6 @@ def task_rve_edges():
     """create meshes for the boundary of the RVE"""
     script = preprocessing / "rve_edges.py"
     edges = ["bottom", "right", "top", "left"]
-    metadata = example / "rve.yml"
 
     with open(metadata, "r") as md:
         rvemd = yaml.safe_load(md)
@@ -89,7 +90,6 @@ def task_rve_edges():
 
 def task_rve_metadata():
     """define rve metadata for each scenario"""
-    targets = [example / "rve.yml"]
 
     def create_metadata(targets):
         with open(scenarios, "r") as instream:
@@ -104,7 +104,7 @@ def task_rve_metadata():
 
     return {
         "file_dep": [scenarios],
-        "targets": targets,
+        "targets": [metadata],
         "actions": [create_metadata],
         "uptodate": [run_once],
     }
@@ -114,7 +114,6 @@ def task_rve_metadata():
 def task_coarse_grid():
     """create coarse grid for this example which is a 3x3 block of RVEs"""
     script = preprocessing / "rectangle.py"
-    metadata = example / "rve.yml"
 
     with open(metadata, "r") as md:
         rvemd = yaml.safe_load(md)
@@ -152,5 +151,38 @@ def task_fine_grid():
             "file_dep": [script, coarse_grid, rve, scenarios],
             "actions": [CmdAction(cmd)],
             "targets": [fine_grid, fine_grid.with_suffix(".h5")],
+            "clean": True,
+        }
+
+
+@create_after(executed="rve_metadata")
+def task_empirical_basis():
+    """construct empirical basis for the given RVE"""
+
+    with open(scenarios, "r") as ins:
+        s = yaml.safe_load(ins)
+    with open(metadata, "r") as md:
+        r = yaml.safe_load(md)
+
+    edges = ["bottom", "right", "top", "left"]
+    for i, scenario in s.items():
+        block = example / f"block_{i}.xdmf"
+        rve = example / f"rve_{i}.xdmf"
+        rve_edges = [rve.parent / (rve.stem + f"_{e}.xdmf") for e in edges]
+        degree = scenario["degree"]
+        basis = scenario["basis_type"]
+        script = multicode / f"{basis}_basis.py"
+        targets = [
+            example / f"basis_{i}.npy",
+            example / f"edge_basis_{i}.npy",
+            example / f"testing_set_proj_err_{i}.txt",
+        ]
+        cmd = f"python {script} {block} {rve} {degree} --training-set=delta"
+        cmd += f" --output={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
+        yield {
+            "name": f"{i}",
+            "actions": [CmdAction(cmd)],
+            "targets": targets,
+            "file_dep": [scenarios, metadata, block, rve, *rve_edges, script],
             "clean": True,
         }
