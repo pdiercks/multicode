@@ -9,16 +9,19 @@ Optionally the first edge functions can be defined as hierarchical
 polynomials up to a maximum degree pmax (see Options below).
 
 Usage:
-    empirical_basis.py [options] BLOCK RVE DEG
+    empirical_basis.py [options] BLOCK RVE META DEG MAT
 
 Arguments:
     BLOCK               Filepath for block grid.
     RVE                 XDMF file path (incl. extension).
+    META                RVE metadata.
     DEG                 Degree of (fine grid) FE space.
+    MAT                 The material metadata.
 
 Options:
     -h, --help               Show this message.
     -l LEVEL, --log=LEVEL    Set the log level [default: 30].
+    --solver=SOLVER          Define dolfin solver parameters.
     --training-set=SET       Provide a training set for the block problem. This can
                              either be a '.npy' file or a keyword ('random', 'delta').
                              [default: random].
@@ -67,36 +70,16 @@ from pymor.operators.constructions import LincombOperator, VectorOperator
 from pymor.parameters.functionals import ProjectionParameterFunctional
 from pymor.reductors.basic import extend_basis
 
-root = Path(__file__).parent
-with open(root / "run.yml", "r") as instream:
-    run = yaml.safe_load(instream)
-
-prm = df.parameters
-prm["krylov_solver"]["relative_tolerance"] = run["Run parameters"]["krylov_solver"][
-    "relative_tolerance"
-]
-prm["krylov_solver"]["absolute_tolerance"] = run["Run parameters"]["krylov_solver"][
-    "absolute_tolerance"
-]
-prm["krylov_solver"]["maximum_iterations"] = run["Run parameters"]["krylov_solver"][
-    "maximum_iterations"
-]
 
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["BLOCK"] = Path(args["BLOCK"])
-    args["block_dir"] = args["BLOCK"].parent.stem
     args["RVE"] = Path(args["RVE"])
-    args["DISC"] = int(args["RVE"].stem.split("_")[-1])
-    args["rve_type"] = args["RVE"].parent.stem
-    if args["rve_type"] == "rve_01":
-        args["a"] = 1.0
-    elif args["rve_type"] == "rve_02":
-        args["a"] = 20.0
-    else:
-        raise NotImplementedError
+    with open(Path(args["META"], "r") as metadata:
+        args["rve_md"] = yaml.safe_load(metadata)
     args["DEG"] = int(args["DEG"])
+    args["MAT"] = Path(args["MAT"])
     args["--pmax"] = int(args["--pmax"])
     args["--rtol"] = float(args["--rtol"])
     args["--log"] = int(args["--log"])
@@ -111,6 +94,29 @@ def parse_arguments(args):
         if not args["--training-set"].exists():
             print(f"The training set {args['--training-set']} does not exist.")
             sys.exit(1)
+
+    solver = {
+            "krylov_solver": {"relative_tolerance": 1.0e-9, "absolute_tolerance": 1.0e-12, "maximum_iterations": 1000},
+            "solver_parameters": {"linear_solver": "default", "preconditioner": "default"}
+    }
+    if args["--solver"] is not None:
+        assert Path(args["--solver"]).suffix == ".yml"
+        try:
+            with open(args["--solver"], "r") as f:
+                solver = yaml.safe_load(f)
+        except FileNotFoundError as nof:
+            print(f"File {args['--solver']} could not be found. Using default solver settings ...")
+    args["solver"] = solver
+    prm = df.parameters
+    prm["krylov_solver"]["relative_tolerance"] = solver["krylov_solver"][
+        "relative_tolerance"
+    ]
+    prm["krylov_solver"]["absolute_tolerance"] = solver["krylov_solver"][
+        "absolute_tolerance"
+    ]
+    prm["krylov_solver"]["maximum_iterations"] = solver["krylov_solver"][
+        "maximum_iterations"
+    ]
     return args
 
 
@@ -377,7 +383,7 @@ def test_PDE_locally_fulfilled(args, fom, problem, phi):
         return on_boundary
 
     problem.bc_handler.add_bc(boundary, s)
-    solver_parameters = run["Run parameters"]["solver_parameters"]
+    solver_parameters = args["solver"]["solver_parameters"]
     t = problem.solve(u=None, solver_parameters=solver_parameters)
     e = df.errornorm(s, t)
     if not e < 1e-9:
@@ -386,7 +392,6 @@ def test_PDE_locally_fulfilled(args, fom, problem, phi):
 
     problem.bc_handler.remove_bcs()
     problem.bc_handler.add_bc(boundary, g_bilinear)
-    solver_parameters = run["Run parameters"]["solver_parameters"]
     t = problem.solve(u=None, solver_parameters=solver_parameters)
     e = df.errornorm(g_bilinear, t)
     if not e < 1e-9:
@@ -461,7 +466,7 @@ def compute_psi(args, problem, boundary_data, V_to_L, product=None, method="triv
         g.vector().set_local(gvalues)
 
         problem.bc_handler.add_bc(boundary, g)
-        solver_parameters = run["Run parameters"]["solver_parameters"]
+        solver_parameters = args["solver"]["solver_parameters"]
         problem.solve(u, solver_parameters=solver_parameters)
 
         d = u.copy(deepcopy=True)
@@ -534,7 +539,7 @@ def compute_edge_basis_via_pod(args, problem, U):
 
     if args["--pmax"] > 1:
         # FIXME pmax > 1 does not improve projection error decay ...
-        from hierarchical_shapes_2d import get_hierarchical_shape_1d, mapping
+        from multi.shapes import mapping, get_hierarchical_shape_1d
 
         h = []
         x_dofs = Lambda[0].sub(0).collapse().tabulate_dof_coordinates()
@@ -666,7 +671,7 @@ def discretize_block(args):
     """discretize the 3x3 block and wrap as pyMOR model"""
     block_domain = Subdomain(args["BLOCK"], 0, subdomains=True)
     root = Path(__file__).parent
-    with open(root / "material.yml", "r") as infile:
+    with open(args["MAT"], "r") as infile:
         try:
             material = yaml.safe_load(infile)
         except yaml.YAMLError as exc:
@@ -722,7 +727,7 @@ def discretize_block(args):
             # FIXME assumes mapping from xi in [-1, 1] to x in [0, 3a]
             return 2 * x / 3 / a - 1
 
-        xi = mapping(x_dofs[:, 0], a=args["a"])
+        xi = mapping(x_dofs[:, 0], a=args["rve_md"][scenario]["a"])
         eta = mapping(x_dofs[:, 1], a=args["a"])
         N_quadratic = np.zeros_like(N_bilinear)
         N_quadratic[0, ::2] = linear(eta, -1) * quadratic(xi)
@@ -773,7 +778,7 @@ def discretize_block(args):
     ]
 
     rhs = LincombOperator(vector_operators, parameter_functionals)
-    opts = run["Run parameters"]["solver_parameters"]
+    opts = args["solver"]["solver_parameters"]
     solver_options = {
         "inverse": {
             "solver": opts["linear_solver"],
@@ -819,7 +824,7 @@ def discretize_rve(args):
         edges=True,
         translate=df.Point((args["a"], args["a"])),
     )
-    with open(root / "material.yml", "r") as infile:
+    with open(args["MAT"], "r") as infile:
         try:
             material = yaml.safe_load(infile)
         except yaml.YAMLError as exc:
@@ -870,7 +875,7 @@ def discretize_rve(args):
     ]
 
     rhs = LincombOperator(vector_operators, parameter_functionals)
-    opts = run["Run parameters"]["solver_parameters"]
+    opts = args["solver"]["solver_parameters"]
     solver_options = {
         "inverse": {
             "solver": opts["linear_solver"],
