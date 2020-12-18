@@ -50,11 +50,10 @@ import matplotlib.pyplot as plt
 
 # multi
 from multi import Domain, LinearElasticityProblem, make_mapping
-from multi.shapes import NumpyQuad4, NumpyQuad8
+from multi.shapes import NumpyQuad
 
 # pymor
 from pymor.algorithms.pod import pod
-from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenics import (
     FenicsMatrixOperator,
     FenicsVectorSpace,
@@ -67,7 +66,6 @@ from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.constructions import LincombOperator, VectorOperator
 from pymor.parameters.functionals import ProjectionParameterFunctional
 from pymor.reductors.basic import extend_basis
-
 
 
 def parse_arguments(args):
@@ -97,16 +95,22 @@ def parse_arguments(args):
             sys.exit(1)
 
     solver = {
-            "krylov_solver": {"relative_tolerance": 1.0e-9, "absolute_tolerance": 1.0e-12, "maximum_iterations": 1000},
-            "solver_parameters": {"linear_solver": "default", "preconditioner": "default"}
+        "krylov_solver": {
+            "relative_tolerance": 1.0e-9,
+            "absolute_tolerance": 1.0e-12,
+            "maximum_iterations": 1000,
+        },
+        "solver_parameters": {"linear_solver": "default", "preconditioner": "default"},
     }
     if args["--solver"] is not None:
         assert Path(args["--solver"]).suffix == ".yml"
         try:
             with open(args["--solver"], "r") as f:
                 solver = yaml.safe_load(f)
-        except FileNotFoundError as nof:
-            print(f"File {args['--solver']} could not be found. Using default solver settings ...")
+        except FileNotFoundError:
+            print(
+                f"File {args['--solver']} could not be found. Using default solver settings ..."
+            )
     args["solver"] = solver
     prm = df.parameters
     prm["krylov_solver"]["relative_tolerance"] = solver["krylov_solver"][
@@ -175,10 +179,6 @@ def restrict_to_omega(args, problem, snapshots):
 
     nodal_values.shape = (len(rve_snapshots), 8)
     return rve_snapshots, nodal_values
-
-
-
-
 
 
 def test_PDE_locally_fulfilled(args, fom, problem, phi):
@@ -503,7 +503,6 @@ def check_orthonormality(basis, product=None, offset=0, check_tol=1e-3):
 def discretize_block(args, unit_length):
     """discretize the 3x3 block and wrap as pyMOR model"""
     block_domain = Domain(args["BLOCK"], 0, subdomains=True)
-    root = Path(__file__).parent
     material = args["material"]
     E = material["Material parameters"]["E"]["value"]
     NU = material["Material parameters"]["NU"]["value"]
@@ -525,21 +524,26 @@ def discretize_block(args, unit_length):
     vector_operators = []
     null = np.zeros(V.dim())
     S = FenicsVectorSpace(V)
-    # TODO difference in using standard (NumpyQuad8) or hierarchical shapes?
-    # if hierarchical shapes are used the SoI training-set becomes a bit tricky
     x1 = block_domain.xmin
     x2 = block_domain.xmax
     y1 = block_domain.ymin
     y2 = block_domain.ymax
-    # should I actually use NumpyQuad9 to get exactly the same functions
-    # that dolfinx uses?
-    # gmsh quad8 type node ordering
-    quad8 = NumpyQuad8(np.array([
-        [x1, y1], [x2, y1], [x2, y2], [x1, y2],
-        [block_domain.xmax / 2, block_domain.ymax],
+    quad8 = NumpyQuad(
+        np.array(
+            [
+                [x1, y1],
+                [x2, y1],
+                [x2, y2],
+                [x1, y2],
+                [x2 / 2, 0],
+                [x2, y2 / 2],
+                [x2 / 2, y2],
+                [0, y2 / 2],
+            ]
+        )
+    )
 
-
-    #  basis = get_hierarchical_block_basis(args, block_domain, V, plot=False)
+    shapes = quad8.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
     for shape in shapes:
         g.vector().set_local(null)
         A_bc = A.copy()
@@ -625,7 +629,7 @@ def discretize_rve(args):
             [rve_domain.xmin, rve_domain.ymax],
         ]
     )
-    quadrilateral = NumpyQuad4(quad_nodes)
+    quadrilateral = NumpyQuad(quad_nodes)
 
     vector_operators = []
     null = np.zeros(V.dim())
@@ -860,7 +864,7 @@ def main(args):
         for err, name in zip(errors, names):
             nmodes = np.arange(len(err))
             plt.semilogy(nmodes + 1, err, "--*", label=f"{name}")
-        reference = np.exp(-nmodes/5)
+        reference = np.exp(-nmodes / 5)
         plt.semilogy(nmodes + 1, reference, "r--", label=r"$\exp(-n / 5)$")
         plt.grid()
         plt.legend()
