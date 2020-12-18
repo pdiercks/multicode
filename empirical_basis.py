@@ -9,14 +9,14 @@ Optionally the first edge functions can be defined as hierarchical
 polynomials up to a maximum degree pmax (see Options below).
 
 Usage:
-    empirical_basis.py [options] BLOCK RVE META DEG MAT
+    empirical_basis.py [options] BLOCK RVE A DEG MAT
 
 Arguments:
     BLOCK               Filepath for block grid.
     RVE                 XDMF file path (incl. extension).
-    META                RVE metadata.
+    A                   The unit length of the RVE.
     DEG                 Degree of (fine grid) FE space.
-    MAT                 The material metadata.
+    MAT                 The material parameters (.yml).
 
 Options:
     -h, --help               Show this message.
@@ -48,11 +48,9 @@ from docopt import docopt
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 
-# fenicsphelpers
-from fenicsphelpers.dofhandling import make_mapping
-from fenicsphelpers.linear_elasticity import LinearElasticityProblem
-from fenicsphelpers.subdomains import Subdomain
-from fenicsphelpers.vmm import NumpyGlobalQ4
+# multi
+from multi import Domain, LinearElasticityProblem, make_mapping
+from multi.shapes import NumpyQuad4, NumpyQuad8
 
 # pymor
 from pymor.algorithms.pod import pod
@@ -76,10 +74,13 @@ def parse_arguments(args):
     args = docopt(__doc__, args)
     args["BLOCK"] = Path(args["BLOCK"])
     args["RVE"] = Path(args["RVE"])
-    with open(Path(args["META"], "r") as metadata:
-        args["rve_md"] = yaml.safe_load(metadata)
+    args["A"] = float(args["A"])
     args["DEG"] = int(args["DEG"])
-    args["MAT"] = Path(args["MAT"])
+    with open(Path(args["MAT"]), "r") as infile:
+        try:
+            args["material"] = yaml.safe_load(infile)
+        except yaml.YAMLError as exc:
+            print(exc)
     args["--pmax"] = int(args["--pmax"])
     args["--rtol"] = float(args["--rtol"])
     args["--log"] = int(args["--log"])
@@ -176,176 +177,6 @@ def restrict_to_omega(args, problem, snapshots):
     return rve_snapshots, nodal_values
 
 
-def main(args):
-    args = parse_arguments(args)
-    logger = getLogger("empirical basis")
-    logger.setLevel(args["--log"])
-
-    # TODO better: one rve_problem which can be used to compute phi_i and psi_j?
-    # only disadvantage is that computing psi does not fit in current pyMOR model
-    rve_fom, rve_problem = discretize_rve(args)
-    V = rve_problem.V
-    with logger.block("Computing coarse scale basis phi ..."):
-        phi = compute_coarse_scale_basis(args, rve_fom)
-
-    block_fom, block_problem = discretize_block(args)
-    if args["--test"]:
-        test_PDE_locally_fulfilled(args, block_fom, rve_problem, phi)
-
-    if args["--training-set"] == "random":
-        logger.info("Using random sampling to generate training set ...")
-        ps = block_fom.parameters.space(-1, 1)
-        training_set = ps.sample_randomly(30, seed=4)
-    elif args["--training-set"] == "delta":
-        logger.info("Using unit vectors as training set ...")
-        Identity = np.eye(16)
-        training_set = []
-        for row in Identity:
-            training_set.append({"mu": row})
-    else:
-        # FIXME block uses hierarchical shape functions
-        raise NotImplementedError("reimplement standard shape functions for block fom")
-
-        logger.info("Reading training-set from file {args['--trainig-set']} ... ")
-        training_set = []
-        try:
-            coefficients = np.load(args["--training-set"])
-        except FileNotFoundError as exp:
-            logger.warning(
-                f"The training set {args['--training-set']} could not be found."
-            )
-            raise (exp)
-
-        dofs_per_cell = 16
-        ncells = int(coefficients.size / dofs_per_cell)
-        for i in range(ncells):
-            start = dofs_per_cell * i
-            end = dofs_per_cell * (i + 1)
-            mu = {"mu": coefficients[start:end]}
-            training_set.append(mu)
-
-    with logger.block("Solving on training set ..."):
-        block_snapshots, block_summary = compute_snapshots(
-            args, logger, block_fom, training_set
-        )
-        rve_snapshots, coarse_dofs = restrict_to_omega(
-            args, rve_problem, block_snapshots
-        )
-        s_c = phi.lincomb(coarse_dofs)  # coarse scale part of snapshots
-        s_f = rve_snapshots - s_c  # fine scale part of snapshots
-
-    # this should be non-zero
-    if args["--test"]:
-        if not np.sum(s_f.amax()[1]) > 1e-2:
-            plot_mode(s_f, 1, V)
-            breakpoint()
-        with logger.block("Running tests on zero bubble functions ..."):
-            test_zero_bubble(args, rve_problem, s_f)
-
-    chi, V_to_L, coefficients = compute_edge_basis_via_pod(args, rve_problem, s_f)
-
-    if args["--chi"]:
-        edge_basis = chi[0].copy()
-        edge_basis.append(chi[1])
-        np.save(args["--chi"], edge_basis.to_numpy())
-
-    with logger.block("Computing psi_j ..."):
-        psi_bottom = compute_psi(
-            args,
-            rve_problem,
-            chi[0].to_numpy(),
-            V_to_L[0],
-            product=None,
-            method="trivial",
-        )
-        psi_right = compute_psi(
-            args,
-            rve_problem,
-            chi[1].to_numpy(),
-            V_to_L[1],
-            product=None,
-            method="trivial",
-        )
-        psi_top = compute_psi(
-            args,
-            rve_problem,
-            chi[2].to_numpy(),
-            V_to_L[2],
-            product=None,
-            method="trivial",
-        )
-        psi_left = compute_psi(
-            args,
-            rve_problem,
-            chi[3].to_numpy(),
-            V_to_L[3],
-            product=None,
-            method="trivial",
-        )
-    if args["--check-interface"]:
-        ctol = args["--check-interface"]
-        with logger.block(f"Checking interface compatibility with tol={ctol} ... "):
-            check_interface_compatibility(
-                psi_bottom, psi_top, V_to_L[0], V_to_L[2], ctol
-            )
-            logger.info("Set bottom-top is okay.")
-            check_interface_compatibility(
-                psi_right, psi_left, V_to_L[1], V_to_L[3], ctol
-            )
-            logger.info("Set right-left is okay.")
-
-    S = FenicsVectorSpace(rve_problem.V)
-    basis = S.empty()
-    basis.append(phi)
-    max_psi = min([len(psi_bottom), len(psi_right), len(psi_top), len(psi_left)])
-    for i in range(max_psi):
-        basis.append(psi_bottom[i])
-        basis.append(psi_right[i])
-        basis.append(psi_top[i])
-        basis.append(psi_left[i])
-
-    if args["--output"]:
-        np.save(args["--output"], basis.to_numpy())
-
-    ps = block_fom.parameters.space(-1, 1)
-    testing_set = ps.sample_randomly(10, seed=13)
-    with logger.block("Solving on testing set ..."):
-        test_snapshots, test_summary = compute_snapshots(
-            args, logger, block_fom, testing_set
-        )
-        rve_test_snapshots, test_coarse_dofs = restrict_to_omega(
-            args, rve_problem, test_snapshots
-        )
-    with logger.block("Computing projection errors ..."):
-        errors = []
-        names = []
-        products = [None, rve_fom.energy_product, rve_fom.h1_product]
-        for prod in products:
-            # FIXME RuntimeError np.sqrt(norm_squared.real) for energy product
-            # why should norm_squared.real be < 0?
-            proj_errs = compute_proj_errors(basis, rve_test_snapshots, prod)
-            try:
-                name = prod.name
-            except AttributeError:
-                name = "euclidean"
-            names.append(name)
-            errors.append(proj_errs)
-
-    if args["--plot-errors"]:
-        plt.figure(12)
-        plt.title("projection error")
-        for err, name in zip(errors, names):
-            nmodes = np.arange(len(err))
-            plt.semilogy(nmodes + 1, err, "--*", label=f"{name}")
-        reference = np.exp(-nmodes/5)
-        plt.semilogy(nmodes + 1, reference, "r--", label=r"$\exp(-n / 5)$")
-        plt.grid()
-        plt.legend()
-        plt.show()
-
-    if args["--projerr"]:
-        with open(args["--projerr"], "w") as out:
-            np.savetxt(out, np.vstack(errors).T, delimiter=",", header=", ".join(names))
 
 
 
@@ -467,6 +298,8 @@ def compute_psi(args, problem, boundary_data, V_to_L, product=None, method="triv
 
         problem.bc_handler.add_bc(boundary, g)
         solver_parameters = args["solver"]["solver_parameters"]
+        # TODO how to check for df.parameters?
+        breakpoint()
         problem.solve(u, solver_parameters=solver_parameters)
 
         d = u.copy(deepcopy=True)
@@ -667,16 +500,11 @@ def check_orthonormality(basis, product=None, offset=0, check_tol=1e-3):
             raise AccuracyError(f"result not orthogonal (max err={err})")
 
 
-def discretize_block(args):
+def discretize_block(args, unit_length):
     """discretize the 3x3 block and wrap as pyMOR model"""
-    block_domain = Subdomain(args["BLOCK"], 0, subdomains=True)
+    block_domain = Domain(args["BLOCK"], 0, subdomains=True)
     root = Path(__file__).parent
-    with open(args["MAT"], "r") as infile:
-        try:
-            material = yaml.safe_load(infile)
-        except yaml.YAMLError as exc:
-            print(exc)
-
+    material = args["material"]
     E = material["Material parameters"]["E"]["value"]
     NU = material["Material parameters"]["NU"]["value"]
 
@@ -694,76 +522,24 @@ def discretize_block(args):
     def boundary(x, on_boundary):
         return on_boundary
 
-    def get_hierarchical_block_basis(args, domain, V, plot=False):
-        nodes = np.array(
-            [
-                [domain.xmin, domain.ymin],
-                [domain.xmax, domain.ymin],
-                [domain.xmax, domain.ymax],
-                [domain.xmin, domain.ymax],
-            ]
-        )
-        quad = NumpyGlobalQ4(nodes)
-        x_dofs = V.sub(0).collapse().tabulate_dof_coordinates()
-        N_bilinear = quad.interpolate(x_dofs, gdim=2)
-
-        def linear(variable, sign):
-            return (1 + sign * variable) / 2
-
-        def quadratic(variable):
-            return 1 - variable ** 2
-
-        def cubic(variable):
-            return 2 * (variable ** 3 - variable)
-
-        unit_length = abs(domain.xmax - domain.xmin)
-
-        def mapping(x, a=unit_length):
-            """map physical coordinate to reference coordinate
-            assuming xi in [-1, 1] and x in [0, 3a]
-
-            xi = 2x / a -3
-            """
-            # FIXME assumes mapping from xi in [-1, 1] to x in [0, 3a]
-            return 2 * x / 3 / a - 1
-
-        xi = mapping(x_dofs[:, 0], a=args["rve_md"][scenario]["a"])
-        eta = mapping(x_dofs[:, 1], a=args["a"])
-        N_quadratic = np.zeros_like(N_bilinear)
-        N_quadratic[0, ::2] = linear(eta, -1) * quadratic(xi)
-        N_quadratic[1, 1::2] = linear(eta, -1) * quadratic(xi)
-        N_quadratic[2, ::2] = linear(xi, 1) * quadratic(eta)
-        N_quadratic[3, 1::2] = linear(xi, 1) * quadratic(eta)
-        N_quadratic[4, ::2] = linear(eta, 1) * quadratic(xi)
-        N_quadratic[5, 1::2] = linear(eta, 1) * quadratic(xi)
-        N_quadratic[6, ::2] = linear(xi, -1) * quadratic(eta)
-        N_quadratic[7, 1::2] = linear(xi, -1) * quadratic(eta)
-
-        N_cubic = np.zeros_like(N_bilinear)
-        N_cubic[0, ::2] = linear(eta, -1) * cubic(xi)
-        N_cubic[1, 1::2] = linear(eta, -1) * cubic(xi)
-        N_cubic[2, ::2] = linear(xi, 1) * cubic(eta)
-        N_cubic[3, 1::2] = linear(xi, 1) * cubic(eta)
-        N_cubic[4, ::2] = linear(eta, 1) * cubic(xi)
-        N_cubic[5, 1::2] = linear(eta, 1) * cubic(xi)
-        N_cubic[6, ::2] = linear(xi, -1) * cubic(eta)
-        N_cubic[7, 1::2] = linear(xi, -1) * cubic(eta)
-
-        basis = np.vstack((N_bilinear, N_quadratic, N_cubic))
-        if plot:
-            plot -= 1
-            assert plot in list(range(len(basis)))
-            x = x_dofs[:, 0]
-            y = x_dofs[:, 1]
-            plot_surface(1, x, y, basis[plot, ::2])
-            plt.show()
-        return basis
-
     vector_operators = []
     null = np.zeros(V.dim())
     S = FenicsVectorSpace(V)
-    basis = get_hierarchical_block_basis(args, block_domain, V, plot=False)
-    shapes = basis[:16]  # up to quadratic for now ...
+    # TODO difference in using standard (NumpyQuad8) or hierarchical shapes?
+    # if hierarchical shapes are used the SoI training-set becomes a bit tricky
+    x1 = block_domain.xmin
+    x2 = block_domain.xmax
+    y1 = block_domain.ymin
+    y2 = block_domain.ymax
+    # should I actually use NumpyQuad9 to get exactly the same functions
+    # that dolfinx uses?
+    # gmsh quad8 type node ordering
+    quad8 = NumpyQuad8(np.array([
+        [x1, y1], [x2, y1], [x2, y2], [x1, y2],
+        [block_domain.xmax / 2, block_domain.ymax],
+
+
+    #  basis = get_hierarchical_block_basis(args, block_domain, V, plot=False)
     for shape in shapes:
         g.vector().set_local(null)
         A_bc = A.copy()
@@ -817,19 +593,15 @@ def discretize_block(args):
 
 def discretize_rve(args):
     """discretize the rve and wrap as pyMOR model"""
-    rve_domain = Subdomain(
+    rve_domain = Domain(
         args["RVE"],
         id_=0,
         subdomains=True,
         edges=True,
-        translate=df.Point((args["a"], args["a"])),
+        # need to know RVE unit length before I ccould compute it
+        translate=df.Point((args["A"], args["A"])),
     )
-    with open(args["MAT"], "r") as infile:
-        try:
-            material = yaml.safe_load(infile)
-        except yaml.YAMLError as exc:
-            print(exc)
-
+    material = args["material"]
     E = material["Material parameters"]["E"]["value"]
     NU = material["Material parameters"]["NU"]["value"]
 
@@ -853,7 +625,7 @@ def discretize_rve(args):
             [rve_domain.xmin, rve_domain.ymax],
         ]
     )
-    quadrilateral = NumpyGlobalQ4(quad_nodes)
+    quadrilateral = NumpyQuad4(quad_nodes)
 
     vector_operators = []
     null = np.zeros(V.dim())
@@ -925,6 +697,178 @@ def compute_snapshots(args, logger, fom, training_set):
     size:          {len(snapshots)}
     elapsed time:  {elapsed_time}\n"""
     return snapshots, summary
+
+
+def main(args):
+    args = parse_arguments(args)
+    logger = getLogger("empirical basis")
+    logger.setLevel(args["--log"])
+
+    # TODO better: one rve_problem which can be used to compute phi_i and psi_j?
+    # only disadvantage is that computing psi does not fit in current pyMOR model
+    rve_fom, rve_problem = discretize_rve(args)
+    V = rve_problem.V
+    with logger.block("Computing coarse scale basis phi ..."):
+        phi = compute_coarse_scale_basis(args, rve_fom)
+
+    block_fom, block_problem = discretize_block(args)
+    if args["--test"]:
+        test_PDE_locally_fulfilled(args, block_fom, rve_problem, phi)
+
+    if args["--training-set"] == "random":
+        logger.info("Using random sampling to generate training set ...")
+        ps = block_fom.parameters.space(-1, 1)
+        training_set = ps.sample_randomly(30, seed=4)
+    elif args["--training-set"] == "delta":
+        logger.info("Using unit vectors as training set ...")
+        Identity = np.eye(16)
+        training_set = []
+        for row in Identity:
+            training_set.append({"mu": row})
+    else:
+        # FIXME block uses hierarchical shape functions
+        raise NotImplementedError("reimplement standard shape functions for block fom")
+
+        logger.info("Reading training-set from file {args['--trainig-set']} ... ")
+        training_set = []
+        try:
+            coefficients = np.load(args["--training-set"])
+        except FileNotFoundError as exp:
+            logger.warning(
+                f"The training set {args['--training-set']} could not be found."
+            )
+            raise (exp)
+
+        dofs_per_cell = 16
+        ncells = int(coefficients.size / dofs_per_cell)
+        for i in range(ncells):
+            start = dofs_per_cell * i
+            end = dofs_per_cell * (i + 1)
+            mu = {"mu": coefficients[start:end]}
+            training_set.append(mu)
+
+    with logger.block("Solving on training set ..."):
+        block_snapshots, block_summary = compute_snapshots(
+            args, logger, block_fom, training_set
+        )
+        rve_snapshots, coarse_dofs = restrict_to_omega(
+            args, rve_problem, block_snapshots
+        )
+        s_c = phi.lincomb(coarse_dofs)  # coarse scale part of snapshots
+        s_f = rve_snapshots - s_c  # fine scale part of snapshots
+
+    # this should be non-zero
+    if args["--test"]:
+        if not np.sum(s_f.amax()[1]) > 1e-2:
+            plot_mode(s_f, 1, V)
+            breakpoint()
+        with logger.block("Running tests on zero bubble functions ..."):
+            test_zero_bubble(args, rve_problem, s_f)
+
+    chi, V_to_L, coefficients = compute_edge_basis_via_pod(args, rve_problem, s_f)
+
+    if args["--chi"]:
+        edge_basis = chi[0].copy()
+        edge_basis.append(chi[1])
+        np.save(args["--chi"], edge_basis.to_numpy())
+
+    with logger.block("Computing psi_j ..."):
+        psi_bottom = compute_psi(
+            args,
+            rve_problem,
+            chi[0].to_numpy(),
+            V_to_L[0],
+            product=None,
+            method="trivial",
+        )
+        psi_right = compute_psi(
+            args,
+            rve_problem,
+            chi[1].to_numpy(),
+            V_to_L[1],
+            product=None,
+            method="trivial",
+        )
+        psi_top = compute_psi(
+            args,
+            rve_problem,
+            chi[2].to_numpy(),
+            V_to_L[2],
+            product=None,
+            method="trivial",
+        )
+        psi_left = compute_psi(
+            args,
+            rve_problem,
+            chi[3].to_numpy(),
+            V_to_L[3],
+            product=None,
+            method="trivial",
+        )
+    if args["--check-interface"]:
+        ctol = args["--check-interface"]
+        with logger.block(f"Checking interface compatibility with tol={ctol} ... "):
+            check_interface_compatibility(
+                psi_bottom, psi_top, V_to_L[0], V_to_L[2], ctol
+            )
+            logger.info("Set bottom-top is okay.")
+            check_interface_compatibility(
+                psi_right, psi_left, V_to_L[1], V_to_L[3], ctol
+            )
+            logger.info("Set right-left is okay.")
+
+    S = FenicsVectorSpace(rve_problem.V)
+    basis = S.empty()
+    basis.append(phi)
+    max_psi = min([len(psi_bottom), len(psi_right), len(psi_top), len(psi_left)])
+    for i in range(max_psi):
+        basis.append(psi_bottom[i])
+        basis.append(psi_right[i])
+        basis.append(psi_top[i])
+        basis.append(psi_left[i])
+
+    if args["--output"]:
+        np.save(args["--output"], basis.to_numpy())
+
+    ps = block_fom.parameters.space(-1, 1)
+    testing_set = ps.sample_randomly(10, seed=13)
+    with logger.block("Solving on testing set ..."):
+        test_snapshots, test_summary = compute_snapshots(
+            args, logger, block_fom, testing_set
+        )
+        rve_test_snapshots, test_coarse_dofs = restrict_to_omega(
+            args, rve_problem, test_snapshots
+        )
+    with logger.block("Computing projection errors ..."):
+        errors = []
+        names = []
+        products = [None, rve_fom.energy_product, rve_fom.h1_product]
+        for prod in products:
+            # FIXME RuntimeError np.sqrt(norm_squared.real) for energy product
+            # why should norm_squared.real be < 0?
+            proj_errs = compute_proj_errors(basis, rve_test_snapshots, prod)
+            try:
+                name = prod.name
+            except AttributeError:
+                name = "euclidean"
+            names.append(name)
+            errors.append(proj_errs)
+
+    if args["--plot-errors"]:
+        plt.figure(12)
+        plt.title("projection error")
+        for err, name in zip(errors, names):
+            nmodes = np.arange(len(err))
+            plt.semilogy(nmodes + 1, err, "--*", label=f"{name}")
+        reference = np.exp(-nmodes/5)
+        plt.semilogy(nmodes + 1, reference, "r--", label=r"$\exp(-n / 5)$")
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+    if args["--projerr"]:
+        with open(args["--projerr"], "w") as out:
+            np.savetxt(out, np.vstack(errors).T, delimiter=",", header=", ".join(names))
 
 
 if __name__ == "__main__":

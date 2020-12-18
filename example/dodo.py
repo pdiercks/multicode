@@ -13,11 +13,17 @@ scenarios = example / "scenarios.yml"
 
 
 def task_create_scenarios():
-    """create all scenarios for this example,
-    where each scenario consists of discretization, degree and basis type"""
+    """create all scenarios for this example"""
 
-    def create_scenarios(targets):
-        # discretization with 5 points per edge
+    def create(targets):
+        """create the scenario for this example
+
+        note that although there is only one scenario, we could easily add
+        more by extending the lists below. In general the RVE could change as well
+        and thus for each scenario we store the filepath and the unit length `a` which
+        is needed for some operations (i.e. to define the coarse grid for the
+        3x3 block used in the offline phase).
+        """
         disc = [5]
         degree = [2]
         basis_type = ["empirical"]
@@ -26,23 +32,19 @@ def task_create_scenarios():
         for d in disc:
             for deg in degree:
                 for basis in basis_type:
-                    rve = example / f"rve_{sid}.xdmf"
-                    block = example / f"block_{sid}.xdmf"
+                    rve_grid = example / f"rve_{sid}.xdmf"
                     s[sid] = {
-                        # FIXME figure out what should be part of scenarios and what not ...
                         "disc": d,
                         "degree": deg,
                         "basis_type": basis,
-                        "rve": rve.as_posix(),
-                        "block": block.as_posix(),  # block mesh for offline phase
-                        "a": 1.0,  # unit length of the RVE
+                        "rve": {"xdmf": rve_grid.as_posix(), "a": 1.0},
                     }
                     sid += 1
         with open(targets[0], "w") as out:
             yaml.safe_dump(s, out)
 
     return {
-        "actions": [create_scenarios],
+        "actions": [create],
         "targets": [scenarios],
         "uptodate": [run_once],
         "clean": True,
