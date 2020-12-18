@@ -298,8 +298,6 @@ def compute_psi(args, problem, boundary_data, V_to_L, product=None, method="triv
 
         problem.bc_handler.add_bc(boundary, g)
         solver_parameters = args["solver"]["solver_parameters"]
-        # TODO how to check for df.parameters?
-        breakpoint()
         problem.solve(u, solver_parameters=solver_parameters)
 
         d = u.copy(deepcopy=True)
@@ -500,7 +498,7 @@ def check_orthonormality(basis, product=None, offset=0, check_tol=1e-3):
             raise AccuracyError(f"result not orthogonal (max err={err})")
 
 
-def discretize_block(args, unit_length):
+def discretize_block(args):
     """discretize the 3x3 block and wrap as pyMOR model"""
     block_domain = Domain(args["BLOCK"], 0, subdomains=True)
     material = args["material"]
@@ -635,7 +633,7 @@ def discretize_rve(args):
     null = np.zeros(V.dim())
     S = FenicsVectorSpace(V)
     shapes = quadrilateral.interpolate(
-        V.sub(0).collapse().tabulate_dof_coordinates(), 2
+        V.sub(0).collapse().tabulate_dof_coordinates(), (2,)
     )
     for shape in shapes:
         g.vector().set_local(null)

@@ -169,7 +169,7 @@ def task_empirical_basis():
 
     edges = ["bottom", "right", "top", "left"]
     for i, scenario in s.items():
-        block = example / f"block_{i}.xdmf"
+        block = example / "data" / f"block_{i}.xdmf"
         rve = Path(scenario["rve"]["xdmf"])
         a = scenario["rve"]["a"]
         rve_edges = [rve.parent / (rve.stem + f"_{e}.xdmf") for e in edges]
@@ -183,7 +183,7 @@ def task_empirical_basis():
         ]
         cmd = f"python {script} {block} {rve} {a} {degree} {mat} --training-set=delta"
         cmd += f" --output={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
-        cmd += f" --solver={solver}"
+        cmd += f" --solver={solver} --test --check-interface=1e-8"
         yield {
             "name": f"{i}",
             "actions": [CmdAction(cmd)],
