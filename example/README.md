@@ -18,3 +18,13 @@ sure that these are conforming with the definition of the rve grid using e.g. ``
 What's left is the definition of the problem / structure of interest itself by:
 * coarse grid,
 * the program running the actual simulation.
+
+
+Note
+----
+Unfortunately the command ``doit list`` will raise an error since nearly all tasks depend on ``scenarios.yml`` 
+which needs to be created first. If you do not wish to do the complete example at once, you could print the list of tasks like this:
+```
+doit create_scenarios
+doit list
+```

@@ -1,7 +1,7 @@
 0:
-  a: 1.0
   basis_type: empirical
-  block: /Users/philippdiercks/bam-git/multicode/example/block_0.xdmf
   degree: 2
   disc: 5
-  rve: /Users/philippdiercks/bam-git/multicode/example/rve_0.xdmf
+  rve:
+    a: 1.0
+    xdmf: /Users/philippdiercks/bam-git/multicode/example/data/rve_0.xdmf
