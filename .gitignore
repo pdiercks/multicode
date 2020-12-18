@@ -118,5 +118,5 @@ dmypy.json
 .doit.db.*
 
 # data / results
-data/
-results/
+example/data/
+example/results/
