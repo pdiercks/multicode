@@ -58,9 +58,6 @@ coverage.xml
 local_settings.py
 db.sqlite3
 
-# doit stuff
-.doit.db.*
-
 # Flask stuff:
 instance/
 .webassets-cache
@@ -116,3 +113,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# doit stuff
+.doit.db.*
+
+# data / results
+data/
+results/
