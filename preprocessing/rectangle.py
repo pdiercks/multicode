@@ -18,6 +18,7 @@ Options:
     --offx=OFFX                   Offset (float) for x coordinate of origin [default: 0.0].
     --offy=OFFY                   Offset (float) for y coordinate of origin [default: 0.0].
     --SecondOrderIncomplete=INT   Create incomplete second order elements? [default: 0].
+    --order=INT                   Gmsh mesh order [default: 1].
     -o FILE --output=FILE         Specify output file (msh or vtu). [default: ./rectangle.msh]
 """
 
@@ -38,6 +39,7 @@ def parse_arguments(args):
     args['--offx'] = float(args['--offx'])
     args['--offy'] = float(args['--offy'])
     args["--SecondOrderIncomplete"] = int(args["--SecondOrderIncomplete"])
+    args["--order"] = int(args["--order"])
     return args
 
 
@@ -70,7 +72,8 @@ def generate_mesh(args):
 
     mshfile = path + '/' + base + ext if ext == '.msh' else None
     geofile = path + '/' + base + ext if ext == '.geo' else None
-    mesh = pygmsh.generate_mesh(geom, geo_filename=geofile, msh_filename=mshfile, prune_z_0=True)
+    extra_gmsh_arguments = ["-order", f"{args['--order']}", "-format", "msh2"]
+    mesh = pygmsh.generate_mesh(geom, geo_filename=geofile, msh_filename=mshfile, prune_z_0=True, extra_gmsh_arguments=extra_gmsh_arguments)
 
     if ext == '.vtu':
         import meshio

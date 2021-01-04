@@ -5,13 +5,14 @@ from doit.action import CmdAction
 from doit.tools import run_once
 from pathlib import Path
 import yaml
+from numpy import genfromtxt
 
 example = Path(__file__).parent
 multicode = example.absolute().parent
 preprocessing = multicode / "preprocessing"
 scenarios = example / "scenarios.yml"
 
-
+# note doit.tools.create_folder
 def task_mkdirs():
     """create directories"""
 
@@ -127,6 +128,8 @@ def task_coarse_grid():
     target = example / "data" / "coarse_block.msh"
     cmd = f"python {script} {x} {x} {N} {N} 1 --transfinite --quads"
     cmd += f" --output={target}"
+    cmd += " --SecondOrderIncomplete=1"
+    cmd += " --order=2"
     return {
         "file_dep": [script, scenarios],
         "actions": [CmdAction(cmd)],
@@ -188,6 +191,21 @@ def task_empirical_basis():
             "name": f"{i}",
             "actions": [CmdAction(cmd)],
             "targets": targets,
-            "file_dep": [scenarios, block, rve, *rve_edges, script, mat, solver],
+            "file_dep": [scenarios, block, rve, rve.with_suffix(".h5"), *rve_edges, script, mat, solver],
             "clean": True,
+        }
+
+
+def task_make_test():
+    """assert projection error is near zero"""
+    dep = example / "results" / "testing_set_proj_err_0.txt"
+
+    def test(dependencies):
+        data = genfromtxt(dependencies[0], delimiter=",") 
+        print(data.type)
+
+    return {
+        "actions": [(test)],
+        "file_dep": [dep],
+        "verbosity": 2,
         }

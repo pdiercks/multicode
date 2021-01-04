@@ -27,7 +27,7 @@ import numpy
 
 import pygmsh
 from docopt import docopt
-from fenicsphelpers.dofhandling import DofMap
+from multi import DofMap
 
 
 def parse_arguments(args):

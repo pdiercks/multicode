@@ -4,4 +4,4 @@
   disc: 5
   rve:
     a: 1.0
-    xdmf: /Users/philippdiercks/bam-git/multicode/example/data/rve_0.xdmf
+    xdmf: /home/pdiercks/bam-git/multicode/example/data/rve_0.xdmf
