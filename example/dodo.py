@@ -202,10 +202,15 @@ def task_make_test():
 
     def test(dependencies):
         data = genfromtxt(dependencies[0], delimiter=",") 
-        print(data.type)
+        if data[-1, 0] < 1e-9:
+            print("test passed")
+        else:
+            print("test failed")
+
 
     return {
         "actions": [(test)],
         "file_dep": [dep],
         "verbosity": 2,
+        "uptodate": [False],
         }
