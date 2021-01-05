@@ -1,0 +1,7 @@
+0:
+  basis_type: empirical
+  degree: 2
+  disc: 5
+  rve:
+    a: 1.0
+    xdmf: /home/pdiercks/bam-git/multicode/example/data/rve_0.xdmf
