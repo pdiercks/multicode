@@ -5,3 +5,10 @@
   rve:
     a: 1.0
     xdmf: /home/pdiercks/bam-git/multicode/example/data/rve_0.xdmf
+1:
+  basis_type: hierarchical
+  degree: 2
+  disc: 5
+  rve:
+    a: 1.0
+    xdmf: /home/pdiercks/bam-git/multicode/example/data/rve_1.xdmf

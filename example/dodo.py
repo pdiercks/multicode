@@ -43,7 +43,7 @@ def task_create_scenarios():
         """
         disc = [5]
         degree = [2]
-        basis_type = ["empirical"]
+        basis_type = ["empirical", "hierarchical"]
         s = {}
         sid = 0
         for d in disc:
@@ -162,11 +162,11 @@ def task_fine_grid():
 
 
 @create_after(executed="create_scenarios")
-def task_empirical_basis():
-    """construct empirical basis for the given RVE"""
+def task_generate_basis():
+    """construct basis for scenario"""
     mat = example / "material.yml"
     solver = example / "solver.yml"
-
+    script = multicode / "generate_basis.py"
     with open(scenarios, "r") as ins:
         s = yaml.safe_load(ins)
 
@@ -178,39 +178,48 @@ def task_empirical_basis():
         rve_edges = [rve.parent / (rve.stem + f"_{e}.xdmf") for e in edges]
         degree = scenario["degree"]
         basis = scenario["basis_type"]
-        script = multicode / f"{basis}_basis.py"
         targets = [
             example / "results" / f"basis_{i}.npy",
             example / "results" / f"edge_basis_{i}.npy",
             example / "results" / f"testing_set_proj_err_{i}.txt",
         ]
-        cmd = f"python {script} {block} {rve} {a} {degree} {mat} --training-set=delta"
+        cmd = f"python {script} {block} {rve} {a} {degree} {mat} -l 10"
+        cmd += f" --training-set=delta --type={basis}"
         cmd += f" --output={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
         cmd += f" --solver={solver} --test --check-interface=1e-8"
+        if basis == "hierarchical":
+            cmd += " --pmax=12"
         yield {
             "name": f"{i}",
             "actions": [CmdAction(cmd)],
             "targets": targets,
             "file_dep": [scenarios, block, rve, rve.with_suffix(".h5"), *rve_edges, script, mat, solver],
+            "task_dep": ["rve_grid", "fine_grid", "coarse_grid", "rve_edges"],
             "clean": True,
         }
 
 
+@create_after(executed="create_scenarios")
 def task_make_test():
     """assert projection error is near zero"""
-    dep = example / "results" / "testing_set_proj_err_0.txt"
+    with open(scenarios, "r") as ins:
+        s = yaml.safe_load(ins)
+
+    dep = [example / "results" / f"testing_set_proj_err_{i}.txt" for i in range(len(s.keys()))]
 
     def test(dependencies):
-        data = genfromtxt(dependencies[0], delimiter=",") 
-        if data[-1, 0] < 1e-9:
-            print("test passed")
-        else:
-            print("test failed")
+        for d in dependencies:
+            data = genfromtxt(d, delimiter=",") 
+            if data[-1, 0] < 1e-9:
+                print("test passed")
+            else:
+                print("test failed")
 
 
     return {
         "actions": [(test)],
-        "file_dep": [dep],
+        "task_dep": ["generate_basis"],
+        "file_dep": dep,
         "verbosity": 2,
         "uptodate": [False],
         }

@@ -5,9 +5,9 @@ basis construction
 (2) psi_j: edge functions which also account for the inheterogenity
 
 Note: edge functions are computed based on --type via POD of edge snapshot 
-data or these are set as hierarchical shape functions.
+data or these are set as hierarchical shape functions up to degree --pmax.
 If --type==empirical, optionally the first edge functions can be defined as hierarchical
-polynomials up to a maximum degree pmax (see Options below).
+polynomials up to a maximum degree --pmax (see Options below).
 
 Usage:
     generate_basis.py [options] BLOCK RVE A DEG MAT
@@ -56,6 +56,7 @@ from multi.shapes import NumpyQuad
 
 # pymor
 from pymor.algorithms.pod import pod
+from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenics import (
     FenicsMatrixOperator,
     FenicsVectorSpace,
@@ -76,6 +77,11 @@ def parse_arguments(args):
     args["RVE"] = Path(args["RVE"])
     args["A"] = float(args["A"])
     args["DEG"] = int(args["DEG"])
+    args["--type"] = (
+        str(args["--type"])
+        if args["--type"] in ("empirical", "hierarchical")
+        else "empirical"
+    )
     with open(Path(args["MAT"]), "r") as infile:
         try:
             args["material"] = yaml.safe_load(infile)
@@ -96,7 +102,7 @@ def parse_arguments(args):
             print(f"The training set {args['--training-set']} does not exist.")
             sys.exit(1)
 
-    solver = {
+    default_solver = {
         "krylov_solver": {
             "relative_tolerance": 1.0e-9,
             "absolute_tolerance": 1.0e-12,
@@ -104,24 +110,32 @@ def parse_arguments(args):
         },
         "solver_parameters": {"linear_solver": "default", "preconditioner": "default"},
     }
-    if args["--solver"] is not None:
-        assert Path(args["--solver"]).suffix == ".yml"
-        try:
-            with open(args["--solver"], "r") as f:
-                solver = yaml.safe_load(f)
-        except FileNotFoundError:
-            print(
-                f"File {args['--solver']} could not be found. Using default solver settings ..."
-            )
-    args["solver"] = solver
+
+    def get_solver():
+        if args["--solver"] is not None:
+            assert Path(args["--solver"]).suffix == ".yml"
+            try:
+                with open(args["--solver"], "r") as f:
+                    solver = yaml.safe_load(f)
+                return solver
+
+            except FileNotFoundError:
+                print(
+                    f"File {args['--solver']} could not be found. Using default solver settings ..."
+                )
+                return default_solver
+        else:
+            return default_solver
+
+    args["solver"] = get_solver()
     prm = df.parameters
-    prm["krylov_solver"]["relative_tolerance"] = solver["krylov_solver"][
+    prm["krylov_solver"]["relative_tolerance"] = args["solver"]["krylov_solver"][
         "relative_tolerance"
     ]
-    prm["krylov_solver"]["absolute_tolerance"] = solver["krylov_solver"][
+    prm["krylov_solver"]["absolute_tolerance"] = args["solver"]["krylov_solver"][
         "absolute_tolerance"
     ]
-    prm["krylov_solver"]["maximum_iterations"] = solver["krylov_solver"][
+    prm["krylov_solver"]["maximum_iterations"] = args["solver"]["krylov_solver"][
         "maximum_iterations"
     ]
     return args
@@ -330,13 +344,17 @@ def test_zero_bubble(args, problem, U_F):
         assert np.sum(s_b.amax()[1]) < 1e-8
 
 
-def compute_edge_basis_via_pod(args, problem, U):
+def compute_edge_basis_via_pod(args, problem, edge_spaces, mappings, U):
     """compute edge basis for bottom-top and right-left sets
 
     Parameters
     ----------
     problem
         The rve problem.
+    edge_spaces
+        FE space for each edge of the RVE.
+    mappings
+        Mapping from RVE space (V) to edge space (L).
     U
         The fine scale snapshot data.
     """
@@ -346,18 +364,12 @@ def compute_edge_basis_via_pod(args, problem, U):
     edges = domain.edges
 
     data = {0: [], 1: [], 2: [], 3: []}
-    V_to_L = {}
-    Lambda = {}
-
     for i, edge in enumerate(edges):
-        for j, u in enumerate(U._list):
-            L = df.VectorFunctionSpace(edge, "CG", args["DEG"], dim=2)
-            Lambda[i] = L
-            V_to_L[i] = make_mapping(L, V)
-            edge_snapshot = u.to_numpy()[V_to_L[i]]
+        for u in U._list:
+            edge_snapshot = u.to_numpy()[mappings[i]]
             data[i].append(edge_snapshot.copy())
 
-    S = NumpyVectorSpace(L.dim())
+    S = NumpyVectorSpace(edge_spaces[0].dim())
     edge_basis = {}
     edge_basis[0] = S.empty()
     edge_basis[1] = S.empty()
@@ -375,7 +387,7 @@ def compute_edge_basis_via_pod(args, problem, U):
         from multi.shapes import mapping, get_hierarchical_shape_1d
 
         h = []
-        x_dofs = Lambda[0].sub(0).collapse().tabulate_dof_coordinates()
+        x_dofs = edge_spaces[0].sub(0).collapse().tabulate_dof_coordinates()
         xi = mapping(x_dofs[:, 0], np.amin(x_dofs[:, 0]), np.amax(x_dofs[:, 0]))
         for deg in range(1, args["--pmax"]):
             f = get_hierarchical_shape_1d(deg)
@@ -442,7 +454,7 @@ def compute_edge_basis_via_pod(args, problem, U):
     C.append(t_coeff)
     C.append(l_coeff)
 
-    return edge_basis, V_to_L, np.vstack(C)
+    return edge_basis, np.vstack(C)
 
 
 def check_interface_compatibility(psi, psi_other, mapping, mapping_other, ctol):
@@ -703,70 +715,124 @@ def compute_snapshots(args, logger, fom, training_set):
     return snapshots, summary
 
 
+def compute_hierarchical_edge_basis(args, problem):
+    """compute hierarchical edge basis for each edge
+
+    Parameters
+    ----------
+    problem
+        The RVE problem.
+
+    """
+    from multi.shapes import get_hierarchical_shape_1d, mapping
+
+    V = problem.V
+    domain = problem.domain
+    assert hasattr(domain, "edges")
+    edges = domain.edges
+
+    ncomp = V.num_sub_spaces()
+    L = df.FunctionSpace(edges[0], "CG", args["DEG"])
+    S = NumpyVectorSpace(L.dim() * ncomp)
+    x_dofs = L.tabulate_dof_coordinates()
+    sub = 0
+    xi = mapping(x_dofs[:, sub], np.amin(x_dofs[:, sub]), np.amax(x_dofs[:, sub]))
+    h = []
+    for deg in range(1, args["--pmax"]):
+        f = get_hierarchical_shape_1d(deg)
+        h.append(f(xi))
+    edge_basis = S.make_array(np.kron(h, np.eye(ncomp)))
+    gram_schmidt(edge_basis, product=None, copy=False, rtol=args["--rtol"])
+    # len(edge_basis) <-- ncomp * (PMAX - 1)
+    return edge_basis
+
+
 def main(args):
     args = parse_arguments(args)
-    logger = getLogger("empirical basis")
+    logger = getLogger("basis construction")
     logger.setLevel(args["--log"])
 
-    # TODO better: one rve_problem which can be used to compute phi_i and psi_j?
-    # only disadvantage is that computing psi does not fit in current pyMOR model
     rve_fom, rve_problem = discretize_rve(args)
     V = rve_problem.V
     with logger.block("Computing coarse scale basis phi ..."):
         phi = compute_coarse_scale_basis(args, rve_fom)
 
+    with logger.block("Computing edge space mappings ..."):
+        V_to_L = {}
+        Lambda = {}
+        for i, edge in enumerate(rve_problem.domain.edges):
+            L = df.VectorFunctionSpace(edge, "CG", args["DEG"], dim=2)
+            Lambda[i] = L
+            V_to_L[i] = make_mapping(L, V)
+
     block_fom, block_problem = discretize_block(args)
-    if args["--test"]:
-        test_PDE_locally_fulfilled(args, block_fom, rve_problem, phi)
+    if args["--type"] == "empirical":
+        with logger.block("Computing empirical edge functions ..."):
+            if args["--test"]:
+                test_PDE_locally_fulfilled(args, block_fom, rve_problem, phi)
 
-    if args["--training-set"] == "random":
-        logger.info("Using random sampling to generate training set ...")
-        ps = block_fom.parameters.space(-1, 1)
-        training_set = ps.sample_randomly(30, seed=4)
-    elif args["--training-set"] == "delta":
-        logger.info("Using unit vectors as training set ...")
-        Identity = np.eye(16)
-        training_set = []
-        for row in Identity:
-            training_set.append({"mu": row})
-    else:
-        logger.info("Reading training-set from file {args['--trainig-set']} ... ")
-        training_set = []
-        try:
-            coefficients = np.load(args["--training-set"])
-        except FileNotFoundError as exp:
-            logger.warning(
-                f"The training set {args['--training-set']} could not be found."
+            if args["--training-set"] == "random":
+                logger.info("Using random sampling to generate training set ...")
+                ps = block_fom.parameters.space(-1, 1)
+                training_set = ps.sample_randomly(30, seed=4)
+            elif args["--training-set"] == "delta":
+                logger.info("Using unit vectors as training set ...")
+                Identity = np.eye(16)
+                training_set = []
+                for row in Identity:
+                    training_set.append({"mu": row})
+            else:
+                logger.info(
+                    "Reading training-set from file {args['--trainig-set']} ... "
+                )
+                training_set = []
+                try:
+                    coefficients = np.load(args["--training-set"])
+                except FileNotFoundError as exp:
+                    logger.warning(
+                        f"The training set {args['--training-set']} could not be found."
+                    )
+                    raise (exp)
+
+                dofs_per_cell = 16
+                ncells = int(coefficients.size / dofs_per_cell)
+                for i in range(ncells):
+                    start = dofs_per_cell * i
+                    end = dofs_per_cell * (i + 1)
+                    mu = {"mu": coefficients[start:end]}
+                    training_set.append(mu)
+
+            with logger.block("Solving on training set ..."):
+                block_snapshots, block_summary = compute_snapshots(
+                    args, logger, block_fom, training_set
+                )
+                rve_snapshots, coarse_dofs = restrict_to_omega(
+                    args, rve_problem, block_snapshots
+                )
+                s_c = phi.lincomb(coarse_dofs)  # coarse scale part of snapshots
+                s_f = rve_snapshots - s_c  # fine scale part of snapshots
+
+            # this should be non-zero
+            if args["--test"]:
+                if not np.sum(s_f.amax()[1]) > 1e-2:
+                    plot_mode(s_f, 1, V)
+                    breakpoint()
+                with logger.block("Running tests on zero bubble functions ..."):
+                    test_zero_bubble(args, rve_problem, s_f)
+
+            chi, coefficients = compute_edge_basis_via_pod(
+                args, rve_problem, Lambda, V_to_L, s_f
             )
-            raise (exp)
-
-        dofs_per_cell = 16
-        ncells = int(coefficients.size / dofs_per_cell)
-        for i in range(ncells):
-            start = dofs_per_cell * i
-            end = dofs_per_cell * (i + 1)
-            mu = {"mu": coefficients[start:end]}
-            training_set.append(mu)
-
-    with logger.block("Solving on training set ..."):
-        block_snapshots, block_summary = compute_snapshots(
-            args, logger, block_fom, training_set
-        )
-        rve_snapshots, coarse_dofs = restrict_to_omega(
-            args, rve_problem, block_snapshots
-        )
-        s_c = phi.lincomb(coarse_dofs)  # coarse scale part of snapshots
-        s_f = rve_snapshots - s_c  # fine scale part of snapshots
-
-    # this should be non-zero
-    if args["--test"]:
-        if not np.sum(s_f.amax()[1]) > 1e-2:
-            plot_mode(s_f, 1, V)
-            breakpoint()
-        with logger.block("Running tests on zero bubble functions ..."):
-            test_zero_bubble(args, rve_problem, s_f)
-
-    chi, V_to_L, coefficients = compute_edge_basis_via_pod(args, rve_problem, s_f)
+    else:
+        # set hierarchical basis
+        with logger.block("Computing hierarchical edge functions ..."):
+            hier_chi = compute_hierarchical_edge_basis(args, rve_problem)
+            chi = {
+                0: hier_chi,
+                1: hier_chi,
+                2: hier_chi,
+                3: hier_chi,
+            }
 
     if args["--chi"]:
         edge_basis = chi[0].copy()
@@ -774,59 +840,34 @@ def main(args):
         np.save(args["--chi"], edge_basis.to_numpy())
 
     with logger.block("Computing psi_j ..."):
-        psi_bottom = compute_psi(
-            args,
-            rve_problem,
-            chi[0].to_numpy(),
-            V_to_L[0],
-            product=None,
-            method="trivial",
-        )
-        psi_right = compute_psi(
-            args,
-            rve_problem,
-            chi[1].to_numpy(),
-            V_to_L[1],
-            product=None,
-            method="trivial",
-        )
-        psi_top = compute_psi(
-            args,
-            rve_problem,
-            chi[2].to_numpy(),
-            V_to_L[2],
-            product=None,
-            method="trivial",
-        )
-        psi_left = compute_psi(
-            args,
-            rve_problem,
-            chi[3].to_numpy(),
-            V_to_L[3],
-            product=None,
-            method="trivial",
-        )
+        psi = []
+        for i in range(len(rve_problem.domain.edges)):
+            psi_ = compute_psi(
+                args,
+                rve_problem,
+                chi[i].to_numpy(),
+                V_to_L[i],
+                product=None,
+                method="trivial",
+            )
+            psi.append(psi_)
+
     if args["--check-interface"]:
         ctol = args["--check-interface"]
         with logger.block(f"Checking interface compatibility with tol={ctol} ... "):
-            check_interface_compatibility(
-                psi_bottom, psi_top, V_to_L[0], V_to_L[2], ctol
-            )
+            check_interface_compatibility(psi[0], psi[2], V_to_L[0], V_to_L[2], ctol)
             logger.info("Set bottom-top is okay.")
-            check_interface_compatibility(
-                psi_right, psi_left, V_to_L[1], V_to_L[3], ctol
-            )
+            check_interface_compatibility(psi[1], psi[3], V_to_L[1], V_to_L[3], ctol)
             logger.info("Set right-left is okay.")
 
     S = FenicsVectorSpace(rve_problem.V)
     basis = S.empty()
     basis.append(phi)
-    max_psi = min([len(psi_bottom), len(psi_right), len(psi_top), len(psi_left)])
+    max_psi = min([len(psi[j]) for j in range(len(psi))])
     for i in range(max_psi):
-        basis.append(psi_bottom[i])
-        basis.append(psi_right[i])
-        basis.append(psi_top[i])
-        basis.append(psi_left[i])
+        for k in range(len(psi)):
+            # append mode i for k in (bottom, right, top, left)
+            basis.append(psi[k][i])
 
     if args["--output"]:
         np.save(args["--output"], basis.to_numpy())
