@@ -2,73 +2,34 @@
 
 from doit import create_after
 from doit.action import CmdAction
-from doit.tools import run_once
+from doit.tools import run_once, create_folder
 from pathlib import Path
 import yaml
 from numpy import genfromtxt
+from subprocess import call
 
 example = Path(__file__).parent
 multicode = example.absolute().parent
 preprocessing = multicode / "preprocessing"
 scenarios = example / "scenarios.yml"
 
-# note doit.tools.create_folder
-def task_mkdirs():
-    """create directories"""
+if not scenarios.exists():
+    try:
+        call(["python", "create_scenarios.py"])
+    except Exception as exp:
+        raise Exception("You need to define scenarios prior to doit.")
 
-    def mkdir(targets):
-        for t in targets:
-            Path(t).mkdir(parents=True, exist_ok=False)
 
+def task_dirs():
+    """create folders"""
+
+    dirs = ["data", "results"]
     return {
-        "actions": [mkdir],
-        "targets": [(example / p) for p in ["data", "results"]],
-        "uptodate": [run_once],
-        "clean": True,
+        "actions": [(create_folder, [d]) for d in dirs],
+        "uptodate": [False],
     }
 
 
-@create_after(executed="mkdirs")
-def task_create_scenarios():
-    """create all scenarios for this example"""
-
-    def create(targets):
-        """create the scenario for this example
-
-        note that although there is only one scenario, we could easily add
-        more by extending the lists below. In general the RVE could change as well
-        and thus for each scenario we store the filepath and the unit length `a` which
-        is needed for some operations (i.e. to define the coarse grid for the
-        3x3 block used in the offline phase).
-        """
-        disc = [5]
-        degree = [2]
-        basis_type = ["empirical", "hierarchical"]
-        s = {}
-        sid = 0
-        for d in disc:
-            for deg in degree:
-                for basis in basis_type:
-                    rve_grid = example / "data" / f"rve_{sid}.xdmf"
-                    s[sid] = {
-                        "disc": d,
-                        "degree": deg,
-                        "basis_type": basis,
-                        "rve": {"xdmf": rve_grid.as_posix(), "a": 1.0},
-                    }
-                    sid += 1
-        with open(targets[0], "w") as out:
-            yaml.safe_dump(s, out)
-
-    return {
-        "actions": [create],
-        "targets": [scenarios],
-        "uptodate": [run_once],
-        "clean": True,
-    }
-
-
-@create_after(executed="create_scenarios")
 def task_rve_grid():
     """create RVE fine grid"""
     script = preprocessing / "rve_type_01.py"
@@ -85,11 +46,9 @@ def task_rve_grid():
             "actions": [CmdAction(cmd)],
             "targets": [target, target.with_suffix(".h5")],
             "clean": True,
-            "task_dep": ["create_scenarios"],
         }
 
 
-@create_after(executed="create_scenarios")
 def task_rve_edges():
     """create meshes for the boundary of the RVE"""
     script = preprocessing / "rve_edges.py"
@@ -113,7 +72,6 @@ def task_rve_edges():
         }
 
 
-@create_after(executed="create_scenarios")
 def task_coarse_grid():
     """create coarse grid for this example which is a 3x3 block of RVEs"""
     script = preprocessing / "rectangle.py"
@@ -138,7 +96,6 @@ def task_coarse_grid():
     }
 
 
-@create_after(executed="create_scenarios")
 def task_fine_grid():
     """create fine grid for global structure"""
     script = preprocessing / "soi.py"
@@ -161,7 +118,6 @@ def task_fine_grid():
         }
 
 
-@create_after(executed="create_scenarios")
 def task_generate_basis():
     """construct basis for scenario"""
     mat = example / "material.yml"
@@ -199,7 +155,6 @@ def task_generate_basis():
         }
 
 
-@create_after(executed="create_scenarios")
 def task_make_test():
     """assert projection error is near zero"""
     with open(scenarios, "r") as ins:
