@@ -74,7 +74,7 @@ class Quadrilateral:
 class DofMap:
     """class representing a DofMap of a function space where each entity
     (vertex, edge, face in 2d) is associated with the given number of DoFs,
-    when calling ``distribute_dofs()`.
+    when calling `distribute_dofs()`.
 
     Parameters
     ----------
@@ -131,6 +131,12 @@ class DofMap:
             subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
         )
         if not subdomains_celltype == "quad8":
+            # TODO
+            # 1. definition of other cell types
+            # 2. instantiate cell with mesh data; such that `distribute_dofs` can be generalized
+            # e.g. something like 
+            # Cell = Quadrilateral(self.cells[0])
+            # entities = Cell.entities(dim)
             raise NotImplementedError("Currently only cell type 'quad8' is supported.")
 
         if subdomains_celltype is not None:
