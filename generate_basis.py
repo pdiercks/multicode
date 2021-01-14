@@ -520,7 +520,7 @@ def discretize_block(args):
     NU = material["Material parameters"]["NU"]["value"]
 
     V = df.VectorFunctionSpace(block_domain.mesh, "CG", args["DEG"])
-    problem = LinearElasticityProblem(block_domain, V, E=E, NU=NU, plane_stress=True)
+    problem = LinearElasticityProblem(block_domain, V, E=E, NU=NU, plane_stress=material["Constraints"]["plane_stress"])
     a = problem.get_lhs()
 
     A = df.assemble(a)
@@ -622,7 +622,7 @@ def discretize_rve(args):
     NU = material["Material parameters"]["NU"]["value"]
 
     V = df.VectorFunctionSpace(rve_domain.mesh, "CG", args["DEG"])
-    problem = LinearElasticityProblem(rve_domain, V, E=E, NU=NU, plane_stress=True)
+    problem = LinearElasticityProblem(rve_domain, V, E=E, NU=NU, plane_stress=material["Constraints"]["plane_stress"])
     a = problem.get_lhs()
     A = df.assemble(a)
 
@@ -835,6 +835,7 @@ def main(args):
             }
 
     if args["--chi"]:
+        # TODO upon reading distinguishing the sets is cumbersome ...
         edge_basis = chi[0].copy()
         edge_basis.append(chi[1])
         np.save(args["--chi"], edge_basis.to_numpy())
