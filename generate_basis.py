@@ -32,7 +32,7 @@ Options:
     -o FILE, --output=FILE   Specify output path for empirical basis (.npy).
     --plot-errors            Plot projection errors.
     --projerr=FILE           Write projection errors to given path (.txt).
-    --chi=FILE               Write edge basis functions to path (.npy).
+    --chi=FILE               Write edge basis functions to path (.npz).
     --chi-svals=FILE         Write edge basis singular values to path (.npy).
     --rtol=RTOL              Relative tolerance to be used with POD [default: 4e-8].
     --check-interface=TOL    Check interface compatibility with tolerance TOL.
@@ -835,10 +835,8 @@ def main(args):
             }
 
     if args["--chi"]:
-        # TODO upon reading distinguishing the sets is cumbersome ...
-        edge_basis = chi[0].copy()
-        edge_basis.append(chi[1])
-        np.save(args["--chi"], edge_basis.to_numpy())
+        # save arrays separately
+        np.savez(args["--chi"], **{"0": chi[0].to_numpy(), "1": chi[1].to_numpy()})
 
     with logger.block("Computing psi_j ..."):
         psi = []
