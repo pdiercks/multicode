@@ -50,7 +50,7 @@ def test():
 
     dofmap = DofMap(mesh, 2, 2)
     dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, 0)
-
+    
     N = dofmap.dofs()
     assert N == n_vertex_dofs * 6 + n_edge_dofs * 7
     A = np.zeros((N, N))
@@ -66,8 +66,8 @@ def test():
     assert np.allclose(x_dofs[32], np.array([0.75, 1.0]))
 
     assert np.allclose(
-            dofmap.locate_dofs([[0, 0], [0.25, 0]]), np.array([0, 1, 8, 9, 10])
-            )
+        dofmap.locate_dofs([[0, 0], [0.25, 0]]), np.array([0, 1, 8, 9, 10])
+    )
     assert np.allclose(dofmap.locate_dofs([[0, 0], [1, 0]], sub=0), np.array([0, 20]))
 
 
