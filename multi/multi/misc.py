@@ -94,8 +94,8 @@ def compute_error_norm(
         ERR = DNS - URB
         dns_norm = DNS.norm(product)
         err_norm = ERR.norm(product)
-        norm["dns"].append(dns_norm)
-        norm["abs_err"].append(err_norm)
+        norms["dns"].append(dns_norm)
+        norms["abs_err"].append(err_norm)
 
         if output:
             aerr = df.Function(V)
@@ -117,5 +117,70 @@ def compute_error_norm(
             xdmf.close()
 
     global_abs_err = np.sqrt(np.sum(np.array(norms["abs_err"]) ** 2))
-    global_dns_norm = np.sqrt(np.sum(np.array(norms["dns_norm"]) ** 2))
+    global_dns_norm = np.sqrt(np.sum(np.array(norms["dns"]) ** 2))
     return global_abs_err / global_dns_norm
+
+
+def read_basis(npz_filename, modes_per_edge=None):
+    """read multiscale basis
+
+    Parameters
+    ----------
+    npz_filename : str, Path
+        FilePath to multiscale basis.
+    modes_per_edge : int, optional
+        Number of basis functions per edge.
+
+    Returns
+    -------
+    np.ndarray
+
+    """
+    r = []
+    edges = ["b", "r", "t", "l"]
+
+    data = np.load(npz_filename)
+    max_modes = max([len(data[k]) for k in edges])
+    if modes_per_edge is not None and modes_per_edge < max_modes:
+        m = modes_per_edge
+    else:
+        m = max_modes
+
+    r.append(data["phi"])
+    for key in edges:
+        r.append(data[key][:m])
+
+    return np.vstack(r)
+
+
+def select_modes(basis, modes_per_edge, max_modes):
+    """select modes according to multi.DofMap
+
+    Parameters
+    ----------
+    basis : np.ndarray
+        The multiscale basis used.
+    modes_per_edge : int
+        Number of modes per edge.
+    max_modes : int
+        Maximum number of modes per edge.
+
+    Returns
+    -------
+    basis : np.ndarray
+        Subset of the full basis.
+
+    """
+
+    offset = 0
+    coarse = [i for i in range(8)]
+    offset += len(coarse)
+    bottom = [offset + i for i in range(modes_per_edge)]
+    offset += max_modes
+    right = [offset + i for i in range(modes_per_edge)]
+    offset += max_modes
+    top = [offset + i for i in range(modes_per_edge)]
+    offset += max_modes
+    left = [offset + i for i in range(modes_per_edge)]
+    ind = coarse + bottom + right + top + left
+    return basis[ind]
