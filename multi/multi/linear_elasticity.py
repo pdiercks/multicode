@@ -121,7 +121,8 @@ class LinearElasticityProblem:
         self.v = df.TestFunction(V)
         self.bc_handler = MechanicsBCs(domain, V)
         self.materials = [
-            LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress) for e, nu in zip(E, NU)
+            LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
+            for e, nu in zip(E, NU)
         ]
 
     def get_lhs(self):

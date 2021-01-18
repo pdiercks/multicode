@@ -30,8 +30,8 @@ def adjacency_graph(cells, cell_type="quad"):
         }
     elif cell_type == "line3":
         local_adj = {
-            0: (2, ),
-            1: (2, ),
+            0: (2,),
+            1: (2,),
             2: (1, 0),
         }
     else:
@@ -52,11 +52,16 @@ class Quadrilateral:
     |       |
     v0--e0--v1
     """
+
     def __init__(self):
         self.verts = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
         self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 1)}
         self.faces = {0: (0, 1, 2, 3)}
-        self.topology = {0: {0: (0,), 1: (1,), 2: (2,), 3: (3,)}, 1: self.edges, 2: self.faces}
+        self.topology = {
+            0: {0: (0,), 1: (1,), 2: (2,), 3: (3,)},
+            1: self.edges,
+            2: self.faces,
+        }
 
     def set_entity_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face):
         n_vertex_dofs = len(self.verts) * dofs_per_vert
@@ -64,11 +69,17 @@ class Quadrilateral:
         #  n_face_dofs = len(self.faces) * dofs_per_face
         self.entity_dofs = {0: {}, 1: {}, 2: {}}
         for v in range(len(self.verts)):
-            self.entity_dofs[0][v] = [dofs_per_vert * v + i for i in range(dofs_per_vert)]
+            self.entity_dofs[0][v] = [
+                dofs_per_vert * v + i for i in range(dofs_per_vert)
+            ]
         for e in range(len(self.edges)):
-            self.entity_dofs[1][e] = [n_vertex_dofs + dofs_per_edge * e + i for i in range(dofs_per_edge)]
+            self.entity_dofs[1][e] = [
+                n_vertex_dofs + dofs_per_edge * e + i for i in range(dofs_per_edge)
+            ]
         for f in range(len(self.faces)):
-            self.entity_dofs[2][f] = [n_edge_dofs + dofs_per_face * f + i for i in range(dofs_per_face)]
+            self.entity_dofs[2][f] = [
+                n_edge_dofs + dofs_per_face * f + i for i in range(dofs_per_face)
+            ]
 
 
 class DofMap:
@@ -134,7 +145,7 @@ class DofMap:
             # TODO
             # 1. definition of other cell types
             # 2. instantiate cell with mesh data; such that `distribute_dofs` can be generalized
-            # e.g. something like 
+            # e.g. something like
             # Cell = Quadrilateral(self.cells[0])
             # entities = Cell.entities(dim)
             raise NotImplementedError("Currently only cell type 'quad8' is supported.")

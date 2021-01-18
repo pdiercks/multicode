@@ -20,28 +20,30 @@ class InnerProduct:
 
     def __init__(self, V, name, bcs=(), form=None):
         if not isinstance(bcs, (list, tuple)):
-            bcs = (bcs, )
+            bcs = (bcs,)
         self.V = V
         self.name = name
         self.u = df.TrialFunction(V)
         self.v = df.TestFunction(V)
         self.bcs = bcs
-        names = ('mass', 'l2', 'h1-semi', 'stiffness', 'h1')
+        names = ("mass", "l2", "h1-semi", "stiffness", "h1")
         if name not in names:
             if not form:
-                raise KeyError(f"I don't know how to compute product '{self.name}'."
-                               + "You need ro provide the form yourself or choose another name.")
+                raise KeyError(
+                    f"I don't know how to compute product '{self.name}'."
+                    + "You need ro provide the form yourself or choose another name."
+                )
         self.form = form
 
     def get_form(self):
         """returns the weak form of the inner product"""
         u = self.u
         v = self.v
-        if self.name in ('mass', 'l2'):
+        if self.name in ("mass", "l2"):
             form = df.inner(u, v) * df.dx
-        elif self.name in ('h1-semi', 'stiffness'):
+        elif self.name in ("h1-semi", "stiffness"):
             form = df.inner(df.grad(u), df.grad(v)) * df.dx
-        elif self.name in ('h1',):
+        elif self.name in ("h1",):
             form = (df.inner(u, v) + df.inner(df.grad(u), df.grad(v))) * df.dx
         else:
             # e.g. energy product specified by user
