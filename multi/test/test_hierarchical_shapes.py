@@ -24,7 +24,7 @@ def test():
             assert np.isclose(f(op), 0)
 
     for k, (p, v) in enumerate(zip(edges, edge_values)):
-        g.vector().set_local(N[k+4])
+        g.vector().set_local(N[k + 4])
         assert np.isclose(g(p), v)
 
 

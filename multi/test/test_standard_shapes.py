@@ -29,11 +29,29 @@ def test():
     assert np.allclose(shapes4[0], g.vector()[:])
     assert np.isclose(np.sum(shapes4), len(V.tabulate_dof_coordinates()))
 
-    quad8 = NumpyQuad(np.array([[0, 0], [1, 0], [1, 1], [0, 1], [0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]))
+    quad8 = NumpyQuad(
+        np.array(
+            [[0, 0], [1, 0], [1, 1], [0, 1], [0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]
+        )
+    )
     shapes8 = quad8.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
     assert np.isclose(np.sum(shapes8), len(V.tabulate_dof_coordinates()))
 
-    quad9 = NumpyQuad(np.array([[0, 0], [1, 0], [1, 1], [0, 1], [0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5], [0.5, 0.5]]))
+    quad9 = NumpyQuad(
+        np.array(
+            [
+                [0, 0],
+                [1, 0],
+                [1, 1],
+                [0, 1],
+                [0.5, 0],
+                [1, 0.5],
+                [0.5, 1],
+                [0, 0.5],
+                [0.5, 0.5],
+            ]
+        )
+    )
     shapes9 = quad9.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
     assert np.isclose(np.sum(shapes9), len(V.tabulate_dof_coordinates()))
 

@@ -50,7 +50,7 @@ def test():
 
     dofmap = DofMap(mesh, 2, 2)
     dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, 0)
-    
+
     N = dofmap.dofs()
     assert N == n_vertex_dofs * 6 + n_edge_dofs * 7
     A = np.zeros((N, N))
