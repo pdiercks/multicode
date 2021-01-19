@@ -120,3 +120,6 @@ dmypy.json
 # data / results
 example/data/
 example/results/
+
+# tags
+tags
