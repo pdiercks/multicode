@@ -5,7 +5,7 @@ The library contains
 * the python package `multi` which handles repeatedly upcoming operations,
 * scripts / programs which can be used to generate meshes and construct a reduced basis.
 
-## Usage
+## Installation
 
 To use the library you need to install all software dependencies which are listed in the below command(s) (using conda and pip).
 ```
@@ -40,3 +40,10 @@ pip install .
 git clone https://git.bam.de/mechanics/cpohl/plotstuff.git && cd plotstuff
 pip install .
 ```
+
+## Usage
+
+The following tasks can be completed with this library:
+* basis construction (`generate_basis.py`),
+* common preprocessing tasks related to the above (see `preprocessing`), 
+* common postprocessing tasks (for specific file types and data structures, see `postprocessing`).
