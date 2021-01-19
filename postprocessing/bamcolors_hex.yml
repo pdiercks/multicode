@@ -1,20 +1,20 @@
-BAMblue1: '#00ffff'
-BAMblue2: '#00737c'
-BAMblue3: '#0d3333'
-BAMblue4: '#00172e'
-BAMgrad010: '#dce7e7'
-BAMgrad020: '#bccfcf'
-BAMgrad050: '#688686'
-BAMgrad080: '#273d3d'
-BAMgrad100: '#070d0d'
-BAMgreen1: '#a3cc00'
-BAMgreen2: '#6c8000'
-BAMgreen3: '#408000'
-BAMgreen4: '#193300'
-BAMred1: '#e60000'
-BAMred2: '#b20000'
-BAMred3: '#7c0000'
-BAMyellow1: '#ffe600'
-BAMyellow2: '#d9a300'
-BAMyellow3: '#e6b800'
-BAMyellow4: '#c27a00'
+BAMblue1: { "c": '#00ffff', "m": "o" }
+BAMblue2: { "c": '#00737c', "m": "p" }
+BAMblue3: { "c": '#0d3333', "m": "*" }
+BAMblue4: { "c": '#00172e', "m": "*" }
+BAMgrad010: { "c": '#dce7e7', "m": "*" }
+BAMgrad020: { "c": '#bccfcf', "m": "*" }
+BAMgrad050: { "c": '#688686', "m": "*" }
+BAMgrad080: { "c": '#273d3d', "m": "*" }
+BAMgrad100: { "c": '#070d0d', "m": "*" }
+BAMgreen1: { "c": '#a3cc00', "m": "^" }
+BAMgreen2: { "c": '#6c8000', "m": "v" }
+BAMgreen3: { "c": '#408000', "m": "*" }
+BAMgreen4: { "c": '#193300', "m": "*" }
+BAMred1: { "c": '#e60000', "m": "x" }
+BAMred2: { "c": '#b20000', "m": "+" }
+BAMred3: { "c": '#7c0000', "m": "*" }
+BAMyellow1: { "c": '#ffe600', "m": "*" }
+BAMyellow2: { "c": '#d9a300', "m": "*" }
+BAMyellow3: { "c": '#e6b800', "m": "*" }
+BAMyellow4: { "c": '#c27a00', "m": "*" }

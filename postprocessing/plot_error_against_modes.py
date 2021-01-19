@@ -1,16 +1,17 @@
 """
-plot relative error against number of modes
+plot relative error against number of modes.
 
 Usage:
     plot_error_against_modes.py [options] DEG DATA...
+    plot_error_against_modes.py [options] DEG DATA... [-l LABEL]...
 
 Arguments:
     DEG       Degree of FE space used.
-    DATA      The data to be plotted.
+    DATA      The data (incl. ext .npy) to be plotted.
 
 Options:
     -h, --help               Show this message.
-    --label=LABEL            Type of label (disc or basis_type).
+    -l, --LABEL=LABEL        Add a label for each data set.
     -o FILE, --output=FILE   Write to pdf.
 """
 
@@ -21,7 +22,7 @@ from docopt import docopt
 from plotstuff import PlottingContext
 from numpy import load, arange
 
-root = Path(__file__).parent.absolute().parent
+POSTPROCESSING = Path(__file__).parent
 
 
 def parse_arguments(args):
@@ -30,8 +31,7 @@ def parse_arguments(args):
     args["DATA"] = [Path(d) for d in args["DATA"]]
     args["--label"] = str(args["--label"]) if args["--label"] else None
     assert all([d.exists() for d in args["DATA"]])
-    if len(args["DATA"]) > 3:
-        raise NotImplementedError
+    assert all([d.suffix == ".npy" for d in args["DATA"]])
     return args
 
 
@@ -39,32 +39,48 @@ def main(args):
     args = parse_arguments(args)
 
     # BAM colors
-    with open(Path(__file__).parent / "bamcolors_hex.yml") as instream:
+    # TODO add marker for each color in the yaml file
+    with open(POSTPROCESSING / "bamcolors_hex.yml", "r") as instream:
         bamcd = yaml.safe_load(instream)
 
-    colors = [bamcd["BAMred1"], bamcd["BAMblue2"], bamcd["BAMgreen1"]]
-    markers = ["x", "+", "<"]
+    cc = ["blue", "green", "red"]
+    keys = []
+    for i in range(1, 4):
+        for c in cc:
+            s = "BAM" + c + f"{i}"
+            keys.append(s)
+
+    if len(args["DATA"]) > len(keys):
+        raise NotImplementedError
+
+    legend = False
+    if args["--label"]:
+        labels = args["--label"]
+        assert len(labels) == len(args["DATA"])
+        legend = True
+    else:
+        labels = [
+            None,
+        ] * len(args["DATA"])
 
     plot_argv = [__file__, args["--output"]] if args["--output"] else [__file__]
     with PlottingContext(plot_argv, "pdiercks_multi") as fig:
         ax = fig.subplots()
-        for (instream, c, mark) in zip(args["DATA"], colors, markers):
-            # expect error_norms_discretization_degree_basistype.npy
-            parts = instream.stem.split("_")
-            if args["--label"] == "disc":
-                label = parts[2]
-            elif args["--label"] == "basis_type":
-                label = parts[4]
-            else:
-                label = None
-            error = load(instream)
+        for (i, f) in enumerate(args["DATA"]):
+            error = load(f)
             modes = arange(error.size) + 1
-            ax.semilogy(modes, error, color=c, marker=mark, label=label)
+            ax.semilogy(
+                modes,
+                error,
+                color=bamcd[keys[i]]["c"],
+                marker=bamcd[keys[i]]["m"],
+                label=labels[i],
+            )
         ax.set_xlabel("Number of modes")
         numerator = r"\norm{u_{\mathrm{dns}} - u_{\mathrm{rb}}}"
         denominator = r"\norm{u_{\mathrm{dns}}}"
         ax.set_ylabel(r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator))
-        if label:
+        if legend:
             ax.legend()
 
 
