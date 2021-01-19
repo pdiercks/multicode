@@ -2,16 +2,15 @@
 plot relative error against number of modes.
 
 Usage:
-    plot_error_against_modes.py [options] DEG DATA...
-    plot_error_against_modes.py [options] DEG DATA... [-l LABEL]...
+    plot_error_against_modes.py [options] DATA...
+    plot_error_against_modes.py [options] DATA... [-l LABEL]...
 
 Arguments:
-    DEG       Degree of FE space used.
     DATA      The data (incl. ext .npy) to be plotted.
 
 Options:
     -h, --help               Show this message.
-    -l, --LABEL=LABEL        Add a label for each data set.
+    -l, --label=LABEL        Add a label for each data set.
     -o FILE, --output=FILE   Write to pdf.
 """
 
@@ -27,11 +26,20 @@ POSTPROCESSING = Path(__file__).parent
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
-    args["DEG"] = int(args["DEG"])
     args["DATA"] = [Path(d) for d in args["DATA"]]
-    args["--label"] = str(args["--label"]) if args["--label"] else None
     assert all([d.exists() for d in args["DATA"]])
     assert all([d.suffix == ".npy" for d in args["DATA"]])
+
+    if args["--label"]:
+        args["--label"] = [str(lbl) for lbl in args["--label"]]
+        assert len(args["--label"]) == len(args["DATA"])
+        args["legend"] = True
+    else:
+        args["--label"] = [
+            None,
+        ] * len(args["DATA"])
+        args["legend"] = False
+
     return args
 
 
@@ -39,7 +47,6 @@ def main(args):
     args = parse_arguments(args)
 
     # BAM colors
-    # TODO add marker for each color in the yaml file
     with open(POSTPROCESSING / "bamcolors_hex.yml", "r") as instream:
         bamcd = yaml.safe_load(instream)
 
@@ -53,16 +60,6 @@ def main(args):
     if len(args["DATA"]) > len(keys):
         raise NotImplementedError
 
-    legend = False
-    if args["--label"]:
-        labels = args["--label"]
-        assert len(labels) == len(args["DATA"])
-        legend = True
-    else:
-        labels = [
-            None,
-        ] * len(args["DATA"])
-
     plot_argv = [__file__, args["--output"]] if args["--output"] else [__file__]
     with PlottingContext(plot_argv, "pdiercks_multi") as fig:
         ax = fig.subplots()
@@ -74,13 +71,13 @@ def main(args):
                 error,
                 color=bamcd[keys[i]]["c"],
                 marker=bamcd[keys[i]]["m"],
-                label=labels[i],
+                label=args["--label"][i],
             )
         ax.set_xlabel("Number of modes")
         numerator = r"\norm{u_{\mathrm{dns}} - u_{\mathrm{rb}}}"
         denominator = r"\norm{u_{\mathrm{dns}}}"
         ax.set_ylabel(r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator))
-        if legend:
+        if args["legend"]:
             ax.legend()
 
 
