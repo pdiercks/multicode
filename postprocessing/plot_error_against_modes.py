@@ -73,7 +73,7 @@ def main(args):
                 marker=bamcd[keys[i]]["m"],
                 label=args["--label"][i],
             )
-        ax.set_xlabel("Number of modes")
+        ax.set_xlabel("Number of modes per edge.")
         numerator = r"\norm{u_{\mathrm{dns}} - u_{\mathrm{rb}}}"
         denominator = r"\norm{u_{\mathrm{dns}}}"
         ax.set_ylabel(r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator))
