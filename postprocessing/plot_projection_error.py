@@ -5,7 +5,7 @@ Usage:
     plot_projection_error.py [options] DATA
 
 Arguments:
-    DATA      The data to be plotted.
+    DATA      FilePath (incl. .txt).
 
 Options:
     -h, --help               Show this message.
@@ -17,9 +17,9 @@ import yaml
 from pathlib import Path
 from docopt import docopt
 from plotstuff import PlottingContext
-from numpy import load, arange, genfromtxt, exp
+from numpy import arange, genfromtxt, exp
 
-root = Path(__file__).parent.absolute().parent
+PREPROCESSING = Path(__file__).parent
 
 
 def parse_arguments(args):
@@ -32,23 +32,24 @@ def main(args):
     args = parse_arguments(args)
 
     # BAM colors
-    with open(Path(__file__).parent / "bamcolors_hex.yml") as instream:
+    with open(PREPROCESSING / "bamcolors_hex.yml", "r") as instream:
         bamcd = yaml.safe_load(instream)
-
-    colors = [bamcd["BAMred1"], bamcd["BAMblue2"], bamcd["BAMgreen1"]]
-    markers = ["x", "+", "<"]
+    keys = ["BAMred1", "BAMblue1", "BAMgreen1"]
 
     with open(args["DATA"], "r") as f:
         header = f.readline()
+
     names = header.strip("#\n ").split(", ")
     errors = genfromtxt(args["DATA"], delimiter=",")
 
     plot_argv = [__file__, args["--output"]] if args["--output"] else [__file__]
     with PlottingContext(plot_argv, "pdiercks_multi") as fig:
         ax = fig.subplots()
-        for e, n, c, mark in zip(errors.T, names, colors, markers):
+        for e, n, k in zip(errors.T, names, keys):
             modes = arange(e.size)
-            ax.semilogy(modes + 1, e, color=c, marker=mark, label=n)
+            ax.semilogy(
+                modes + 1, e, color=bamcd[k]["c"], marker=bamcd[k]["m"], label=n
+            )
 
         # FIXME should be part of DATA to load ...
         reference = exp(-modes / 5)
