@@ -45,5 +45,6 @@ pip install .
 
 The following tasks can be completed with this library:
 * basis construction (`generate_basis.py`),
+* computation of homogenized material parameters (`homogenization.py`),
 * common preprocessing tasks related to the above (see `preprocessing`), 
 * common postprocessing tasks (for specific file types and data structures, see `postprocessing`).
