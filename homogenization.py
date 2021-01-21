@@ -74,12 +74,16 @@ def homogenize(args):
 
     # unit cell width
     a = abs(np.amax(mesh.coordinates()[:, 0]) - np.amin(mesh.coordinates()[:, 0]))
+    # a = 1
     # unit cell height
     b = abs(np.amax(mesh.coordinates()[:, 1]) - np.amin(mesh.coordinates()[:, 1]))
+    # b = np.sqrt(3) / 2
+    # b = 1
     c = 0.0  # horizontal offset of top boundary
+    # c = 0.5  # horizontal offset of top boundary
     vol = a * b  # unit cell volume
     # we define the unit cell vertices coordinates for later use
-    vertices = np.array([[0, 0.0], [a, 0.0], [a + c, b], [c, b]])
+    vertices = np.array([[0.0, 0.0], [a, 0.0], [a + c, b], [c, b]])
 
     # class used to define the periodic boundary map
     class PeriodicBoundary(df.SubDomain):
@@ -177,6 +181,7 @@ def homogenize(args):
 
     Eps = df.Constant(((0, 0), (0, 0)))
     F = sum([df.inner(sigma(dv, i, Eps), eps(v_)) * dx(i + 1) for i in range(nphases)])
+    # F = sum([df.inner(sigma(dv, i, Eps), eps(v_)) * dx(i) for i in range(nphases)])
     a, L = df.lhs(F), df.rhs(F)
     a += df.dot(lamb_, dv) * dx + df.dot(dlamb, v_) * dx
 
@@ -218,8 +223,10 @@ def homogenize(args):
 
     lmbda_hom = Chom[0, 1]
     mu_hom = Chom[2, 2]
-    # FIXME difference is quite big here
     print(Chom[0, 0], lmbda_hom + 2 * mu_hom)
+    print("relative error: ", np.abs(Chom[0, 0] - lmbda_hom - 2 * mu_hom) / Chom[0, 0])
+    relative_error = np.abs(Chom[0, 0] - lmbda_hom - 2 * mu_hom) / Chom[0, 0]
+    assert relative_error < 1e-2
 
     E_hom = mu_hom * (3 * lmbda_hom + 2 * mu_hom) / (lmbda_hom + mu_hom)
     nu_hom = lmbda_hom / (lmbda_hom + mu_hom) / 2
