@@ -3,6 +3,7 @@ plot condition number of gramian against number of modes for basis
 
 Usage:
     gramian.py [options] RVE DEG BASES...
+    gramian.py [options] RVE DEG BASES... [-l LABEL]...
 
 Arguments:
     RVE       The XDMF file for the RVE domain (incl. ext).
@@ -12,7 +13,9 @@ Arguments:
 Options:
     -h, --help               Show this message and exit.
     --product=PROD           An inner product (see `discretize_rve`) [default: energy_0].
+    --material=MAT           Material parameters in case energy product is used.
     -o FILE, --output=FILE   Write PDF to path.
+    -l, --label=LABEL        Add a label for each data set.
 """
 import sys
 from pathlib import Path
@@ -23,14 +26,12 @@ from plotstuff import PlottingContext
 import numpy as np
 
 import dolfin as df
-from fenicsphelpers.subdomains import Subdomain
-from fenicsphelpers.linear_elasticity import LinearElasticityProblem
+from multi import Domain, LinearElasticityProblem
+from multi.misc import read_basis
 
 from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 
-figures = Path(__file__).parent
-root = figures.absolute().parent
-computations = root / "computations"
+POSTPROCESSING = Path(__file__).parent
 
 
 def parse_arguments(args):
@@ -39,23 +40,41 @@ def parse_arguments(args):
     args["DEG"] = int(args["DEG"])
     args["BASES"] = [Path(d) for d in args["BASES"]]
     assert all([d.exists() for d in args["BASES"]])
+    if args["--product"] in ("energy", "energy_0"):
+        if args["--material"] is None:
+            raise FileNotFoundError(
+                "You need to define material parameters for {} product.".format(
+                    args["--product"]
+                )
+            )
+    if args["--label"]:
+        args["--label"] = [str(lbl) for lbl in args["--label"]]
+        assert len(args["--label"]) == len(args["BASES"])
+        args["legend"] = True
+    else:
+        args["--label"] = [
+            None,
+        ] * len(args["DATA"])
+        args["legend"] = False
     return args
 
 
 def main(args):
     args = parse_arguments(args)
+
     # BAM colors
-    with open(figures / "bamcolors_hex.yml") as instream:
+    with open(POSTPROCESSING / "bamcolors_hex.yml", "r") as instream:
         bamcd = yaml.safe_load(instream)
 
     source, products = discretize_rve(args)
     bases = []
     labels = []
-    for npy in args["BASES"]:
-        labels.append(npy.stem.split("_")[0])
-        rb = np.load(npy)
+    for npz in args["BASES"]:
+        rb = read_basis(npz)
         RB = source.from_numpy(rb)
         bases.append(RB)
+
+    # TODO multiple products for one basis
 
     gramians = []
     product = products[args["--product"]]
@@ -69,33 +88,50 @@ def main(args):
         for N in range(1, len(basis)):
             kappas[i].append(np.linalg.cond(G[:N, :N]))
 
-    colors = [bamcd["BAMred1"], bamcd["BAMblue2"], bamcd["BAMgreen1"]]
-    markers = ["x", "+", "<"]
+    cc = ["blue", "green", "red"]
+    keys = []
+    for i in range(1, 4):
+        for c in cc:
+            s = "BAM" + c + f"{i}"
+            keys.append(s)
+
+    if len(args["BASES"]) > len(keys):
+        raise NotImplementedError
+
     plot_argv = [__file__, args["--output"]] if args["--output"] else [__file__]
     with PlottingContext(plot_argv, "pdiercks_article") as fig:
         ax = fig.subplots()
-        for key, value in kappas.items():
+        for i, value in kappas.items():
             ax.semilogy(
-                value, color=colors[key], marker=markers[key], label=labels[key]
+                value,
+                color=bamcd[keys[i]]["c"],
+                marker=bamcd[keys[i]]["m"],
+                label=args["--label"][i],
             )
         ax.set_xlabel(r"Number of modes $N$")
         ax.set_ylabel("Condition number of the gramian")
-        ax.legend()
+        if args["legend"]:
+            ax.legend()
         ax.grid()
 
 
 def discretize_rve(args):
     """discretize the rve and wrap as pyMOR model"""
     rve_xdmf = args["RVE"]
-    rve_domain = Subdomain(rve_xdmf, 0, subdomains=True)
-    with open(computations / "material.yml", "r") as infile:
-        try:
-            material = yaml.safe_load(infile)
-        except yaml.YAMLError as exc:
-            print(exc)
+    if args["--material"]:
+        rve_domain = Domain(rve_xdmf, 0, subdomains=True)
+        with open(args["--material"], "r") as infile:
+            try:
+                material = yaml.safe_load(infile)
+            except yaml.YAMLError as exc:
+                print(exc)
 
-    E = material["Material parameters"]["E"]["value"]
-    NU = material["Material parameters"]["NU"]["value"]
+        E = material["Material parameters"]["E"]["value"]
+        NU = material["Material parameters"]["NU"]["value"]
+    else:
+        rve_domain = Domain(rve_xdmf, 0, subdomains=False)
+        E = 210e3
+        NU = 0.3
 
     V = df.VectorFunctionSpace(rve_domain.mesh, "CG", args["DEG"])
     problem = LinearElasticityProblem(rve_domain, V, E=E, NU=NU)

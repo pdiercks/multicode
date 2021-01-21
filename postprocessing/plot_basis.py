@@ -25,11 +25,9 @@ import numpy as np
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 from plotstuff import PlottingContext
+from multi.misc import read_basis, select_modes
 
 from dolfin import XDMFFile, Mesh, FunctionSpace
-
-figures = Path(__file__).parent
-computations = figures.absolute().parent / "computations"
 
 
 def parse_arguments(args):
@@ -37,8 +35,6 @@ def parse_arguments(args):
     args["RVE"] = Path(args["RVE"])
     args["DEG"] = int(args["DEG"])
     args["BASIS"] = Path(args["BASIS"])
-    args["rve_type"] = args["RVE"].parent.stem
-    args["D"] = int(args["RVE"].stem.split("_")[1])
     args["MODES"] = [int(m) for m in args["MODES"]]
     args["--component"] = int(args["--component"])
     args["--output"] = Path(args["--output"]) if args["--output"] else None
@@ -57,7 +53,9 @@ def main(args):
     x = x_dofs[:, 0]
     y = x_dofs[:, 1]
 
-    basis = np.load(args["BASIS"])
+    # load the full basis
+    basis = read_basis(args["BASIS"])
+
     if args["--output"]:
         target_base = args["--output"].stem
         targets = [
