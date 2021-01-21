@@ -44,6 +44,8 @@ class Domain:
 
             if subdomains:
                 self.subdomains = df.MeshFunction("size_t", self.mesh, mvc)
+            else:
+                self.subdomains = subdomains
 
         if translate:
             self.mesh.translate(translate)

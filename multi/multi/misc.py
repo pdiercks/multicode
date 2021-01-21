@@ -32,7 +32,8 @@ def make_mapping(sub_space, super_space):
 def compute_error_norm(
     rvemeshfile, degree, material, dofmap, udns, urb, basis, product=None, output=None
 ):
-    """compute absolute and relative error (in norm given by product) of ROM solution wrt DNS
+    """compute absolute and relative error (in norm given by product) of ROM solution
+    with respect to DNS
 
     Parameters
     ----------
@@ -140,7 +141,7 @@ def read_basis(npz_filename, modes_per_edge=None):
     edges = ["b", "r", "t", "l"]
 
     data = np.load(npz_filename)
-    max_modes = max([len(data[k]) for k in edges])
+    max_modes = min([len(data[k]) for k in edges])
     if modes_per_edge is not None and modes_per_edge < max_modes:
         m = modes_per_edge
     else:
