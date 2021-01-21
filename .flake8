@@ -3,3 +3,4 @@ exclude =
 	.git,
 	__pycache__
 max-line-length = 88
+extend-ignore = E501, E303, W291
