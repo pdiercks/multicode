@@ -1,8 +1,7 @@
 """task definition for test example"""
 
-from doit import create_after
 from doit.action import CmdAction
-from doit.tools import run_once, create_folder
+from doit.tools import create_folder
 from pathlib import Path
 import yaml
 from numpy import genfromtxt
@@ -17,7 +16,7 @@ if not scenarios.exists():
     try:
         call(["python", "create_scenarios.py"])
     except Exception as exp:
-        raise Exception("You need to define scenarios prior to doit.")
+        raise exp("You need to define scenarios prior to doit.")
 
 
 def task_dirs():
@@ -135,8 +134,8 @@ def task_generate_basis():
         degree = scenario["degree"]
         basis = scenario["basis_type"]
         targets = [
-            example / "results" / f"basis_{i}.npy",
-            example / "results" / f"edge_basis_{i}.npy",
+            example / "results" / f"basis_{i}.npz",
+            example / "results" / f"edge_basis_{i}.npz",
             example / "results" / f"testing_set_proj_err_{i}.txt",
         ]
         cmd = f"python {script} {block} {rve} {a} {degree} {mat} -l 10"
@@ -149,7 +148,16 @@ def task_generate_basis():
             "name": f"{i}",
             "actions": [CmdAction(cmd)],
             "targets": targets,
-            "file_dep": [scenarios, block, rve, rve.with_suffix(".h5"), *rve_edges, script, mat, solver],
+            "file_dep": [
+                scenarios,
+                block,
+                rve,
+                rve.with_suffix(".h5"),
+                *rve_edges,
+                script,
+                mat,
+                solver,
+            ],
             "task_dep": ["rve_grid", "fine_grid", "coarse_grid", "rve_edges"],
             "clean": True,
         }
@@ -160,16 +168,18 @@ def task_make_test():
     with open(scenarios, "r") as ins:
         s = yaml.safe_load(ins)
 
-    dep = [example / "results" / f"testing_set_proj_err_{i}.txt" for i in range(len(s.keys()))]
+    dep = [
+        example / "results" / f"testing_set_proj_err_{i}.txt"
+        for i in range(len(s.keys()))
+    ]
 
     def test(dependencies):
         for d in dependencies:
-            data = genfromtxt(d, delimiter=",") 
+            data = genfromtxt(d, delimiter=",")
             if data[-1, 0] < 1e-9:
                 print("test passed")
             else:
                 print("test failed")
-
 
     return {
         "actions": [(test)],
@@ -177,4 +187,4 @@ def task_make_test():
         "file_dep": dep,
         "verbosity": 2,
         "uptodate": [False],
-        }
+    }
