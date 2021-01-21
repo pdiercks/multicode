@@ -72,7 +72,7 @@ def get_N_dofs(xdmf_file):
     mesh = Mesh()
     mvc = MeshValueCollection("size_t", mesh, 1)
 
-    with XDMFFile(xdmf_file) as f:
+    with XDMFFile(xdmf_file.as_posix()) as f:
         f.read(mesh)
         f.read(mvc, "gmsh:physical")
 
