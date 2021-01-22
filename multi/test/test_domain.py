@@ -38,6 +38,9 @@ def test():
     assert len(another.edges) == 4
     assert all([isinstance(e, df.cpp.mesh.Mesh) for e in another.edges])
     assert np.sum(another.subdomains.array()) > 1
+    # subdomain numbering is assumed to start with 1 (pygmsh default)
+    Ω_i = np.amin(another.subdomains.array())
+    assert Ω_i > 0 and Ω_i < 2
 
 
 if __name__ == "__main__":

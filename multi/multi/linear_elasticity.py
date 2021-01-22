@@ -110,6 +110,8 @@ class LinearElasticityProblem:
             assert all(
                 [len(E) == len(NU), len(E) == np.unique(domain.subdomains.array()).size]
             )
+            # pygmsh version 6.1.1 convention
+            assert np.amin(domain.subdomains.array()) > 0
             mesh = domain.mesh
             subdomains = domain.subdomains
             self.dx = df.Measure("dx", domain=mesh, subdomain_data=subdomains)

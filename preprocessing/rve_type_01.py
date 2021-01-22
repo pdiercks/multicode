@@ -107,7 +107,9 @@ def add_structured_rve(
             [X0, Y0 + b, 0.0],
             [X0, Y0 + b / 2, 0.0],
         ]
-        LCAR = [lcar,] * len(XX)
+        LCAR = [
+            lcar,
+        ] * len(XX)
         p = [geom.add_point(x, lcar=l) for x, l in zip(XX, LCAR)]
         lines = [geom.add_line(p[k], p[k + 1]) for k in range(len(p) - 1)]
         lines.append(geom.add_line(p[-1], p[0]))
@@ -210,7 +212,9 @@ def add_structured_rve(
     if return_entities:
         return {
             "matrix": [s0, s1, s2, s3, s4, s5, s6, s7],
-            "inclusion": [circle.plane_surface,],
+            "inclusion": [
+                circle.plane_surface,
+            ],
             "boundary": sl,
         }
 
@@ -238,7 +242,11 @@ def main(args):
     geom.add_raw_code("Mesh.Smoothing = 100;")
 
     mshfile = path + "/" + base + ext if ext == ".msh" else None
-    mesh = pygmsh.generate_mesh(geom, msh_filename=mshfile, mesh_file_type="msh2")
+    geofile = path + "/" + base + ext if ext == ".geo" else None
+    mesh = pygmsh.generate_mesh(
+        geom, geo_filename=geofile, msh_filename=mshfile, mesh_file_type="msh2"
+    )
+    breakpoint()
 
     if ext == ".xdmf":
         mesh.prune_z_0()
