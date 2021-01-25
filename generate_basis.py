@@ -497,7 +497,13 @@ def discretize_block(args):
     NU = material["Material parameters"]["NU"]["value"]
 
     V = df.VectorFunctionSpace(block_domain.mesh, "CG", args["DEG"])
-    problem = LinearElasticityProblem(block_domain, V, E=E, NU=NU, plane_stress=material["Constraints"]["plane_stress"])
+    problem = LinearElasticityProblem(
+        block_domain,
+        V,
+        E=E,
+        NU=NU,
+        plane_stress=material["Constraints"]["plane_stress"],
+    )
     a = problem.get_lhs()
 
     A = df.assemble(a)
@@ -517,22 +523,20 @@ def discretize_block(args):
     x2 = block_domain.xmax
     y1 = block_domain.ymin
     y2 = block_domain.ymax
-    points =[
-                [x1, y1],
-                [x2, y1],
-                [x2, y2],
-                [x1, y2],
-                [x2 / 2, 0],
-                [x2, y2 / 2],
-                [x2 / 2, y2],
-                [0, y2 / 2],
-            ] 
+    points = [
+        [x1, y1],
+        [x2, y1],
+        [x2, y2],
+        [x1, y2],
+        [x2 / 2, 0],
+        [x2, y2 / 2],
+        [x2 / 2, y2],
+        [0, y2 / 2],
+    ]
     if not args["--serendipity"]:
         points.append([x2 / 2, y2 / 2])
 
-    quad = NumpyQuad(
-        np.array(points)
-    )
+    quad = NumpyQuad(np.array(points))
 
     shapes = quad.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
     for shape in shapes:
@@ -601,7 +605,9 @@ def discretize_rve(args):
     NU = material["Material parameters"]["NU"]["value"]
 
     V = df.VectorFunctionSpace(rve_domain.mesh, "CG", args["DEG"])
-    problem = LinearElasticityProblem(rve_domain, V, E=E, NU=NU, plane_stress=material["Constraints"]["plane_stress"])
+    problem = LinearElasticityProblem(
+        rve_domain, V, E=E, NU=NU, plane_stress=material["Constraints"]["plane_stress"]
+    )
     a = problem.get_lhs()
     A = df.assemble(a)
 
@@ -778,7 +784,7 @@ def main(args):
                 ncells = int(coefficients.size / dofs_per_cell)
                 for i in range(ncells):
                     breakpoint()
-                    
+
                     # TODO coefficients[i]? ...
                     start = dofs_per_cell * i
                     end = dofs_per_cell * (i + 1)
@@ -852,7 +858,14 @@ def main(args):
             basis.append(psi[k][i])
 
     if args["--output"]:
-        np.savez(args["--output"], phi=phi.to_numpy(), b=psi[0].to_numpy(), r=psi[1].to_numpy(), t=psi[2].to_numpy(), l=psi[3].to_numpy())
+        np.savez(
+            args["--output"],
+            phi=phi.to_numpy(),
+            b=psi[0].to_numpy(),
+            r=psi[1].to_numpy(),
+            t=psi[2].to_numpy(),
+            l=psi[3].to_numpy(),
+        )
 
     ps = block_fom.parameters.space(-1, 1)
     testing_set = ps.sample_randomly(10, seed=13)
