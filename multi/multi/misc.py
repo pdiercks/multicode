@@ -7,6 +7,32 @@ from multi import Domain, ResultFile, LinearElasticityProblem
 from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 
 
+def get_solver(yml_file):
+    default_solver = {
+        "krylov_solver": {
+            "relative_tolerance": 1.0e-9,
+            "absolute_tolerance": 1.0e-12,
+            "maximum_iterations": 1000,
+        },
+        "solver_parameters": {"linear_solver": "default", "preconditioner": "default"},
+    }
+
+    if yml_file is not None:
+        assert Path(yml_file).suffix in (".yml", ".yaml")
+        try:
+            with open(yml_file, "r") as f:
+                solver = yaml.safe_load(f)
+            return solver
+
+        except FileNotFoundError:
+            print(
+                f"File {yml_file} could not be found. Using default solver settings ..."
+            )
+            return default_solver
+    else:
+        return default_solver
+
+
 def make_mapping(sub_space, super_space):
     """get map from sub to super space
 
