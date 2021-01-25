@@ -1,3 +1,5 @@
+Constraints:
+        plane_stress: True
 Material parameters:
   E:
     name: Young's modulus

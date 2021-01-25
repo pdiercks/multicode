@@ -21,12 +21,13 @@ Arguments:
 
 Options:
     -h, --help               Show this message.
-    --type=TYPE              Generate 'empirical' or 'hierarchical' basis [default: empirical].
     -l LEVEL, --log=LEVEL    Set the log level [default: 30].
+    --type=TYPE              Generate 'empirical' or 'hierarchical' basis [default: empirical].
     --solver=SOLVER          Define dolfin solver parameters.
     --training-set=SET       Provide a training set for the block problem. This can
                              either be a '.npy' file or a keyword ('random', 'delta').
                              [default: random].
+    --serendipity            Use serendipity element for parametrization of the block problem.
     --pmax=PMAX              Use hierarchical polynomials up to pmax to initialize
                              set of edge functions [default: 1].
     -o FILE, --output=FILE   Specify output path for empirical basis (.npy).
@@ -53,6 +54,7 @@ import matplotlib.pyplot as plt
 # multi
 from multi import Domain, LinearElasticityProblem, make_mapping
 from multi.shapes import NumpyQuad
+from multi.misc import get_solver
 
 # pymor
 from pymor.algorithms.pod import pod
@@ -102,32 +104,7 @@ def parse_arguments(args):
             print(f"The training set {args['--training-set']} does not exist.")
             sys.exit(1)
 
-    default_solver = {
-        "krylov_solver": {
-            "relative_tolerance": 1.0e-9,
-            "absolute_tolerance": 1.0e-12,
-            "maximum_iterations": 1000,
-        },
-        "solver_parameters": {"linear_solver": "default", "preconditioner": "default"},
-    }
-
-    def get_solver():
-        if args["--solver"] is not None:
-            assert Path(args["--solver"]).suffix == ".yml"
-            try:
-                with open(args["--solver"], "r") as f:
-                    solver = yaml.safe_load(f)
-                return solver
-
-            except FileNotFoundError:
-                print(
-                    f"File {args['--solver']} could not be found. Using default solver settings ..."
-                )
-                return default_solver
-        else:
-            return default_solver
-
-    args["solver"] = get_solver()
+    args["solver"] = get_solver(args["--solver"])
     prm = df.parameters
     prm["krylov_solver"]["relative_tolerance"] = args["solver"]["krylov_solver"][
         "relative_tolerance"
@@ -540,9 +517,7 @@ def discretize_block(args):
     x2 = block_domain.xmax
     y1 = block_domain.ymin
     y2 = block_domain.ymax
-    quad8 = NumpyQuad(
-        np.array(
-            [
+    points =[
                 [x1, y1],
                 [x2, y1],
                 [x2, y2],
@@ -551,11 +526,15 @@ def discretize_block(args):
                 [x2, y2 / 2],
                 [x2 / 2, y2],
                 [0, y2 / 2],
-            ]
-        )
+            ] 
+    if not args["--serendipity"]:
+        points.append([x2 / 2, y2 / 2])
+
+    quad = NumpyQuad(
+        np.array(points)
     )
 
-    shapes = quad8.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
+    shapes = quad.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
     for shape in shapes:
         g.vector().set_local(null)
         A_bc = A.copy()
@@ -777,7 +756,7 @@ def main(args):
                 training_set = ps.sample_randomly(30, seed=4)
             elif args["--training-set"] == "delta":
                 logger.info("Using unit vectors as training set ...")
-                Identity = np.eye(16)
+                Identity = np.eye(block_fom.parameters.dim)
                 training_set = []
                 for row in Identity:
                     training_set.append({"mu": row})
@@ -794,9 +773,13 @@ def main(args):
                     )
                     raise (exp)
 
-                dofs_per_cell = 16
+                assert coefficients.shape[1] == block_fom.parameters.dim
+                dofs_per_cell = block_fom.parameters.dim
                 ncells = int(coefficients.size / dofs_per_cell)
                 for i in range(ncells):
+                    breakpoint()
+                    
+                    # TODO coefficients[i]? ...
                     start = dofs_per_cell * i
                     end = dofs_per_cell * (i + 1)
                     mu = {"mu": coefficients[start:end]}

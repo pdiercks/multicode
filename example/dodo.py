@@ -139,7 +139,7 @@ def task_generate_basis():
             example / "results" / f"testing_set_proj_err_{i}.txt",
         ]
         cmd = f"python {script} {block} {rve} {a} {degree} {mat} -l 10"
-        cmd += f" --training-set=delta --type={basis}"
+        cmd += f" --training-set=delta --type={basis} --serendipity"
         cmd += f" --output={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
         cmd += f" --solver={solver} --test --check-interface=1e-8"
         if basis == "hierarchical":
