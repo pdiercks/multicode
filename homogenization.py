@@ -17,6 +17,7 @@ Options:
     -h, --help               Show this message.
     --plot-mesh              Plot the mesh.
     --plot-exy               Plot solution for the case Exy.
+    --solver=SOLVER          Solver parameters.
 """
 
 import sys
@@ -26,29 +27,25 @@ import yaml
 import dolfin as df
 import numpy as np
 import matplotlib.pyplot as plt
-
-
-# root = Path(__file__).parent
-# with open(root / "run.yml", "r") as instream:
-#     run = yaml.safe_load(instream)
-
-# prm = df.parameters
-# prm["krylov_solver"]["relative_tolerance"] = run["Run parameters"]["krylov_solver"][
-#     "relative_tolerance"
-# ]
-# prm["krylov_solver"]["absolute_tolerance"] = run["Run parameters"]["krylov_solver"][
-#     "absolute_tolerance"
-# ]
-# prm["krylov_solver"]["maximum_iterations"] = run["Run parameters"]["krylov_solver"][
-#     "maximum_iterations"
-# ]
-
+from multi.misc import get_solver
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["RVE"] = Path(args["RVE"])
     args["DEG"] = int(args["DEG"])
     args["MAT"] = Path(args["MAT"])
+     
+    args["solver"] = get_solver(args["--solver"])
+    prm = df.parameters
+    prm["krylov_solver"]["relative_tolerance"] = args["solver"]["krylov_solver"][
+        "relative_tolerance"
+    ]
+    prm["krylov_solver"]["absolute_tolerance"] = args["solver"]["krylov_solver"][
+        "absolute_tolerance"
+    ]
+    prm["krylov_solver"]["maximum_iterations"] = args["solver"]["krylov_solver"][
+        "maximum_iterations"
+    ]
     return args
 
 
@@ -74,13 +71,9 @@ def homogenize(args):
 
     # unit cell width
     a = abs(np.amax(mesh.coordinates()[:, 0]) - np.amin(mesh.coordinates()[:, 0]))
-    # a = 1
     # unit cell height
     b = abs(np.amax(mesh.coordinates()[:, 1]) - np.amin(mesh.coordinates()[:, 1]))
-    # b = np.sqrt(3) / 2
-    # b = 1
     c = 0.0  # horizontal offset of top boundary
-    # c = 0.5  # horizontal offset of top boundary
     vol = a * b  # unit cell volume
     # we define the unit cell vertices coordinates for later use
     vertices = np.array([[0.0, 0.0], [a, 0.0], [a + c, b], [c, b]])
@@ -153,6 +146,7 @@ def homogenize(args):
 
     Emm, Eii = material["Material parameters"]["E"]["value"]
     NUmm, NUii = material["Material parameters"]["NU"]["value"]
+    plane_stress = material["Constraints"]["plane_stress"]
     material_parameters = [(Emm, NUmm), (Eii, NUii)]
     nphases = len(material_parameters)
 
@@ -163,6 +157,8 @@ def homogenize(args):
         E, nu = material_parameters[i]
         lmbda = E * nu / (1 + nu) / (1 - 2 * nu)
         mu = E / 2 / (1 + nu)
+        if plane_stress:
+            lmbda = 2 * mu * lmbda / (lmbda + 2 * mu)
         return lmbda * df.tr(eps(v) + Eps) * df.Identity(2) + 2 * mu * (eps(v) + Eps)
 
     Ve = df.VectorElement("CG", mesh.ufl_cell(), args["DEG"])
@@ -228,6 +224,8 @@ def homogenize(args):
     relative_error = np.abs(Chom[0, 0] - lmbda_hom - 2 * mu_hom) / Chom[0, 0]
     assert relative_error < 1e-2
 
+    if plane_stress:
+        lmbda_hom = - 2 * mu_hom * lmbda_hom / (lmbda_hom - 2 * mu_hom)
     E_hom = mu_hom * (3 * lmbda_hom + 2 * mu_hom) / (lmbda_hom + mu_hom)
     nu_hom = lmbda_hom / (lmbda_hom + mu_hom) / 2
     print("Apparent Young modulus:", E_hom)
