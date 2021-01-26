@@ -3,6 +3,7 @@
 from pathlib import Path
 import dolfin as df
 import numpy as np
+import yaml
 from multi import Domain, ResultFile, LinearElasticityProblem
 from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 
