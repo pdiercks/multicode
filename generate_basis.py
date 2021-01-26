@@ -48,7 +48,8 @@ import yaml
 import dolfin as df
 import numpy as np
 from docopt import docopt
-from mpl_toolkits import mplot3d
+
+# from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 
 # multi
@@ -335,7 +336,7 @@ def compute_edge_basis_via_pod(args, problem, edge_spaces, mappings, U):
     U
         The fine scale snapshot data.
     """
-    V = problem.V
+    # V = problem.V
     domain = problem.domain
     assert hasattr(domain, "edges")
     edges = domain.edges
@@ -405,7 +406,8 @@ def compute_edge_basis_via_pod(args, problem, edge_spaces, mappings, U):
     pod_basis_rl, svals_rl = pod(rl, product=None, rtol=args["--rtol"])
 
     if args["--chi-svals"]:
-        svals = np.vstack((svals_bt, svals_rl))
+        nsvals = min([svals_bt.size, svals_rl.size])
+        svals = np.vstack((svals_bt[:nsvals], svals_rl[:nsvals]))
         np.save(args["--chi-svals"], svals)
 
     b_proj, b_coeff = compute_proj(pod_basis_bt, bottom, None)
@@ -779,16 +781,10 @@ def main(args):
                     )
                     raise (exp)
 
-                assert coefficients.shape[1] == block_fom.parameters.dim
                 dofs_per_cell = block_fom.parameters.dim
-                ncells = int(coefficients.size / dofs_per_cell)
-                for i in range(ncells):
-                    breakpoint()
-
-                    # TODO coefficients[i]? ...
-                    start = dofs_per_cell * i
-                    end = dofs_per_cell * (i + 1)
-                    mu = {"mu": coefficients[start:end]}
+                assert coefficients.shape[1] == dofs_per_cell
+                for i in range(len(coefficients)):
+                    mu = {"mu": coefficients[i]}
                     training_set.append(mu)
 
             with logger.block("Solving on training set ..."):
