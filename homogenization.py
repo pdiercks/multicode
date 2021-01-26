@@ -215,23 +215,29 @@ def homogenize(args):
         # TODO computation of truly symmetric Chom
         Chom[j, :] = Sigma
 
+    print("Homogenized Stiffness:\n")
     print(np.array_str(Chom, precision=2))
 
     lmbda_hom = Chom[0, 1]
     mu_hom = Chom[2, 2]
-    print(Chom[0, 0], lmbda_hom + 2 * mu_hom)
-    print("relative error: ", np.abs(Chom[0, 0] - lmbda_hom - 2 * mu_hom) / Chom[0, 0])
-    relative_error = np.abs(Chom[0, 0] - lmbda_hom - 2 * mu_hom) / Chom[0, 0]
-    assert relative_error < 1e-2
+    iso_err = np.abs(Chom[0, 0] - lmbda_hom - 2 * mu_hom) / Chom[0, 0]
+
+    csymm = (Chom + Chom.T) / 2
+    cskew = (Chom - Chom.T) / 2
+    sym_mea = (np.linalg.norm(csymm) - np.linalg.norm(cskew)) / (np.linalg.norm(csymm) + np.linalg.norm(cskew))
+    summary = f"""Summary for Stiffness:
+        relative error isotropy:        {iso_err}
+        measure for symmetry:           {sym_mea}"""
+    print(summary)
 
     if plane_stress:
         lmbda_hom = - 2 * mu_hom * lmbda_hom / (lmbda_hom - 2 * mu_hom)
     E_hom = mu_hom * (3 * lmbda_hom + 2 * mu_hom) / (lmbda_hom + mu_hom)
     nu_hom = lmbda_hom / (lmbda_hom + mu_hom) / 2
-    print("Apparent Young modulus:", E_hom)
-    print("Apparent Poisson ratio:", nu_hom)
+    # print("Apparent Young modulus:", E_hom)
+    # print("Apparent Poisson ratio:", nu_hom)
 
-    material.update({"Homogenized material": {"E": float(E_hom), "NU": float(nu_hom)}})
+    material.update({"Homogenized stiffness": Chom.tolist()})
     with open(args["MAT"], "w") as outStream:
         yaml.safe_dump(material, outStream)
 
