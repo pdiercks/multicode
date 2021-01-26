@@ -246,7 +246,6 @@ def main(args):
     mesh = pygmsh.generate_mesh(
         geom, geo_filename=geofile, msh_filename=mshfile, mesh_file_type="msh2"
     )
-    breakpoint()
 
     if ext == ".xdmf":
         mesh.prune_z_0()
