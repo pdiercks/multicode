@@ -94,6 +94,7 @@ def compute_error_norm(
     E = material["Material parameters"]["E"]["value"]
     NU = material["Material parameters"]["NU"]["value"]
     plane_stress = material["Constraints"]["plane_stress"]
+    product_to_use = product
 
     norms = {"abs_err": [], "dns": []}
     for cell_index, cell in enumerate(dofmap.cells):
@@ -106,9 +107,8 @@ def compute_error_norm(
             omega, V, E=E, NU=NU, plane_stress=plane_stress
         )
         dns = df.interpolate(udns, V)
-        if product:
-            # FIXME compute only once, since matrix does not change in linear case
-            p_mat = problem.get_product(name=product, bcs=False)
+        if product_to_use:
+            p_mat = problem.get_product(name=product_to_use, bcs=False)
             product = FenicsMatrixOperator(p_mat, V, V)
         else:
             product = None
