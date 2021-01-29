@@ -51,10 +51,10 @@ class NumpyLine:
         else:
             assert False
 
-        I = np.eye(self.nn)
+        Id = np.eye(self.nn)
         shapes = []
         for i in range(self.nn):
-            coeff = np.linalg.solve(self.G, I[:, i])
+            coeff = np.linalg.solve(self.G, Id[:, i])
             shapes.append(X @ coeff)
         phi = np.vstack(shapes)
 
@@ -133,10 +133,10 @@ class NumpyQuad:
         """
         coordinates = coordinates[:, : self.gdim]
         X = get_P_matrix(coordinates, self.nn)
-        I = np.eye(self.nn)
+        Id = np.eye(self.nn)
         shapes = []
         for i in range(self.nn):
-            coeff = np.linalg.solve(self.P, I[:, i])
+            coeff = np.linalg.solve(self.P, Id[:, i])
             shapes.append(X @ coeff)
         phi = np.vstack(shapes)
 
@@ -154,25 +154,34 @@ class NumpyQuad:
             return phi
 
 
-def get_hierarchical_shape_1d(p):
-    """computes hierarchical polynomial in reference coordinate
-    defined as integrand of Legendre polynomials
+def get_hierarchical_shape_1d(degree):
+    """get hierarchical shape function of degree
+
+    Note
+    ----
+    If degree < 2 linear functions (1 ± x) / 2 are returned.
+    For degree >= 2 return the integrand of the Legendre polynomial of degree
+    p = degree - 1.
 
     Parameters
     ----------
-    p : int
-        The degree of the Legendre polynomial
+    degree : int
+        The degree of the hierarchical shape function.
 
     Returns
     -------
-    N_p+1 : function
-        A polynomial of degree p + 1
+    N : function
+        A polynomial of degree if degree >= 2 else (1 ± x) / 2
     """
-    x = sympy.symbols("x")
-    if p < 1:
-        raise ValueError("p needs to be greater than or equal to 1.")
-    N = sympy.diff((x ** 2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
-    return sympy.lambdify(x, N, "numpy")
+    if degree == 0:
+        return lambda x: (1 - x) / 2
+    elif degree == 1:
+        return lambda x: (1 + x) / 2
+    else:
+        p = degree - 1
+        x = sympy.symbols("x")
+        N = sympy.diff((x ** 2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
+        return sympy.lambdify(x, N, "numpy")
 
 
 def mapping(x, a, b, a_tol=1e-3):
@@ -231,8 +240,27 @@ def get_hierarchical_shapes_2d(V, degree):
         Maximum polynomial degree.
 
     """
+
+    from multi.dofmap import Quadrilateral
+
+    # TODO extend up to any degree?
     if degree > 3:
         raise NotImplementedError
+    ndofs_per_edge = degree - 1
+    ndofs_per_vert = 1
+    cell = Quadrilateral()
+    cell.set_entity_dofs(ndofs_per_vert, ndofs_per_edge, 0)
+
+    #  cell.enitiy_dofs ordering
+    """e.g. for degree=3, cubic dofs = (5, 7, 9, 11)
+
+    3----8,9----2
+    |           |
+    10,11       6,7
+    |           |
+    0----4,5----1
+
+    """
 
     nsub = V.num_sub_spaces()
     if nsub > 0:
@@ -249,43 +277,38 @@ def get_hierarchical_shapes_2d(V, degree):
     xi = mapping(x, xmin, xmax)
     eta = mapping(y, ymin, ymax)
 
-    # FIXME follow DofMap._cell.enitiy_dofs ...
-    """
-    gmsh local dof order (up to cubic {8, 9, 10, 11})
+    def get_indices(d):
+        if d < 2:
+            return [(0, 0), (1, 0), (1, 1), (0, 1)]
+        else:
+            return [(d, 0), (1, d), (d, 1), (0, d)]
 
-    3---6,10---2
-    |          |
-    7,11       5,9
-    |          |
-    0---4,8----1
-
-    """
-    node_order = {
-        0: (0, 0),
-        1: (1, 0),
-        2: (1, 1),
-        3: (0, 1),
-    }
-    i = 4
+    deg_to_entdim = {0: 0, 1: 0, 2: 1, 3: 1}
 
     h = {}
-    h[0] = lambda x: (1 - x) / 2
-    h[1] = lambda x: (1 + x) / 2
-    for deg in range(1, degree):
-        h[deg + 1] = get_hierarchical_shape_1d(deg)
-        higher_degree_nodes = {
-            i: (deg + 1, 0),
-            i + 1: (1, deg + 1),
-            i + 2: (deg + 1, 1),
-            i + 3: (0, deg + 1),
-        }
-        node_order.update(higher_degree_nodes)
-        i = (deg + 1) * 4
+    for deg in range(degree + 1):
+        h[deg] = get_hierarchical_shape_1d(deg)
 
-    H = np.zeros((len(node_order.keys()), V.dim()))
+    # TODO why so complicated?
+    node_indices = {}
+    entity_dofs = cell.entity_dofs
+    for deg in range(1, degree + 1):
+        dim = deg_to_entdim[deg]
+        entities = entity_dofs[dim].keys()
+        indices = get_indices(deg)
+        for entity in entities:
+            if deg > 1:
+                dofs = entity_dofs[dim][entity][: deg - 1]
+            else:
+                dofs = entity_dofs[dim][entity]
+            for dof in dofs:
+                if dof not in node_indices.keys():
+                    node_indices.update({dof: indices[entity]})
+
+    H = np.zeros((len(node_indices.keys()), V.dim()))
     N_xi = [N(xi) for N in h.values()]
     N_eta = [N(eta) for N in h.values()]
-    for i, (p, q) in node_order.items():
+    for i, (p, q) in node_indices.items():
         H[i] = N_xi[p] * N_eta[q]
 
     if nsub:
