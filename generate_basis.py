@@ -628,6 +628,7 @@ def discretize_rve(args):
             [rve_domain.xmin, rve_domain.ymax],
         ]
     )
+    # TODO use multi.shapes.get_hierarchical_shapes_2d with optional argument PMAX
     quadrilateral = NumpyQuad(quad_nodes)
 
     vector_operators = []
