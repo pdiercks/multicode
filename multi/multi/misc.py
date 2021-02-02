@@ -125,7 +125,7 @@ def compute_error_norm(
         norms["dns"].append(dns_norm)
         norms["abs_err"].append(err_norm)
 
-        if output:
+        if output is not None and output.suffix == ".xdmf":
             aerr = df.Function(V)
             rerr = df.Function(V)
             abs_values = np.abs(dns.vector().get_local() - u_rb.vector().get_local())
