@@ -1,10 +1,10 @@
 """
-basis construction 
+basis construction
 
 (1) phi_i: bilinear functions which also account for the inheterogenity
 (2) psi_j: edge functions which also account for the inheterogenity
 
-Note: edge functions are computed based on --type via POD of edge snapshot 
+Note: edge functions are computed based on --type via POD of edge snapshot
 data or these are set as hierarchical shape functions up to degree --pmax.
 If --type==empirical, optionally the first edge functions can be defined as hierarchical
 polynomials up to a maximum degree --pmax (see Options below).
@@ -28,8 +28,7 @@ Options:
                              either be a '.npy' file or a keyword ('random', 'delta').
                              [default: random].
     --serendipity            Use serendipity element for parametrization of the block problem.
-    --pmax=PMAX              Use hierarchical polynomials up to pmax to initialize
-                             set of edge functions [default: 1].
+    --pmax=PMAX              Use hierarchical polynomials up to pmax degree as set of edge functions.
     -o FILE, --output=FILE   Specify output path for empirical basis (.npy).
     --plot-errors            Plot projection errors.
     --projerr=FILE           Write projection errors to given path (.txt).
@@ -90,7 +89,7 @@ def parse_arguments(args):
             args["material"] = yaml.safe_load(infile)
         except yaml.YAMLError as exc:
             print(exc)
-    args["--pmax"] = int(args["--pmax"])
+    args["--pmax"] = int(args["--pmax"]) if args["--pmax"] else None
     args["--rtol"] = float(args["--rtol"])
     args["--log"] = int(args["--log"])
     args["--output"] = Path(args["--output"]) if args["--output"] else None
@@ -116,6 +115,9 @@ def parse_arguments(args):
     prm["krylov_solver"]["maximum_iterations"] = args["solver"]["krylov_solver"][
         "maximum_iterations"
     ]
+    # sanity checks
+    if args["--type"] == "hierarchical":
+        assert isinstance(args["--pmax"], int)
     return args
 
 
@@ -360,35 +362,35 @@ def compute_edge_basis_via_pod(args, problem, edge_spaces, mappings, U):
     top = S.make_array(data[2])
     left = S.make_array(data[3])
 
-    if args["--pmax"] > 1:
-        # FIXME pmax > 1 does not improve projection error decay ...
-        from multi.shapes import mapping, get_hierarchical_shape_1d
+    # if args["--pmax"] > 1:
+    #     # FIXME pmax > 1 does not improve projection error decay ...
+    #     from multi.shapes import mapping, get_hierarchical_shape_1d
 
-        h = []
-        x_dofs = edge_spaces[0].sub(0).collapse().tabulate_dof_coordinates()
-        xi = mapping(x_dofs[:, 0], np.amin(x_dofs[:, 0]), np.amax(x_dofs[:, 0]))
-        for deg in range(1, args["--pmax"]):
-            f = get_hierarchical_shape_1d(deg)
-            h.append(f(xi))
-        H = S.make_array(np.kron(h, np.eye(2)))
+    #     h = []
+    #     x_dofs = edge_spaces[0].sub(0).collapse().tabulate_dof_coordinates()
+    #     xi = mapping(x_dofs[:, 0], np.amin(x_dofs[:, 0]), np.amax(x_dofs[:, 0]))
+    #     for deg in range(1, args["--pmax"]):
+    #         f = get_hierarchical_shape_1d(deg)
+    #         h.append(f(xi))
+    #     H = S.make_array(np.kron(h, np.eye(2)))
 
-        h_b_proj, h_b_coeff = compute_proj(H, bottom, None)
-        h_r_proj, h_r_coeff = compute_proj(H, right, None)
-        h_t_proj, h_t_coeff = compute_proj(H, top, None)
-        h_l_proj, h_l_coeff = compute_proj(H, left, None)
+    #     h_b_proj, h_b_coeff = compute_proj(H, bottom, None)
+    #     h_r_proj, h_r_coeff = compute_proj(H, right, None)
+    #     h_t_proj, h_t_coeff = compute_proj(H, top, None)
+    #     h_l_proj, h_l_coeff = compute_proj(H, left, None)
 
-        bottom -= H.lincomb(h_b_coeff.T)
-        right -= H.lincomb(h_r_coeff.T)
-        top -= H.lincomb(h_t_coeff.T)
-        left -= H.lincomb(h_l_coeff.T)
+    #     bottom -= H.lincomb(h_b_coeff.T)
+    #     right -= H.lincomb(h_r_coeff.T)
+    #     top -= H.lincomb(h_t_coeff.T)
+    #     left -= H.lincomb(h_l_coeff.T)
 
-        C.append(h_b_coeff)
-        C.append(h_r_coeff)
-        C.append(h_t_coeff)
-        C.append(h_l_coeff)
+    #     C.append(h_b_coeff)
+    #     C.append(h_r_coeff)
+    #     C.append(h_t_coeff)
+    #     C.append(h_l_coeff)
 
-        for i in range(4):
-            edge_basis[i].append(H)
+    #     for i in range(4):
+    #         edge_basis[i].append(H)
 
     # NOTE
     # to ensure interface continuity the same set of edge functions is
@@ -726,12 +728,12 @@ def compute_hierarchical_edge_basis(args, problem):
     sub = 0
     xi = mapping(x_dofs[:, sub], np.amin(x_dofs[:, sub]), np.amax(x_dofs[:, sub]))
     h = []
-    for deg in range(1, args["--pmax"]):
+    for deg in range(2, args["--pmax"] + 1):
         f = get_hierarchical_shape_1d(deg)
         h.append(f(xi))
     edge_basis = S.make_array(np.kron(h, np.eye(ncomp)))
     gram_schmidt(edge_basis, product=None, copy=False, rtol=args["--rtol"])
-    # len(edge_basis) <-- ncomp * (PMAX - 1)
+    # len(edge_basis) <-- ncomp * (PMAX)
     return edge_basis
 
 
