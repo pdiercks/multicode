@@ -91,6 +91,13 @@ def get_P_matrix(X, nn):
         x ** 2 * y,
         x * y ** 2,
         x ** 2 * y ** 2,
+        x ** 3,
+        y ** 3,
+        x ** 3 * y,
+        x * y ** 3,
+        x ** 3 * y ** 2,
+        x ** 2 * y ** 3,
+        x ** 3 * y ** 3,
     ]
     return np.column_stack(variables[:nn])
 
