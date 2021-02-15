@@ -477,6 +477,7 @@ def compute_proj_errors(basis, V, product):
         #      n = (V - V_proj).norm(product=product)
         #  except RuntimeWarning as rw:
         #      breakpoint()
+        # TODO add absolute error for postprocessing as well
         relative = (V - V_proj).norm(product=product) / V.norm(product=product)
         errors.append(np.max(relative))
         #  errors.append(np.max((V - V_proj).norm(product=product)))
