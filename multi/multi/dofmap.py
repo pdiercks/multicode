@@ -5,6 +5,8 @@ import meshio
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import reverse_cuthill_mckee
 
+GMSH_QUADRILATERALS = ("quad", "quad8", "quad9")
+
 
 def adjacency_graph(cells, cell_type="quad"):
     N = np.unique(cells).size  # number of points
@@ -48,36 +50,68 @@ class Quadrilateral:
     """
     v3--e2--v2
     |       |
-    e3      e1
+    e3  f0  e1
     |       |
     v0--e0--v1
     """
 
-    def __init__(self):
+    def __init__(self, gmsh_cell_type):
+        if gmsh_cell_type not in GMSH_QUADRILATERALS:
+            raise AttributeError(
+                "Cell type {} is not supported.".format(gmsh_cell_type)
+            )
         self.verts = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
-        self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 1)}
-        self.faces = {0: (0, 1, 2, 3)}
+        self.edges = {}
+        self.faces = {}
+
+        if gmsh_cell_type in ("quad8", "quad9"):
+            self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 1)}
+            if gmsh_cell_type in ("quad9"):
+                self.faces = {0: (0, 1, 2, 3)}
+
         self.topology = {
             0: {0: (0,), 1: (1,), 2: (2,), 3: (3,)},
             1: self.edges,
             2: self.faces,
         }
 
+    def get_entities(self):
+        if not hasattr(self, "_entities"):
+            raise AttributeError("Entities are not set for cell {}".format(type(self)))
+        return self._entities
+
+    def set_entities(self, gmsh_cell):
+        nv = len(self.verts)
+        ne = len(self.edges.keys())
+        nf = len(self.faces.keys())
+        self._entities = {
+            0: gmsh_cell[:nv],
+            1: gmsh_cell[nv : nv + ne],
+            2: gmsh_cell[nv + ne : nv + ne + nf],
+        }
+
+    def get_entity_dofs(self):
+        if not hasattr(self, "_entity_dofs"):
+            raise AttributeError(
+                "Entity dofs are not set for cell {}".format(type(self))
+            )
+        return self._entity_dofs
+
     def set_entity_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face):
         n_vertex_dofs = len(self.verts) * dofs_per_vert
         n_edge_dofs = len(self.edges) * dofs_per_edge
         #  n_face_dofs = len(self.faces) * dofs_per_face
-        self.entity_dofs = {0: {}, 1: {}, 2: {}}
+        self._entity_dofs = {0: {}, 1: {}, 2: {}}
         for v in range(len(self.verts)):
-            self.entity_dofs[0][v] = [
+            self._entity_dofs[0][v] = [
                 dofs_per_vert * v + i for i in range(dofs_per_vert)
             ]
         for e in range(len(self.edges)):
-            self.entity_dofs[1][e] = [
+            self._entity_dofs[1][e] = [
                 n_vertex_dofs + dofs_per_edge * e + i for i in range(dofs_per_edge)
             ]
         for f in range(len(self.faces)):
-            self.entity_dofs[2][f] = [
+            self._entity_dofs[2][f] = [
                 n_edge_dofs + dofs_per_face * f + i for i in range(dofs_per_face)
             ]
 
@@ -127,7 +161,7 @@ class DofMap:
 
         cell_types = {  # meshio cell types per topological dimension
             3: ["tetra", "hexahedron", "tetra10", "hexahedron20"],
-            2: ["triangle", "quad", "triangle6", "quad8"],
+            2: ["triangle", "quad", "triangle6", "quad8", "quad9"],
             1: ["line", "line3"],
             0: ["vertex"],
         }
@@ -141,14 +175,12 @@ class DofMap:
         subdomains_celltype = (
             subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
         )
-        if not subdomains_celltype == "quad8":
-            # TODO
-            # 1. definition of other cell types
-            # 2. instantiate cell with mesh data; such that `distribute_dofs` can be generalized
-            # e.g. something like
-            # Cell = Quadrilateral(self.cells[0])
-            # entities = Cell.entities(dim)
-            raise NotImplementedError("Currently only cell type 'quad8' is supported.")
+        if not subdomains_celltype in GMSH_QUADRILATERALS:
+            raise NotImplementedError(
+                "Currently only cell types {} are supported.".format(
+                    GMSH_QUADRILATERALS
+                )
+            )
 
         if subdomains_celltype is not None:
             subdomains_cells = mesh.get_cells_type(subdomains_celltype)
@@ -161,11 +193,6 @@ class DofMap:
         )
 
         if rcm:
-            if subdomains_celltype not in ("quad", "quad8", "line3"):
-                raise NotImplementedError(
-                    "Reversed Cuthill McKee algorithm is not implemented for "
-                    + f"elements of type {subdomains_celltype}."
-                )
             V = adjacency_graph(subdomains_cells, cell_type=subdomains_celltype)
             perm = reverse_cuthill_mckee(csr_matrix(V))
             self.points = points_pruned[perm, :]
@@ -180,7 +207,7 @@ class DofMap:
         self.tdim = tdim
         self.gdim = gdim
         self.cell_type = subdomains_celltype
-        self._cell = cell()
+        self._cell = cell(subdomains_celltype)
 
     def distribute_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face=0):
         """set number of DoFs per entity and distribute dofs
@@ -195,20 +222,15 @@ class DofMap:
             Number of DoFs per face.
         """
         self._cell.set_entity_dofs(dofs_per_vert, dofs_per_edge, dofs_per_face)
-        entity_dofs = self._cell.entity_dofs
+        entity_dofs = self._cell.get_entity_dofs()
         dimension = list(range(self.tdim + 1))
         x_dofs = []
         self._dm = {dim: {} for dim in dimension}
         DoF = 0
         for ci, cell in enumerate(self.cells):
             for dim in dimension:
-                # FIXME assumes cell type "quad8"
-                if dim == 0:
-                    entities = cell[:4]
-                elif dim == 1:
-                    entities = cell[4:]
-                else:
-                    entities = [ci]
+                self._cell.set_entities(cell)
+                entities = self._cell.get_entities()[dim]
                 for local_ent, ent in enumerate(entities):
                     if ent not in self._dm[dim].keys():
                         self._dm[dim][ent] = []
@@ -242,12 +264,8 @@ class DofMap:
         cell = self.cells[cell_index]
         cell_dofs = []
         for dim in dimension:
-            if dim == 0:
-                entities = cell[:4]
-            elif dim == 1:
-                entities = cell[4:]
-            else:
-                entities = [cell_index]
+            self._cell.set_entities(cell)
+            entities = self._cell.get_entities()[dim]
             for ent in entities:
                 cell_dofs += self._dm[dim][ent]
         return cell_dofs

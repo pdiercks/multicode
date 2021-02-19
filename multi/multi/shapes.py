@@ -255,7 +255,7 @@ def get_hierarchical_shapes_2d(V, degree):
         raise NotImplementedError
     ndofs_per_edge = degree - 1
     ndofs_per_vert = 1
-    cell = Quadrilateral()
+    cell = Quadrilateral("quad8")
     cell.set_entity_dofs(ndofs_per_vert, ndofs_per_edge, 0)
 
     #  cell.enitiy_dofs ordering
@@ -298,7 +298,7 @@ def get_hierarchical_shapes_2d(V, degree):
 
     # TODO why so complicated?
     node_indices = {}
-    entity_dofs = cell.entity_dofs
+    entity_dofs = cell.get_entity_dofs()
     for deg in range(1, degree + 1):
         dim = deg_to_entdim[deg]
         entities = entity_dofs[dim].keys()
