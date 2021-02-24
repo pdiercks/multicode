@@ -231,8 +231,8 @@ def mapping(x, a, b, a_tol=1e-3):
         a = sympy.symbols("a")
         f_beta = (1 + b / a) / (1 - b / a)
         f_alpha = -1 / a - f_beta / a
-        beta = sympy.limit(f_beta, a, 0)
-        alpha = sympy.limit(f_alpha, a, 0)
+        beta = np.float(sympy.limit(f_beta, a, 0))
+        alpha = np.float(sympy.limit(f_alpha, a, 0))
     return alpha * x + beta
 
 
