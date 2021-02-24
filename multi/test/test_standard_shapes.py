@@ -1,7 +1,7 @@
 """test standard shape functions"""
 import dolfin as df
 import numpy as np
-from multi.shapes import NumpyLine, NumpyQuad
+from multi.shapes import NumpyLine, NumpyQuad, mapping
 
 
 def test():
@@ -18,8 +18,8 @@ def test():
     shapes = line3.interpolate(x_dofs, (1,))
     assert np.isclose(np.sum(shapes), n_verts)
 
-    mesh = df.UnitSquareMesh(6, 6)
-    V = df.VectorFunctionSpace(mesh, "CG", 1)
+    mesh = df.UnitSquareMesh(20, 20, "crossed")
+    V = df.VectorFunctionSpace(mesh, "CG", 2)
 
     gexpr = df.Expression(("(1 - x[0]) * (1 - x[1])", "0"), degree=1)
     g = df.interpolate(gexpr, V)
@@ -40,20 +40,33 @@ def test():
     quad9 = NumpyQuad(
         np.array(
             [
-                [0, 0],
-                [1, 0],
+                [-1, -1],
+                [1, -1],
                 [1, 1],
+                [-1, 1],
+                [0, -1],
+                [1, 0],
                 [0, 1],
-                [0.5, 0],
-                [1, 0.5],
-                [0.5, 1],
-                [0, 0.5],
-                [0.5, 0.5],
+                [-1, 0],
+                [0, 0],
             ]
         )
     )
-    shapes9 = quad9.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
-    assert np.isclose(np.sum(shapes9), len(V.tabulate_dof_coordinates()))
+    x_dofs = V.sub(0).collapse().tabulate_dof_coordinates()
+    x = x_dofs[:, 0]
+    y = x_dofs[:, 1]
+
+    def analytic(x, y):
+        return x * y * (x - 1) * (y - 1) / 4
+
+    xi = mapping(x, 0, 1)
+    eta = mapping(y, 0, 1)
+    shapes9 = quad9.interpolate(np.column_stack((xi, eta)), (1,))
+    u = analytic(xi, eta)
+    e = u - shapes9[0]
+    print(np.allclose(shapes9[0], u))
+    print(np.linalg.norm(e))
+    assert np.linalg.norm(e) < 1e-14
 
 
 if __name__ == "__main__":
