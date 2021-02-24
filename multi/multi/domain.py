@@ -61,6 +61,37 @@ class Domain:
             self._load_edges(translate)
         self.id = int(id_)
 
+    def get_nodes(self, n=4):
+        """get nodes to define shape functions
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of nodes.
+
+        Note
+        ----
+        This only makes sense for square shaped domains.
+        """
+
+        def midpoint(a, b):
+            return a + (b - a) / 2
+
+        nodes = np.array(
+            [
+                [self.xmin, self.ymin],
+                [self.xmax, self.ymin],
+                [self.xmax, self.ymax],
+                [self.xmin, self.ymax],
+                [midpoint(self.xmin, self.xmax), self.ymin],
+                [self.xmax, midpoint(self.ymin, self.ymax)],
+                [midpoint(self.xmin, self.xmax), self.ymax],
+                [self.xmin, midpoint(self.ymin, self.ymax)],
+                [midpoint(self.xmin, self.xmax), midpoint(self.ymin, self.ymax)],
+            ]
+        )
+        return nodes[:n]
+
     def _load_edges(self, translate=None):
         path = os.path.dirname(os.path.abspath(self.xdmf_file))
         base = os.path.splitext(os.path.basename(self.xdmf_file))[0]
