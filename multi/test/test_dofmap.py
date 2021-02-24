@@ -69,6 +69,9 @@ def test():
         dofmap.locate_dofs([[0, 0], [0.25, 0]]), np.array([0, 1, 8, 9, 10])
     )
     assert np.allclose(dofmap.locate_dofs([[0, 0], [1, 0]], sub=0), np.array([0, 20]))
+    assert np.allclose(dofmap.locate_cells([[0, 0], [0.25, 0], [0, 0.5]]), [0])
+    assert np.allclose(dofmap.locate_cells([[0.5, 0]]), [0, 1])
+    assert np.allclose(dofmap.plane_at(0.0, "x"), np.array([[0, 0], [0, 1], [0, 0.5]]))
 
 
 if __name__ == "__main__":

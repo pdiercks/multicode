@@ -175,7 +175,7 @@ class DofMap:
         subdomains_celltype = (
             subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
         )
-        if not subdomains_celltype in GMSH_QUADRILATERALS:
+        if subdomains_celltype not in GMSH_QUADRILATERALS:
             raise NotImplementedError(
                 "Currently only cell types {} are supported.".format(
                     GMSH_QUADRILATERALS
@@ -270,6 +270,37 @@ class DofMap:
                 cell_dofs += self._dm[dim][ent]
         return cell_dofs
 
+    def locate_cells(self, X, tol=1e-9):
+        """return cell indices for cells containing at least one
+        of the points in X
+
+        Parameters
+        ----------
+        X : list, np.ndarray
+            A list of points, where each point is given as list of len(gdim).
+        tol : float, optional
+            Tolerance used to find coordinate.
+
+        Returns
+        -------
+        cell_indices : list
+            Indices of cells containing given points.
+        """
+        if isinstance(X, list):
+            X = np.array(X).reshape(len(X), self.gdim)
+        assert isinstance(X, np.ndarray)
+
+        cell_indices = set()
+        for x in X:
+            p = np.abs(self.points - x)
+            v = np.where(np.all(p < tol, axis=1))[0]
+            if v.size < 1:
+                raise IndexError(f"The point {x} is not a vertex of the grid!")
+            ci = np.where(np.any(np.abs(self.cells - v) < tol, axis=1))[0]
+            cell_indices.update(tuple(ci.flatten()))
+
+        return list(cell_indices)
+
     def locate_dofs(self, X, sub=None, tol=1e-9):
         """returns dofs at coordinates X
 
@@ -306,3 +337,31 @@ class DofMap:
             return dofs[sub::dim]
         else:
             return dofs
+
+    # parts of the code copied from fenics_helpers.boundary.plane_at
+    def plane_at(self, coordinate, dim=0, tol=1e-9):
+        """return all points in plane where dim equals coordinate
+
+        Parameters
+        ----------
+        coordinate : float
+            The coordinate.
+        dim : int, str, optional
+            The spatial dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Points of mesh in given plane.
+        """
+
+        if dim in ["x", "X"]:
+            dim = 0
+        if dim in ["y", "Y"]:
+            dim = 1
+        if dim in ["z", "Z"]:
+            dim = 2
+
+        assert dim in [0, 1, 2]
+        p = self.points[np.where(np.abs(self.points[:, dim] - 0.0) < tol)[0]]
+        return p
