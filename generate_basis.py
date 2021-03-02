@@ -46,17 +46,13 @@ from time import time
 import yaml
 import dolfin as df
 import numpy as np
+import matplotlib.pyplot as plt
 from docopt import docopt
 
-# from mpl_toolkits import mplot3d
-import matplotlib.pyplot as plt
-
-# multi
 from multi import Domain, LinearElasticityProblem, make_mapping
 from multi.shapes import NumpyQuad
 from multi.misc import get_solver
 
-# pymor
 from pymor.algorithms.pod import pod
 from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenics import (
@@ -463,6 +459,7 @@ def compute_proj(basis, V, product):
     return basis.lincomb(v.T), v
 
 
+# this function is part of the pymor tutorial https://docs.pymor.org/2020.2.0/tutorial_basis_generation.html
 def compute_proj_errors(basis, V, product):
     G = basis.gramian(product=product)
     R = basis.inner(V, product=product)
@@ -471,19 +468,15 @@ def compute_proj_errors(basis, V, product):
         if N > 0:
             v = np.linalg.solve(G[:N, :N], R[:N, :])
         else:
+            # N = 0, such that err is the norm of V
             v = np.zeros((0, len(V)))
         V_proj = basis[:N].lincomb(v.T)
-        #  try:
-        #      n = (V - V_proj).norm(product=product)
-        #  except RuntimeWarning as rw:
-        #      breakpoint()
-        # TODO add absolute error for postprocessing as well
-        relative = (V - V_proj).norm(product=product) / V.norm(product=product)
-        errors.append(np.max(relative))
-        #  errors.append(np.max((V - V_proj).norm(product=product)))
+        err = (V - V_proj).norm(product=product)
+        errors.append(np.max(err))
     return errors
 
 
+# this code is takes from pymor.algorithms.gram_schmidt.py
 def check_orthonormality(basis, product=None, offset=0, check_tol=1e-3):
     U = basis
     error_matrix = U[offset:].inner(U, product)
@@ -733,7 +726,7 @@ def compute_hierarchical_edge_basis(args, problem):
         f = get_hierarchical_shape_1d(deg)
         h.append(f(xi))
     edge_basis = S.make_array(np.kron(h, np.eye(ncomp)))
-    gram_schmidt(edge_basis, product=None, copy=False, rtol=args["--rtol"])
+    # gram_schmidt(edge_basis, product=None, copy=False, rtol=args["--rtol"])
     # len(edge_basis) <-- ncomp * (PMAX)
     return edge_basis
 
@@ -867,8 +860,13 @@ def main(args):
             l=psi[3].to_numpy(),
         )
 
+    ####################
+    #     testing      #
+    ####################
+
+    # TODO physical testing set
     ps = block_fom.parameters.space(-1, 1)
-    testing_set = ps.sample_randomly(10, seed=13)
+    testing_set = ps.sample_randomly(20, seed=13)
     with logger.block("Solving on testing set ..."):
         test_snapshots, test_summary = compute_snapshots(
             args, logger, block_fom, testing_set
@@ -896,9 +894,9 @@ def main(args):
         plt.title("projection error")
         for err, name in zip(errors, names):
             nmodes = np.arange(len(err))
-            plt.semilogy(nmodes + 1, err, "--*", label=f"{name}")
+            plt.semilogy(nmodes, err, "--*", label=f"{name}")
         reference = np.exp(-nmodes / 5)
-        plt.semilogy(nmodes + 1, reference, "r--", label=r"$\exp(-n / 5)$")
+        plt.semilogy(nmodes, reference, "r--", label=r"$\exp(-n / 5)$")
         plt.grid()
         plt.legend()
         plt.show()
