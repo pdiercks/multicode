@@ -47,13 +47,11 @@ def main(args):
         ax = fig.subplots()
         for e, n, k in zip(errors.T, names, keys):
             modes = arange(e.size)
-            ax.semilogy(
-                modes + 1, e, color=bamcd[k]["c"], marker=bamcd[k]["m"], label=n
-            )
+            ax.semilogy(modes, e, color=bamcd[k]["c"], marker=bamcd[k]["m"], label=n)
 
         # FIXME should be part of DATA to load ...
         reference = exp(-modes / 5)
-        ax.semilogy(modes + 1, reference, "k--", label=r"$\exp(-N/5)$")
+        ax.semilogy(modes, reference, "k--", label=r"$\exp(-N/5)$")
 
         ax.set_xlabel(r"Number of modes $N$")
         ylabel = r"\max_j\norm{s_j - \sum_i(s_j, \xi_i)_V \xi_i}_V"
