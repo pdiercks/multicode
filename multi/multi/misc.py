@@ -56,11 +56,10 @@ def make_mapping(sub_space, super_space):
     return (If.vector().get_local() + 0.5).astype(int)
 
 
-def compute_error_norm(
+def compute_norms(
     rvemeshfile, degree, material, dofmap, udns, urb, basis, product=None, output=None
 ):
-    """compute absolute and relative error (in norm given by product) of ROM solution
-    with respect to DNS
+    """compute absolute error (ROM wrt DNS) and dns norm wrt given inner product
 
     Parameters
     ----------
@@ -86,8 +85,8 @@ def compute_error_norm(
 
     Returns
     -------
-    r : np.ndarray
-        Global relative error.
+    norms : dict
+        absolute error and dns norms
 
     """
 
@@ -144,9 +143,7 @@ def compute_error_norm(
             xdmf.write(0)
             xdmf.close()
 
-    global_abs_err = np.sqrt(np.sum(np.array(norms["abs_err"]) ** 2))
-    global_dns_norm = np.sqrt(np.sum(np.array(norms["dns"]) ** 2))
-    return global_abs_err / global_dns_norm
+    return norms
 
 
 def read_basis(npz_filename, modes_per_edge=None):
