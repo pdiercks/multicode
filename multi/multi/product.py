@@ -8,9 +8,11 @@ class InnerProduct:
     ----------
     V
         The finite element space.
-    name : str
+    name : str, None
         The name of the product. E.g. 'mass' (or 'l2'),
         'stiffness' (or 'h1-semi') or 'h1' are known products.
+        If None, None is returned s.t. euclidean product is used
+        within pymor code.
     bcs : tuple, list, optional
         Boundary conditions to apply.
     form : None, optional
@@ -26,7 +28,7 @@ class InnerProduct:
         self.u = df.TrialFunction(V)
         self.v = df.TestFunction(V)
         self.bcs = bcs
-        names = ("mass", "l2", "h1-semi", "stiffness", "h1")
+        names = (None, "mass", "l2", "h1-semi", "stiffness", "h1")
         if name not in names:
             if not form:
                 raise KeyError(
@@ -46,13 +48,17 @@ class InnerProduct:
         elif self.name in ("h1",):
             form = (df.inner(u, v) + df.inner(df.grad(u), df.grad(v))) * df.dx
         else:
-            # e.g. energy product specified by user
+            # e.g. energy product specified by user or None
             form = self.form
         return form
 
     def assemble(self):
-        """returns the dolfin matrix representing the inner product"""
-        product = df.assemble(self.get_form())
-        for bc in self.bcs:
-            bc.apply(product)
-        return product
+        """returns the dolfin matrix representing the inner product or None
+        in case euclidean product is used"""
+        if self.get_form() is None:
+            return None
+        else:
+            product = df.assemble(self.get_form())
+            for bc in self.bcs:
+                bc.apply(product)
+            return product

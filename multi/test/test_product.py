@@ -12,6 +12,10 @@ def test():
     assert isinstance(prod.get_form(), ufl.form.Form)
     assert isinstance(prod.assemble(), df.cpp.la.Matrix)
 
+    prod = InnerProduct(V, None)
+    assert prod.get_form() is None
+    assert prod.assemble() is None
+
 
 if __name__ == "__main__":
     test()
