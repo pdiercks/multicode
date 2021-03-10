@@ -57,7 +57,16 @@ def make_mapping(sub_space, super_space):
 
 
 def compute_norms(
-    rvemeshfile, degree, material, dofmap, udns, urb, basis, product=None, output=None
+    rvemeshfile,
+    degree,
+    material,
+    dofmap,
+    udns,
+    urb,
+    basis,
+    product=None,
+    output=None,
+    output_strain=False,
 ):
     """compute absolute error (ROM wrt DNS) and dns norm wrt given inner product
 
@@ -82,6 +91,9 @@ def compute_norms(
         The inner product to use.
     output : optional, str
         FilePath to write functions to.
+    output_strain : optional, bool
+        If True, write absolute strain error
+        (If output is not None).
 
     Returns
     -------
@@ -140,10 +152,45 @@ def compute_norms(
             xdmf.add_function(dns, name="dns")
             xdmf.add_function(aerr, name="aerr")
             xdmf.add_function(rerr, name="rerr")
+
+            if output_strain:
+                VDG = df.VectorFunctionSpace(omega.mesh, "DG", degree - 1, dim=3)
+                e = df.sym(df.grad(aerr))
+                evoigt = df.as_vector([e[0, 0], e[1, 1], e[0, 1]])
+                strain = df.Function(VDG)
+                lp = LocalProjector(evoigt, VDG, df.dx)
+                lp(strain)
+                xdmf.add_function(strain, name="strain abs err")
+
             xdmf.write(0)
             xdmf.close()
 
     return norms
+
+
+class LocalProjector:
+    def __init__(self, expr, V, dxm):
+        """
+        expr:
+            expression to project
+        V:
+            (quadrature) function space
+        dxm:
+            dolfin.Measure("dx") that matches V
+        """
+        dv = df.TrialFunction(V)
+        v_ = df.TestFunction(V)
+        a_proj = df.inner(dv, v_) * dxm
+        b_proj = df.inner(expr, v_) * dxm
+        self.solver = df.LocalSolver(a_proj, b_proj)
+        self.solver.factorize()
+
+    def __call__(self, u):
+        """
+        u:
+            function that is filled with the solution of the projection
+        """
+        self.solver.solve_local_rhs(u)
 
 
 def read_basis(npz_filename, modes_per_edge=None):
