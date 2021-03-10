@@ -127,7 +127,7 @@ def compute_norms(
         if output is not None and output.suffix == ".xdmf":
             aerr = df.Function(V)
             rerr = df.Function(V)
-            abs_values = np.abs(dns.vector().get_local() - u_rb.vector().get_local())
+            abs_values = dns.vector().get_local() - u_rb.vector().get_local()
             aerr.vector().set_local(abs_values)
             rerr.vector().set_local(abs_values / dns.vector().get_local())
 
