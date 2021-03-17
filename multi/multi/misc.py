@@ -193,7 +193,7 @@ class LocalProjector:
         self.solver.solve_local_rhs(u)
 
 
-def read_basis(npz_filename, modes_per_edge=None):
+def read_basis(npz_filename, modes_per_edge=None, augment=()):
     """read multiscale basis
 
     Parameters
@@ -202,6 +202,9 @@ def read_basis(npz_filename, modes_per_edge=None):
         FilePath to multiscale basis.
     modes_per_edge : int, optional
         Number of basis functions per edge.
+    augment : tuple of list, optional
+        In case there are edges to be augmented, provide
+        npz file of data to be augmented and list of edges.
 
     Returns
     -------
@@ -210,9 +213,18 @@ def read_basis(npz_filename, modes_per_edge=None):
     """
     r = []
     edges = ["b", "r", "t", "l"]
+    free = []
+    if len(augment) > 0:
+        assert set(augment[1]).issubset(edges)
+        free = augment[1]
+        aug_data = np.load(augment[0])
+
+    breakpoint()
+    inner = set(edges).difference(free)
+    assert inner.union(free) == set(edges)
 
     data = np.load(npz_filename)
-    max_modes = min([len(data[k]) for k in edges])
+    max_modes = min([len(data[k]) for k in inner])
     if modes_per_edge is not None and modes_per_edge < max_modes:
         m = modes_per_edge
     else:
@@ -220,7 +232,14 @@ def read_basis(npz_filename, modes_per_edge=None):
 
     r.append(data["phi"])
     for key in edges:
-        r.append(data[key][:m])
+        if key in inner:
+            r.append(data[key][:m])
+        else:
+            v = aug_data[key][:m]
+            if v.shape[0] < m:
+                # add zero dummy modes s.t. v.shape[0] == m
+                v = np.vstack((v, np.zeros((m - v.shape[0], v.shape[1]))))
+            r.append(v)
 
     return np.vstack(r)
 
