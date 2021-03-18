@@ -219,7 +219,6 @@ def read_basis(npz_filename, modes_per_edge=None, augment=()):
         free = augment[1]
         aug_data = np.load(augment[0])
 
-    breakpoint()
     inner = set(edges).difference(free)
     assert inner.union(free) == set(edges)
 
