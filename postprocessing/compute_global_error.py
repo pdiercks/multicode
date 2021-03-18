@@ -1,15 +1,16 @@
 """
-compute global relative error
+compute global error
 
 Usage:
-    compute_relative_error.py [options] NORMS
+    compute_global_error.py [options] NORMS
 
 Arguments:
     NORMS        TODO
 
 Options:
     -h, --help     Show this message and exit.
-    --output=NPY   Save as NPY.
+    --relative=NPY Save relative global error as NPY.
+    --absolute=NPY Save absolute global error as NPY.
 """
 
 import sys
@@ -36,8 +37,10 @@ def main(args):
     err_gl = np.sqrt(np.sum(err ** 2, axis=1))
     dns_gl = np.sqrt(np.sum(dns ** 2, axis=1))
     rel = err_gl / dns_gl
-    if args["--output"] is not None:
-        np.save(Path(args["--output"]), rel)
+    if args["--absolute"] is not None:
+        np.save(Path(args["--absolute"]), err_gl)
+    if args["--relative"] is not None:
+        np.save(Path(args["--relative"]), rel)
 
 
 if __name__ == "__main__":
