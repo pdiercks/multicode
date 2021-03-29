@@ -54,7 +54,8 @@ from multi.shapes import NumpyQuad
 from multi.misc import get_solver
 
 from pymor.algorithms.pod import pod
-from pymor.algorithms.gram_schmidt import gram_schmidt
+
+# from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenics import (
     FenicsMatrixOperator,
     FenicsVectorSpace,
@@ -536,7 +537,7 @@ def discretize_block(args):
 
     quad = NumpyQuad(np.array(points))
 
-    shapes = quad.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
+    shapes = quad.interpolate(V)
     for shape in shapes:
         g.vector().set_local(null)
         A_bc = A.copy()
@@ -630,9 +631,7 @@ def discretize_rve(args):
     vector_operators = []
     null = np.zeros(V.dim())
     S = FenicsVectorSpace(V)
-    shapes = quadrilateral.interpolate(
-        V.sub(0).collapse().tabulate_dof_coordinates(), (2,)
-    )
+    shapes = quadrilateral.interpolate(V)
     for shape in shapes:
         g.vector().set_local(null)
         A_bc = A.copy()
