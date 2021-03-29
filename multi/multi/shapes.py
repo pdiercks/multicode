@@ -5,6 +5,8 @@ from math import factorial
 
 
 class NumpyLine:
+    """class to implement nodal Lagrange basis for line elements"""
+
     tdim = 1
     gdim = 2
 
@@ -20,22 +22,24 @@ class NumpyLine:
         else:
             raise NotImplementedError
 
-    def interpolate(self, coordinates, value_shape):
-        """interpolate line shape functions to domain given by coordinates
+    def interpolate(self, function_space):
+        """interpolate line shape functions to given Lagrange space.
 
         Parameters
         ----------
-        coordinates : np.ndarray
-            The dof coordinates of the SCALAR function space
-            (V.tabulate_dof_coordinates()).
-        value_shape : tuple of int
-            The shape of a function f in V.
+        function_space : dolfin.FunctionSpace
+            The Lagrange space used.
 
         Returns
         -------
         phi : np.ndarray
             The shape functions.
         """
+        assert function_space.ufl_element().family() in ("Lagrange", "CG")
+        if function_space.num_sub_spaces() > 0:
+            coordinates = function_space.sub(0).collapse().tabulate_dof_coordinates()
+        else:
+            coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         if self.nn == 2:
             X = np.column_stack(
@@ -58,18 +62,19 @@ class NumpyLine:
             shapes.append(X @ coeff)
         phi = np.vstack(shapes)
 
-        if len(value_shape) > 1:
-            raise NotImplementedError
-        dim = value_shape[0]
-        if dim == 2:
+        value_shape = function_space.ufl_element().value_shape()
+        if value_shape == (2,):
+            dim = value_shape[0]
             G = np.zeros((phi.shape[0] * dim, phi.shape[1] * dim))
             for i in range(self.nn):
                 G[2 * i, 0::2] = phi[i, :]
                 G[2 * i + 1, 1::2] = phi[i, :]
 
             return G
-        else:
+        elif value_shape == ():
             return phi
+        else:
+            raise NotImplementedError
 
 
 def get_P_matrix(X, nn):
@@ -103,6 +108,8 @@ def get_P_matrix(X, nn):
 
 
 class NumpyQuad:
+    """class to implement nodal Lagrange basis for quadrilateral elements"""
+
     tdim = 2
     gdim = 2
 
@@ -122,15 +129,13 @@ class NumpyQuad:
         self.nn = self.nodes.shape[0]
         self.P = get_P_matrix(self.nodes, self.nn)
 
-    def interpolate(self, coordinates, value_shape):
-        """interpolate lagrange basis in FE space V
+    def interpolate(self, function_space):
+        """interpolate lagrange basis in function_space
 
         Parameters
         ----------
-        coordinates : np.ndarray
-            The dof coordinates of the space V.
-        value_shape: tuple
-            The shape of a function in V.
+        function_space : dolfin.FunctionSpace
+            The Lagrange space used.
 
         Returns
         -------
@@ -138,6 +143,11 @@ class NumpyQuad:
             The standard shape functions.
 
         """
+        assert function_space.ufl_element().family() in ("Lagrange", "CG")
+        if function_space.num_sub_spaces() > 0:
+            coordinates = function_space.sub(0).collapse().tabulate_dof_coordinates()
+        else:
+            coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         X = get_P_matrix(coordinates, self.nn)
         Id = np.eye(self.nn)
@@ -147,18 +157,19 @@ class NumpyQuad:
             shapes.append(X @ coeff)
         phi = np.vstack(shapes)
 
-        if len(value_shape) > 1:
-            raise NotImplementedError
-        dim = value_shape[0]
-        if dim == 2:
+        value_shape = function_space.ufl_element().value_shape()
+        if value_shape == (2,):
+            dim = value_shape[0]
             G = np.zeros((phi.shape[0] * dim, phi.shape[1] * dim))
             for i in range(self.nn):
                 G[2 * i, 0::2] = phi[i, :]
                 G[2 * i + 1, 1::2] = phi[i, :]
 
             return G
-        else:
+        elif value_shape == ():
             return phi
+        else:
+            raise NotImplementedError
 
 
 def get_hierarchical_shape_1d(degree):

@@ -1,7 +1,7 @@
 """test standard shape functions"""
 import dolfin as df
 import numpy as np
-from multi.shapes import NumpyLine, NumpyQuad, mapping
+from multi.shapes import NumpyLine, NumpyQuad
 
 
 def test():
@@ -13,9 +13,9 @@ def test():
     x_dofs = V.tabulate_dof_coordinates()
     n_verts = len(x_dofs)
 
-    shapes = line2.interpolate(x_dofs, (1,))
+    shapes = line2.interpolate(V)
     assert np.isclose(np.sum(shapes), n_verts)
-    shapes = line3.interpolate(x_dofs, (1,))
+    shapes = line3.interpolate(V)
     assert np.isclose(np.sum(shapes), n_verts)
 
     mesh = df.UnitSquareMesh(20, 20, "crossed")
@@ -25,7 +25,7 @@ def test():
     g = df.interpolate(gexpr, V)
 
     quad4 = NumpyQuad(np.array([[0, 0], [1, 0], [1, 1], [0, 1]]))
-    shapes4 = quad4.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
+    shapes4 = quad4.interpolate(V)
     assert np.allclose(shapes4[0], g.vector()[:])
     assert np.isclose(np.sum(shapes4), len(V.tabulate_dof_coordinates()))
 
@@ -34,7 +34,7 @@ def test():
             [[0, 0], [1, 0], [1, 1], [0, 1], [0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]
         )
     )
-    shapes8 = quad8.interpolate(V.sub(0).collapse().tabulate_dof_coordinates(), (2,))
+    shapes8 = quad8.interpolate(V)
     assert np.isclose(np.sum(shapes8), len(V.tabulate_dof_coordinates()))
 
     quad9 = NumpyQuad(
@@ -52,17 +52,18 @@ def test():
             ]
         )
     )
-    x_dofs = V.sub(0).collapse().tabulate_dof_coordinates()
+    rectangle = df.RectangleMesh(df.Point([0, 0]), df.Point([2, 2]), 8, 8)
+    rectangle.translate(df.Point([-1, -1]))
+    V = df.FunctionSpace(rectangle, "CG", 2)
+    x_dofs = V.tabulate_dof_coordinates()
     x = x_dofs[:, 0]
     y = x_dofs[:, 1]
 
     def analytic(x, y):
         return x * y * (x - 1) * (y - 1) / 4
 
-    xi = mapping(x, 0, 1)
-    eta = mapping(y, 0, 1)
-    shapes9 = quad9.interpolate(np.column_stack((xi, eta)), (1,))
-    u = analytic(xi, eta)
+    shapes9 = quad9.interpolate(V)
+    u = analytic(x, y)
     e = u - shapes9[0]
     print(np.allclose(shapes9[0], u))
     print(np.linalg.norm(e))
