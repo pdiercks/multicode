@@ -65,8 +65,6 @@ def test():
     shapes9 = quad9.interpolate(V)
     u = analytic(x, y)
     e = u - shapes9[0]
-    print(np.allclose(shapes9[0], u))
-    print(np.linalg.norm(e))
     assert np.linalg.norm(e) < 1e-14
 
 
