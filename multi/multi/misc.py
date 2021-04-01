@@ -193,54 +193,73 @@ class LocalProjector:
         self.solver.solve_local_rhs(u)
 
 
-def read_basis(npz_filename, modes_per_edge=None, augment=()):
+def read_basis(
+    inner,
+    inner_edges=("b", "r", "t", "l"),
+    outer=None,
+    outer_edges=(),
+    modes_per_edge=None,
+):
     """read multiscale basis
 
     Parameters
     ----------
-    npz_filename : str, Path
-        FilePath to multiscale basis.
+    inner : str, Path
+        FilePath to multiscale basis for domain Ω in the interior.
+    inner_edges : tuple of str, optional
+        The edges of the domain inside the global domain.
+    outer : str, Path, optional
+        FilePath to multiscale basis for domain Ω in case ∂Ω ∩ ∂Ω_gl is not empty.
+    outer_edges : tuple of str, optional
+        The edges of the domain Ω which are part of the boundary of the global domain.
     modes_per_edge : int, optional
         Number of basis functions per edge.
-    augment : tuple of list, optional
-        In case there are edges to be augmented, provide
-        npz file of data to be augmented and list of edges.
 
     Returns
     -------
-    np.ndarray
+    r : np.ndarray
+        The basis.
+    nmodes : tuple of int
+        Maximum number of NON-ZERO modes on each edge.
 
     """
     r = []
-    edges = ["b", "r", "t", "l"]
-    free = []
-    if len(augment) > 0:
-        assert set(augment[1]).issubset(edges)
-        free = augment[1]
-        aug_data = np.load(augment[0])
+    nmodes = []
+    edges = ("b", "r", "t", "l")
+    if set(edges).difference(set(inner_edges).union(outer_edges)):
+        raise KeyError(f"A quadrilateral domain only has four edges {edges}.")
 
-    inner = set(edges).difference(free)
-    assert inner.union(free) == set(edges)
+    # read basis
+    inner_modes = np.load(inner)
+    outer_modes = np.load(outer) if outer is not None else None
 
-    data = np.load(npz_filename)
-    max_modes = min([len(data[k]) for k in inner])
+    # determine max number of modes
+    max_modes = max(
+        [len(inner_modes[e]) for e in inner_edges]
+        + [len(outer_modes[e]) for e in outer_edges]
+    )
     if modes_per_edge is not None and modes_per_edge < max_modes:
-        m = modes_per_edge
+        m = int(modes_per_edge)
     else:
         m = max_modes
 
-    r.append(data["phi"])
+    # coarse scale basis is read from inner by default
+    r.append(inner_modes["phi"])
+
+    # fine scale modes
     for key in edges:
-        if key in inner:
-            r.append(data[key][:m])
+        if key in inner_edges:
+            r.append(inner_modes[key][:m])
+            nmodes.append(m)
         else:
-            v = aug_data[key][:m]
+            v = outer_modes[key][:m]
+            nmodes.append(v.shape[0])
             if v.shape[0] < m:
                 # add zero dummy modes s.t. v.shape[0] == m
                 v = np.vstack((v, np.zeros((m - v.shape[0], v.shape[1]))))
             r.append(v)
 
-    return np.vstack(r)
+    return np.vstack(r), tuple(nmodes)
 
 
 def select_modes(basis, modes_per_edge, max_modes):
