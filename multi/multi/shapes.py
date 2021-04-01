@@ -5,7 +5,7 @@ from math import factorial
 
 
 class NumpyLine:
-    """class to implement nodal Lagrange basis for line elements"""
+    """class to implement nodal Lagrange basis for line elements in 2D space"""
 
     tdim = 1
     gdim = 2
@@ -22,13 +22,15 @@ class NumpyLine:
         else:
             raise NotImplementedError
 
-    def interpolate(self, function_space):
+    def interpolate(self, function_space, sub):
         """interpolate line shape functions to given Lagrange space.
 
         Parameters
         ----------
         function_space : dolfin.FunctionSpace
             The Lagrange space used.
+        sub : int
+            Integer specifying if the line is horizontal (0) or vertical (1).
 
         Returns
         -------
@@ -41,6 +43,7 @@ class NumpyLine:
         else:
             coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
+        coordinates = coordinates[:, sub]
         if self.nn == 2:
             X = np.column_stack(
                 (
