@@ -6,8 +6,6 @@ basis construction
 
 Note: edge functions are computed based on --type via POD of edge snapshot
 data or these are set as hierarchical shape functions up to degree --pmax.
-If --type==empirical, optionally the first edge functions can be defined as hierarchical
-polynomials up to a maximum degree --pmax (see Options below).
 
 Usage:
     generate_basis.py [options] BLOCK RVE A DEG MAT
