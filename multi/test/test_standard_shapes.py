@@ -5,6 +5,7 @@ from multi.shapes import NumpyLine, NumpyQuad
 
 
 def test():
+    # TODO add line mesh in 2D space ...
     mesh = df.UnitIntervalMesh(10)
     V = df.FunctionSpace(mesh, "CG", 2)
 
@@ -13,9 +14,9 @@ def test():
     x_dofs = V.tabulate_dof_coordinates()
     n_verts = len(x_dofs)
 
-    shapes = line2.interpolate(V)
+    shapes = line2.interpolate(V, sub=0)
     assert np.isclose(np.sum(shapes), n_verts)
-    shapes = line3.interpolate(V)
+    shapes = line3.interpolate(V, sub=0)
     assert np.isclose(np.sum(shapes), n_verts)
 
     mesh = df.UnitSquareMesh(20, 20, "crossed")
