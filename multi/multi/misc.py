@@ -234,12 +234,12 @@ def read_basis(
     outer_modes = np.load(outer) if outer is not None else None
 
     # determine max number of modes
-    max_modes = max(
-        [
-            min([len(inner_modes[e]) for e in inner_edges]),
-            max([len(outer_modes[e]) for e in outer_edges]),
-        ]
-    )
+    max_inner = min([len(inner_modes[e]) for e in inner_edges])
+    if outer_edges:
+        max_outer = max([len(outer_modes[e]) for e in outer_edges])
+    else:
+        max_outer = 0
+    max_modes = max([max_inner, max_outer])
     if modes_per_edge is not None and modes_per_edge < max_modes:
         m = int(modes_per_edge)
     else:
