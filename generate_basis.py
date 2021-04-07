@@ -27,9 +27,9 @@ Options:
                              [default: random].
     --serendipity            Use serendipity element for parametrization of the block problem.
     --pmax=PMAX              Use hierarchical polynomials up to pmax degree as set of edge functions.
-    -o FILE, --output=FILE   Specify output path for empirical basis (.npy).
     --plot-errors            Plot projection errors.
     --projerr=FILE           Write projection errors to given path (.txt).
+    --psi=FILE               Specify output path for empirical basis (.npz).
     --chi=FILE               Write edge basis functions to path (.npz).
     --chi-svals=FILE         Write edge basis singular values to path (.npy).
     --rtol=RTOL              Relative tolerance to be used with POD [default: 4e-8].
@@ -87,7 +87,7 @@ def parse_arguments(args):
     args["--pmax"] = int(args["--pmax"]) if args["--pmax"] else None
     args["--rtol"] = float(args["--rtol"])
     args["--log"] = int(args["--log"])
-    args["--output"] = Path(args["--output"]) if args["--output"] else None
+    args["--psi"] = Path(args["--psi"]) if args["--psi"] else None
     args["--chi"] = Path(args["--chi"]) if args["--chi"] else None
     args["--chi-svals"] = Path(args["--chi-svals"]) if args["--chi-svals"] else None
     args["--check-interface"] = (
@@ -159,7 +159,7 @@ def restrict_to_omega(args, problem, snapshots):
 
     f = df.Function(VV)
     rve_snapshots_data = []
-    nodal_values = np.array([], dtype=np.float)
+    nodal_values = np.array([], dtype=float)
     for snapshot in snapshots._list:
         f.vector().set_local(snapshot.to_numpy())
         If = df.interpolate(f, V)
@@ -193,7 +193,7 @@ def test_PDE_locally_fulfilled(args, fom, problem, phi):
     u = df.Function(W)
     u.vector().set_local(U.to_numpy().flatten())
     s = df.interpolate(u, V)
-    nodal_values = np.array([], dtype=np.float)
+    nodal_values = np.array([], dtype=float)
     for node in rve_nodes:
         nodal_values = np.append(nodal_values, s(node))
     nodal_values.shape = (1, 8)
@@ -847,9 +847,9 @@ def main(args):
             # append mode i for k in (bottom, right, top, left)
             basis.append(psi[k][i])
 
-    if args["--output"]:
+    if args["--psi"]:
         np.savez(
-            args["--output"],
+            args["--psi"],
             phi=phi.to_numpy(),
             b=psi[0].to_numpy(),
             r=psi[1].to_numpy(),

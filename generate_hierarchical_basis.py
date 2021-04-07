@@ -5,20 +5,20 @@ basis construction
 (2) psi_j: edge functions (=hierarchical shape functions) which also account for the inheterogenity
 
 Usage:
-    generate_hierarchical_basis.py [options] RVE A DEG MAT
+    generate_hierarchical_basis.py [options] RVE DEG MAT
 
 Arguments:
     RVE                 XDMF file path (incl. extension).
-    A                   The unit length of the RVE.
     DEG                 Degree of (fine grid) FE space.
     MAT                 The material parameters (.yml).
 
 Options:
     -h, --help               Show this message.
     -l LEVEL, --log=LEVEL    Set the log level [default: 30].
+    --pmax=PMAX              Use hierarchical polynomials up to degree pmax
+                             as set of edge functions [default: 11].
     --solver=SOLVER          Define dolfin solver parameters.
-    --pmax=PMAX              Use hierarchical polynomials up to pmax degree as set of edge functions.
-    -o FILE, --output=FILE   Specify output path for basis (.npy).
+    --psi=FILE               Specify output path for basis (.npz).
     --chi=FILE               Write edge basis functions to path (.npz).
     --check-interface=TOL    Check interface compatibility with tolerance TOL.
 """
@@ -51,16 +51,15 @@ from pymor.reductors.basic import extend_basis
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["RVE"] = Path(args["RVE"])
-    args["A"] = float(args["A"])
     args["DEG"] = int(args["DEG"])
     with open(Path(args["MAT"]), "r") as infile:
         try:
             args["material"] = yaml.safe_load(infile)
         except yaml.YAMLError as exc:
             print(exc)
-    args["--pmax"] = int(args["--pmax"]) if args["--pmax"] else None
+    args["--pmax"] = int(args["--pmax"])
     args["--log"] = int(args["--log"])
-    args["--output"] = Path(args["--output"]) if args["--output"] else None
+    args["--psi"] = Path(args["--psi"]) if args["--psi"] else None
     args["--chi"] = Path(args["--chi"]) if args["--chi"] else None
     args["--check-interface"] = (
         float(args["--check-interface"]) if args["--check-interface"] else None
@@ -163,8 +162,6 @@ def discretize_rve(args):
         id_=0,
         subdomains=True,
         edges=True,
-        # need to know RVE unit length before I ccould compute it
-        translate=df.Point((args["A"], args["A"])),
     )
     material = args["material"]
     E = material["Material parameters"]["E"]["value"]
@@ -280,7 +277,7 @@ def compute_hierarchical_edge_basis(args, problem):
         h.append(f(xi))
     edge_basis = S.make_array(np.kron(h, np.eye(ncomp)))
     # gram_schmidt(edge_basis, product=None, copy=False, rtol=args["--rtol"])
-    # len(edge_basis) <-- ncomp * (PMAX)
+    # len(edge_basis) <-- ncomp * (PMAX-1)
     return edge_basis
 
 
@@ -337,9 +334,9 @@ def main(args):
             check_interface_compatibility(psi[1], psi[3], V_to_L[1], V_to_L[3], ctol)
             logger.info("Set right-left is okay.")
 
-    if args["--output"]:
+    if args["--psi"]:
         np.savez(
-            args["--output"],
+            args["--psi"],
             phi=phi.to_numpy(),
             b=psi[0].to_numpy(),
             r=psi[1].to_numpy(),
