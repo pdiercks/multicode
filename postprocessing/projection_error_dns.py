@@ -1,5 +1,5 @@
 """
-compute projection error for basis wrt dns
+compute projection error for given basis wrt dns
 
 Usage:
     projection_error_dns.py [options] FINE DNS COARSE RVE DEG MAT BASIS
@@ -16,8 +16,9 @@ Arguments:
 Options:
     -h, --help               Show this message and exit.
     -l LEVEL, --log=LEVEL    Set the log level [default: 30].
-    --output=TXT             Write projection error to FilePath.
+    --output=TXT             Write projection error to TXT.
     --plot-errors            Plot the projection error against modes.
+    --cells=NPY              Restrict DNS snapshot set to given cells. 
 """
 
 import sys
@@ -46,6 +47,7 @@ def parse_args(args):
     args["BASIS"] = Path(args["BASIS"])
     args["--output"] = Path(args["--output"]) if args["--output"] is not None else None
     args["--log"] = int(args["--log"])
+    args["--cells"] = Path(args["--cells"]) if args["--cells"] is not None else None
     return args
 
 
@@ -63,9 +65,15 @@ def read_dns(args, logger):
 
 def get_snapshots(args, logger, dns, source):
     dofmap = DofMap(args["COARSE"], 2, 2)
+    active_cells = np.arange(len(dofmap.cells))
+    if args["--cells"]:
+        cells = np.load(args["--cells"])
+        assert set(cells).issubset(active_cells)
+        active_cells = np.array(list(set(active_cells).difference(cells)))
+
     snaps = source.empty(reserve=len(dofmap.cells))
     logger.info("Gathering snapshot data ...")
-    for cell_index, cell in enumerate(dofmap.cells):
+    for cell_index, cell in enumerate(dofmap.cells[active_cells]):
         offset = np.around(dofmap.points[cell][0], decimals=5)
         omega = Domain(
             args["RVE"], id_=cell_index, subdomains=True, translate=df.Point(offset)
@@ -123,7 +131,7 @@ def main(args):
     S = FenicsVectorSpace(V)
     snapshots = get_snapshots(args, logger, dns, S)
     logger.info(f"Reading basis from file {args['BASIS']} ...")
-    rb = read_basis(args["BASIS"])
+    rb, nm = read_basis(args["BASIS"])
     basis = S.from_numpy(rb)
 
     with logger.block("Computing projection errors ..."):
@@ -144,11 +152,13 @@ def main(args):
         for err, name in zip(errors, names):
             nmodes = np.arange(len(err))
             plt.semilogy(nmodes, err, "--*", label=f"{name}")
-        reference = np.exp(-nmodes / 5)
-        plt.semilogy(nmodes, reference, "r--", label=r"$\exp(-n / 5)$")
         plt.grid()
         plt.legend()
         plt.show()
+
+    if args["--output"]:
+        with open(args["--output"], "w") as out:
+            np.savetxt(out, np.vstack(errors).T, delimiter=",", header=", ".join(names))
 
 
 if __name__ == "__main__":
