@@ -851,10 +851,10 @@ def main(args):
         np.savez(
             args["--psi"],
             phi=phi.to_numpy(),
-            b=psi[0].to_numpy(),
-            r=psi[1].to_numpy(),
-            t=psi[2].to_numpy(),
-            l=psi[3].to_numpy(),
+            b=psi[0].to_numpy()[:max_psi],
+            r=psi[1].to_numpy()[:max_psi],
+            t=psi[2].to_numpy()[:max_psi],
+            l=psi[3].to_numpy()[:max_psi],
         )
 
     ####################
