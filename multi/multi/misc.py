@@ -107,24 +107,27 @@ def compute_norms(
     plane_stress = material["Constraints"]["plane_stress"]
     product_to_use = product
 
+    # instantiate mesh and function space in origin
+    reference_domain = Domain(rvemeshfile, 999, subdomains=True)
+    V = df.VectorFunctionSpace(reference_domain.mesh, "CG", degree)
+    # functio space for stress/strain output
+    VDG = df.VectorFunctionSpace(reference_domain.mesh, "DG", degree - 1, dim=3)
+    problem = LinearElasticityProblem(reference_domain, V, E=E, NU=NU, plane_stress=plane_stress)
+
+    if product_to_use:
+        p_mat = problem.get_product(name=product_to_use, bcs=False)
+        product = FenicsMatrixOperator(p_mat, V, V)
+    else:
+        product = None
+
+    u_rb = df.Function(V)
     norms = {"abs_err": [], "dns": []}
     for cell_index, cell in enumerate(dofmap.cells):
         offset = np.around(dofmap.points[cell][0], decimals=5)
-        omega = Domain(
-            rvemeshfile, cell_index, subdomains=True, translate=df.Point(offset)
-        )
-        V = df.VectorFunctionSpace(omega.mesh, "CG", degree)
-        problem = LinearElasticityProblem(
-            omega, V, E=E, NU=NU, plane_stress=plane_stress
-        )
+        reference_domain.mesh.translate(df.Point(offset))
+
         dns = df.interpolate(udns, V)
-        if product_to_use:
-            p_mat = problem.get_product(name=product_to_use, bcs=False)
-            product = FenicsMatrixOperator(p_mat, V, V)
-        else:
-            product = None
         dofs = dofmap.cell_dofs(cell_index)
-        u_rb = df.Function(V)
         u_rb.vector().set_local(basis.T @ urb[dofs])
 
         S = FenicsVectorSpace(V)
@@ -141,7 +144,7 @@ def compute_norms(
             rerr = df.Function(V)
             abs_values = dns.vector().get_local() - u_rb.vector().get_local()
             aerr.vector().set_local(abs_values)
-            rerr.vector().set_local(abs_values / dns.vector().get_local())
+            rerr.vector().set_local(abs_values / dns_norm)
 
             output = Path(output)
             name = output.stem
@@ -154,7 +157,6 @@ def compute_norms(
             xdmf.add_function(rerr, name="rerr")
 
             if output_strain:
-                VDG = df.VectorFunctionSpace(omega.mesh, "DG", degree - 1, dim=3)
                 e = df.sym(df.grad(aerr))
                 evoigt = df.as_vector([e[0, 0], e[1, 1], e[0, 1]])
                 strain = df.Function(VDG)
@@ -164,6 +166,9 @@ def compute_norms(
 
             xdmf.write(0)
             xdmf.close()
+
+        # dont forget to translate back to origin
+        reference_domain.mesh.translate(df.Point(-offset))
 
     return norms
 
