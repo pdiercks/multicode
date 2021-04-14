@@ -86,8 +86,8 @@ class Quadrilateral:
         nf = len(self.faces.keys())
         self._entities = {
             0: gmsh_cell[:nv],
-            1: gmsh_cell[nv : nv + ne],
-            2: gmsh_cell[nv + ne : nv + ne + nf],
+            1: gmsh_cell[nv: nv + ne],
+            2: gmsh_cell[nv + ne: nv + ne + nf],
         }
 
     def get_entity_dofs(self):
@@ -339,8 +339,9 @@ class DofMap:
             return dofs
 
     # parts of the code copied from fenics_helpers.boundary.plane_at
-    def plane_at(self, coordinate, dim=0, tol=1e-9):
-        """return all points in plane where dim equals coordinate
+    def plane_at(self, coordinate, dim=0, tol=1e-9, vertices_only=False, edges_only=False):
+        """return all (vertex and edge mid) points in plane where dim equals coordinate
+        Note that a structured grid is assumed for options 'vertices_only' and 'edges_only'.
 
         Parameters
         ----------
@@ -348,12 +349,18 @@ class DofMap:
             The coordinate.
         dim : int, str, optional
             The spatial dimension.
+        vertices_only : bool, optional
+            If True, return only vertex points.
+        edges_only : bool, optional
+            If True, return only edge mid points.
 
         Returns
         -------
         np.ndarray
             Points of mesh in given plane.
         """
+        cellpoints = self.points[self.cells[0]]
+        cell_size = np.around(np.abs(cellpoints[1] - cellpoints[0])[0], decimals=5)
 
         if dim in ["x", "X"]:
             dim = 0
@@ -363,5 +370,12 @@ class DofMap:
             dim = 2
 
         assert dim in [0, 1, 2]
-        p = self.points[np.where(np.abs(self.points[:, dim] - 0.0) < tol)[0]]
+        p = self.points[np.where(np.abs(self.points[:, dim] - coordinate) < tol)[0]]
+
+        if vertices_only:
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.all(mask == 0, axis=1)]
+        if edges_only:
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.invert(np.all(mask == 0, axis=1))]
         return p

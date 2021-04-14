@@ -10,8 +10,8 @@ def build_mesh(NX, NY, LCAR=0.1, order=1):
     geom.add_raw_code("Mesh.SecondOrderIncomplete = 1;")
     XO = 0.0
     YO = 0.0
-    X = 1.0
-    Y = 1.0
+    X = 1.0 * NX
+    Y = 1.0 * NY
     square = geom.add_polygon(
         [[XO, YO, 0.0], [X, YO, 0.0], [X, Y, 0.0], [XO, Y, 0.0]], LCAR
     )
@@ -62,16 +62,18 @@ def test():
     assert np.isclose(np.sum(A), 800)
     x_dofs = dofmap.tabulate_dof_coordinates()
     assert np.allclose(x_dofs[0], np.array([0, 0]))
-    assert np.allclose(x_dofs[13], np.array([0.5, 0.5]))
-    assert np.allclose(x_dofs[32], np.array([0.75, 1.0]))
+    assert np.allclose(x_dofs[13], np.array([1.0, 0.5]))
+    assert np.allclose(x_dofs[32], np.array([1.5, 1.0]))
 
     assert np.allclose(
-        dofmap.locate_dofs([[0, 0], [0.25, 0]]), np.array([0, 1, 8, 9, 10])
+        dofmap.locate_dofs([[0, 0], [0.5, 0]]), np.array([0, 1, 8, 9, 10])
     )
-    assert np.allclose(dofmap.locate_dofs([[0, 0], [1, 0]], sub=0), np.array([0, 20]))
-    assert np.allclose(dofmap.locate_cells([[0, 0], [0.25, 0], [0, 0.5]]), [0])
-    assert np.allclose(dofmap.locate_cells([[0.5, 0]]), [0, 1])
+    assert np.allclose(dofmap.locate_dofs([[0, 0], [2, 0]], sub=0), np.array([0, 20]))
+    assert np.allclose(dofmap.locate_cells([[0, 0], [0.5, 0], [0, 0.5]]), [0])
+    assert np.allclose(dofmap.locate_cells([[1, 0]]), [0, 1])
     assert np.allclose(dofmap.plane_at(0.0, "x"), np.array([[0, 0], [0, 1], [0, 0.5]]))
+    assert np.allclose(dofmap.plane_at(0.0, "x", vertices_only=True), np.array([[0, 0], [0, 1]]))
+    assert np.allclose(dofmap.plane_at(0.0, "x", edges_only=True), np.array([0, 0.5]))
 
 
 if __name__ == "__main__":
