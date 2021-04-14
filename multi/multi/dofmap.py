@@ -228,8 +228,8 @@ class DofMap:
         self._dm = {dim: {} for dim in dimension}
         DoF = 0
         for ci, cell in enumerate(self.cells):
+            self._cell.set_entities(cell)
             for dim in dimension:
-                self._cell.set_entities(cell)
                 entities = self._cell.get_entities()[dim]
                 for local_ent, ent in enumerate(entities):
                     if ent not in self._dm[dim].keys():
