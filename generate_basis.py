@@ -814,8 +814,14 @@ def main(args):
             }
 
     if args["--chi"]:
-        # save arrays separately
-        np.savez(args["--chi"], **{"0": chi[0].to_numpy(), "1": chi[1].to_numpy()})
+        logger.info(f"Saving edge basis chi to file {args['--chi']} ...")
+        np.savez(
+            args["--chi"],
+            b=chi[0].to_numpy(),
+            r=chi[1].to_numpy(),
+            t=chi[2].to_numpy(),
+            l=chi[3].to_numpy(),
+        )
 
     with logger.block("Computing psi_j ..."):
         psi = []
