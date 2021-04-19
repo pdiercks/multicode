@@ -75,6 +75,10 @@ def test():
     assert np.allclose(dofmap.plane_at(0.0, "x", vertices_only=True), np.array([[0, 0], [0, 1]]))
     assert np.allclose(dofmap.plane_at(0.0, "x", edges_only=True), np.array([0, 0.5]))
 
+    assert np.allclose(dofmap.get_cell_points([0, ]), dofmap.points[dofmap.cells[0]])
+    assert np.allclose(dofmap.get_cell_points([0, ], gmsh_nodes=[4, 6]), np.array([[0.5, 0.0], [0.5, 1.0]]))
+    assert np.allclose(dofmap.get_cell_points([0, 1], gmsh_nodes=[0, 1, 6]), np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [2.0, 0.0], [1.5, 1.0]]))
+
 
 if __name__ == "__main__":
     test()

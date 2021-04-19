@@ -379,3 +379,34 @@ class DofMap:
             mask = np.mod(np.around(p, decimals=5), cell_size)
             return p[np.invert(np.all(mask == 0, axis=1))]
         return p
+
+    def get_cell_points(self, cells, gmsh_nodes=None):
+        """returns point coordinates for given cells
+
+        Parameters
+        ----------
+        cells : list of int
+            The cells for which points should be returned.
+        gmsh_nodes : list, np.ndarray, optional
+            Restrict return value to a subset of all nodes.
+            Gmsh node ordering is used.
+
+        Returns
+        -------
+        p : np.ndarray
+            The point coordinates.
+
+        """
+        n_nodes = self.cells.shape[1]
+        if gmsh_nodes is None:
+            gmsh_nodes = np.arange(n_nodes)
+        else:
+            if isinstance(gmsh_nodes, list):
+                gmsh_nodes = np.array(gmsh_nodes)
+            assert not gmsh_nodes.size > n_nodes
+
+        # return unique nodes keeping ordering
+        nodes = self.cells[np.ix_(cells, gmsh_nodes)].flatten()
+        _, idx = np.unique(nodes, return_index=True)
+
+        return self.points[nodes[np.sort(idx)]]
