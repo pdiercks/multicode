@@ -12,18 +12,20 @@ blue_colors = bamcd["blue"]["rgb"]
 red = red_colors[0]
 blue = blue_colors[0]
 
-# create colormaps for each color ranging from (RGB of) color to white
+# create colormaps for each color ranging from (RGB of) color to white (1)
+# instead of white use lightest bam black (204, 216, 223)
+
 N = 256
 r = np.ones((N, 4))
-r[:, 0] = np.linspace(red[0] / 255, 1, N)
-r[:, 1] = np.linspace(red[1] / 255, 1, N)
-r[:, 2] = np.linspace(red[2] / 255, 1, N)
+r[:, 0] = np.linspace(red[0] / 255, 204 / 255, N)
+r[:, 1] = np.linspace(red[1] / 255, 216 / 255, N)
+r[:, 2] = np.linspace(red[2] / 255, 223 / 255, N)
 r_cmp = ListedColormap(r)
 
 b = np.ones((N, 4))
-b[:, 0] = np.linspace(blue[0] / 255, 1, N)
-b[:, 1] = np.linspace(blue[1] / 255, 1, N)
-b[:, 2] = np.linspace(blue[2] / 255, 1, N)
+b[:, 0] = np.linspace(blue[0] / 255, 204 / 255, N)
+b[:, 1] = np.linspace(blue[1] / 255, 216 / 255, N)
+b[:, 2] = np.linspace(blue[2] / 255, 223 / 255, N)
 b_cmp = ListedColormap(b)
 
 # combine, revert the red colormap
