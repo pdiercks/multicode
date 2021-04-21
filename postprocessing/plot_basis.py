@@ -24,10 +24,13 @@ from pathlib import Path
 import numpy as np
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 from plotstuff import PlottingContext
-from multi.misc import read_basis, select_modes
+from multi.misc import read_basis
 
 from dolfin import XDMFFile, Mesh, FunctionSpace
+
+POSTPROCESSING = Path(__file__).parent
 
 
 def parse_arguments(args):
@@ -54,7 +57,7 @@ def main(args):
     y = x_dofs[:, 1]
 
     # load the full basis
-    basis = read_basis(args["BASIS"])
+    basis = read_basis(args["BASIS"])[0]
 
     if args["--output"]:
         target_base = args["--output"].stem
@@ -63,13 +66,17 @@ def main(args):
         ]
     sub = np.s_[args["--component"] :: 2]
 
+    # define bam colormap
+    bam_RdBu = np.load(POSTPROCESSING / "bam-RdBu.npy")
+    bam_cmap = ListedColormap(bam_RdBu, name="bam-RdBu")
+
     # FIXME if output is None opening multiple figures does not work
     for k, mode in enumerate(args["MODES"]):
         plot_argv = [__file__, targets[k]] if args["--output"] else [__file__]
         with PlottingContext(plot_argv, "pdiercks_multi") as fig:
             z = basis[mode, sub]
             ax = plt.axes(projection="3d")
-            ax.plot_trisurf(x, y, z, cmap="viridis", edgecolor="none")
+            ax.plot_trisurf(x, y, z, cmap=bam_cmap, edgecolor="none")
             ax.set_xlabel("x")
             ax.set_ylabel("y")
 
