@@ -20,6 +20,7 @@ from pathlib import Path
 from docopt import docopt
 from plotstuff import PlottingContext
 from numpy import load, arange
+from matplotlib.lines import Line2D
 
 POSTPROCESSING = Path(__file__).parent
 
@@ -47,17 +48,26 @@ def main(args):
     args = parse_arguments(args)
 
     # BAM colors
-    with open(POSTPROCESSING / "bamcolors_hex.yml", "r") as instream:
+    with open(POSTPROCESSING / "bamcolors_rgb.yml", "r") as instream:
         bamcd = yaml.safe_load(instream)
 
-    cc = ["blue", "green", "red"]
-    keys = []
-    for i in range(1, 4):
-        for c in cc:
-            s = "BAM" + c + f"{i}"
-            keys.append(s)
+    red = bamcd["red"]
+    blue = bamcd["blue"]
+    green = bamcd["green"]
+    yellow = bamcd["yellow"]
 
-    if len(args["DATA"]) > len(keys):
+    colors = []
+    for r, b, g, y in zip(red, blue, green, yellow):
+        colors.append(tuple(r))
+        colors.append(tuple(b))
+        colors.append(tuple(g))
+        colors.append(tuple(y))
+
+    markers_dict = Line2D.markers
+    markers_dict.pop(',')  # do not like this one
+    markers = list(markers_dict)
+
+    if len(args["DATA"]) > len(colors):
         raise NotImplementedError
 
     plot_argv = [__file__, args["--output"]] if args["--output"] else [__file__]
@@ -69,8 +79,8 @@ def main(args):
             ax.semilogy(
                 modes,
                 error,
-                color=bamcd[keys[i]]["c"],
-                marker=bamcd[keys[i]]["m"],
+                color=colors[i],
+                marker=markers[i],
                 label=args["--label"][i],
             )
         ax.set_xlabel("Number of modes per edge.")
