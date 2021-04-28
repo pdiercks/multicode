@@ -61,6 +61,27 @@ class Domain:
             self._load_edges(translate)
         self.id = int(id_)
 
+    def translate(self, point):
+        """translate the domain in space
+
+        Parameters
+        ----------
+        point : dolfin.Point
+            The point by which to translate.
+
+        """
+        self.mesh.translate(point)
+        # update coordinates
+        coord = self.mesh.coordinates()
+        self.xmin = np.amin(coord[:, 0])
+        self.xmax = np.amax(coord[:, 0])
+        self.ymin = np.amin(coord[:, 1])
+        self.ymax = np.amax(coord[:, 1])
+        # update edges
+        if self.edges:
+            for edge in self.edges:
+                edge.translate(point)
+
     def get_nodes(self, n=4):
         """get nodes to define shape functions
 
