@@ -11,6 +11,7 @@ Arguments:
 
 Options:
     -h, --help                    Show this message.
+    -l LEVEL, --log=LEVEL         Set the log level [default: 30].
     -o FILE, --output=FILE        Set output path of final mesh [default: ./soi.xdmf].
     --tdim=TDIM                   The topological dimension of the mesh [default: 2].
     --gdim=GDIM                   The geometrical dimension of the mesh [default: 2].
@@ -28,6 +29,7 @@ import numpy
 import pygmsh
 from docopt import docopt
 from multi import DofMap
+from pymor.core.logger import getLogger
 
 
 def parse_arguments(args):
@@ -37,15 +39,23 @@ def parse_arguments(args):
     args["--tdim"] = int(args["--tdim"])
     args["--gdim"] = int(args["--gdim"])
     args["--output"] = Path(args["--output"])
+    args["--log"] = int(args["--log"])
     return args
 
 
 def main(args):
     args = parse_arguments(args)
+    logger = getLogger("soi")
+    logger.setLevel(args["--log"])
 
     to_be_merged = []
-    dofmap = DofMap(args["COARSE"], tdim=args["--tdim"], gdim=args["--gdim"],)
+    dofmap = DofMap(
+        args["COARSE"],
+        tdim=args["--tdim"],
+        gdim=args["--gdim"],
+    )
     for (cell_index, cell) in enumerate(dofmap.cells):
+        logger.debug(f"cell_index: {cell_index}")
         points = numpy.around(dofmap.points[cell], decimals=6)
         x0, y0 = points[0]
         x, y = points[2]
@@ -58,13 +68,19 @@ def main(args):
             # see meshio/gmsh/_gmsh22.py
             if mesh.points.shape[1] == 2:
                 mesh.points = numpy.column_stack(
-                    [mesh.points[:, 0], mesh.points[:, 1], numpy.zeros(mesh.points.shape[0])]
+                    [
+                        mesh.points[:, 0],
+                        mesh.points[:, 1],
+                        numpy.zeros(mesh.points.shape[0]),
+                    ]
                 )
 
             c_int = numpy.dtype("i")
             for k, (key, value) in enumerate(mesh.cells):
                 if value.dtype != c_int:
-                    mesh.cells[k] = meshio.CellBlock(key, numpy.array(value, dtype=c_int))
+                    mesh.cells[k] = meshio.CellBlock(
+                        key, numpy.array(value, dtype=c_int)
+                    )
 
         # coarse grid cell size needs to agree with RVE unit length (UL)
         UL = abs(numpy.amax(mesh.points[:, 0]) - numpy.amin(mesh.points[:, 0]))
@@ -86,7 +102,10 @@ def main(args):
         geom.add_raw_code(f"Merge '{msh}';")
     geom.add_raw_code("Coherence;")
     geom.add_raw_code("Coherence Mesh;")
-    merged_mesh = pygmsh.generate_mesh(geom, mesh_file_type="msh2",)
+    merged_mesh = pygmsh.generate_mesh(
+        geom,
+        mesh_file_type="msh2",
+    )
 
     has_subdomains = bool(merged_mesh.cell_data_dict)
     assert has_subdomains
