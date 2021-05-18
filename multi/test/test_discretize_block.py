@@ -1,4 +1,3 @@
-# import yaml
 from pathlib import Path
 import dolfin as df
 import numpy as np
@@ -73,7 +72,15 @@ def test():
     problem = LinearElasticityProblem(
         domain, V, E=mat["E"], NU=mat["NU"], plane_stress=True
     )
-    bcs = ({"boundary": plane_at(0, "y"), "value": df.Constant((0, 0))},)
+
+    def bottom(x, on_boundary):
+        """equivalent to plane_at(0, 'y').inside(x, on_boundary)"""
+        if df.near(x[1], 0) and on_boundary:
+            return True
+        else:
+            return False
+
+    bcs = ({"boundary": bottom, "value": df.Constant((0, 0))},)
     fom = discretize_block(
         problem,
         gamma=plane_at(1, "y"),
