@@ -86,8 +86,8 @@ class Quadrilateral:
         nf = len(self.faces.keys())
         self._entities = {
             0: gmsh_cell[:nv],
-            1: gmsh_cell[nv: nv + ne],
-            2: gmsh_cell[nv + ne: nv + ne + nf],
+            1: gmsh_cell[nv : nv + ne],
+            2: gmsh_cell[nv + ne : nv + ne + nf],
         }
 
     def get_entity_dofs(self):
@@ -301,7 +301,7 @@ class DofMap:
 
         return list(cell_indices)
 
-    def locate_dofs(self, X, sub=None, tol=1e-9):
+    def locate_dofs(self, X, sub=None, s_=np.s_[:], tol=1e-9):
         """returns dofs at coordinates X
 
         Parameters
@@ -310,25 +310,31 @@ class DofMap:
             A list of points, where each point is given as list of len(gdim).
         sub : int, optional
             Index of component.
+        s_ : slice, optional
+            Return slice of the dofs at each point.
         tol : float, optional
             Tolerance used to find coordinate.
 
         Returns
         -------
-        dofs : list
+        dofs : np.ndarray
             DoFs at given coordinates.
         """
         if isinstance(X, list):
             X = np.array(X).reshape(len(X), self.gdim)
-        assert isinstance(X, np.ndarray)
+        elif isinstance(X, np.ndarray):
+            if X.ndim == 1:
+                X = X[np.newaxis, :]
+            elif X.ndim > 2:
+                raise NotImplementedError
 
-        dofs = []
+        dofs = np.array([], int)
         for x in X:
             p = np.abs(self._x_dofs - x)
             v = np.where(np.all(p < tol, axis=1))[0]
             if v.size < 1:
                 raise IndexError(f"The point {x} is not a vertex of the grid!")
-            dofs += v.tolist()
+            dofs = np.append(dofs, v[s_])
 
         if sub is not None:
             # FIXME user has to know that things might go wrong if
@@ -339,7 +345,9 @@ class DofMap:
             return dofs
 
     # parts of the code copied from fenics_helpers.boundary.plane_at
-    def plane_at(self, coordinate, dim=0, tol=1e-9, vertices_only=False, edges_only=False):
+    def plane_at(
+        self, coordinate, dim=0, tol=1e-9, vertices_only=False, edges_only=False
+    ):
         """return all (vertex and edge mid) points in plane where dim equals coordinate
         Note that a structured grid is assumed for options 'vertices_only' and 'edges_only'.
 

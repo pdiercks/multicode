@@ -112,7 +112,9 @@ def compute_norms(
     V = df.VectorFunctionSpace(reference_domain.mesh, "CG", degree)
     # functio space for stress/strain output
     VDG = df.VectorFunctionSpace(reference_domain.mesh, "DG", degree - 1, dim=3)
-    problem = LinearElasticityProblem(reference_domain, V, E=E, NU=NU, plane_stress=plane_stress)
+    problem = LinearElasticityProblem(
+        reference_domain, V, E=E, NU=NU, plane_stress=plane_stress
+    )
 
     if product_to_use:
         p_mat = problem.get_product(name=product_to_use, bcs=False)
@@ -198,6 +200,60 @@ class LocalProjector:
         self.solver.solve_local_rhs(u)
 
 
+def read_bases(*args, modes_per_edge=None):
+    """read bases from args where each arg is a tuple of FilePath and
+    tuple of string defining edge(s) for which to load basis functions from FilePath
+    e.g. arg=("PathToFile", ("b", "r")) meaning
+        load basis functions for bottom and right from "PathToFile"
+
+    """
+    bases = []
+    edges = []
+    for basis, edge_set in args:
+        bases.append(np.load(basis))
+        edges.append(list(edge_set))
+
+    # check coarse scale basis phi and all edges are defined
+    alle = [s for sub_set in edges for s in sub_set]
+    assert not len(set(alle).difference(["phi", "b", "r", "t", "l"]))
+
+    R = []
+    Nmodes = []
+
+    # append coarse scale basis functions
+    for i, edge_set in enumerate(edges):
+        if "phi" in edge_set:
+            R.append(bases[i]["phi"])
+            edge_set.remove("phi")
+
+    # determine max number of modes per edge
+    max_modes = []
+    for basis, edge_set in zip(bases, edges):
+        if edge_set:
+            max_modes.append(max([len(basis[e]) for e in edge_set]))
+    max_modes = max(max_modes)
+    if modes_per_edge is not None and modes_per_edge < max_modes:
+        m = int(modes_per_edge)
+    else:
+        m = max_modes
+
+    # append fine scale basis functions
+    for key in ["b", "r", "t", "l"]:
+        for basis, edge_set in zip(bases, edges):
+            if key in edge_set:
+                rb = basis[key][:m]
+                Nmodes.append(rb.shape[0])
+                if rb.shape[0] < m:
+                    # add zero dummy modes (in case of dirichlet or neumann boundary)
+                    # such that rb.shape[0] == m
+                    rb = np.vstack((rb, np.zeros((m - rb.shape[0], rb.shape[1]))))
+                R.append(rb)
+                break
+
+    return np.vstack(R), tuple(Nmodes)
+
+
+# @deprecated
 def read_basis(
     inner,
     inner_edges=("b", "r", "t", "l"),

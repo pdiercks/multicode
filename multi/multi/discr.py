@@ -47,7 +47,6 @@ def discretize_block(problem, gamma, serendipity=True, additional_bcs=(), solver
     ymax = domain.ymax
 
     def mid_point(a, b):
-        assert abs(b) > abs(a)
         return a + (b - a) / 2
 
     points = [
