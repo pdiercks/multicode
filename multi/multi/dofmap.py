@@ -301,6 +301,7 @@ class DofMap:
 
         return list(cell_indices)
 
+    # TODO remove sub
     def locate_dofs(self, X, sub=None, s_=np.s_[:], tol=1e-9):
         """returns dofs at coordinates X
 
