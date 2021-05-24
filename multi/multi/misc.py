@@ -232,7 +232,7 @@ def read_bases(*args, modes_per_edge=None):
         if edge_set:
             max_modes.append(max([len(basis[e]) for e in edge_set]))
     max_modes = max(max_modes)
-    if modes_per_edge is not None and modes_per_edge < max_modes:
+    if modes_per_edge is not None:
         m = int(modes_per_edge)
     else:
         m = max_modes
