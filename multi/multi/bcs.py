@@ -122,10 +122,10 @@ class MechanicsBCs:
         return self._bcs
 
     def remove_bcs(self):
-        self._bcs = []
+        self._bcs.clear()
 
     def remove_forces(self):
-        self._boundary_forces = []
+        self._boundary_forces.clear()
 
     def boundary_forces(self):
         """

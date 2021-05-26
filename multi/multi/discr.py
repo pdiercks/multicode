@@ -14,7 +14,9 @@ from pymor.operators.constructions import LincombOperator, VectorOperator
 from pymor.parameters.functionals import ProjectionParameterFunctional
 
 
-def discretize_block(problem, gamma, serendipity=True, additional_bcs=(), solver=None):
+def discretize_block(
+    problem, gamma, serendipity=True, additional_bcs=(), forces=(), solver=None
+):
     """pyMOR discretization of a oversampling problem
 
     Parameters
@@ -29,6 +31,9 @@ def discretize_block(problem, gamma, serendipity=True, additional_bcs=(), solver
     additional_bcs : tuple of dict, optional
         BCs on boundaries other than `gamma` given as tuple of dict, where
         dict matches the signature of `multi.bcs.MechanicsBCs.add_bc`.
+    forces : tuple of dict, optional
+        Neumann bcs on boundaries other than `gamma` given as tuple of dict,
+        where dict matches the signature of `multi.bcs.MechanicsBCs.add_force`.
     solver : optional
         Solver options given by `multi.misc.get_solver`.
 
@@ -65,36 +70,50 @@ def discretize_block(problem, gamma, serendipity=True, additional_bcs=(), solver
     quad = NumpyQuad(np.array(points))
     shapes = quad.interpolate(V)
 
-    # rhs functions
+    # ### rhs
+    S = FenicsVectorSpace(V)
+    vector_operators = []
+    parameter_functionals = []
+
+    # add any sources
+    n_forces = len(forces)
+    if n_forces > 0:
+        for k, force in enumerate(forces):
+            problem.bc_handler.add_force(**force)
+        L = problem.get_rhs()
+        b = df.assemble(L)
+        vector_operators.append(VectorOperator(S.make_array([b])))
+        parameter_functionals.append(1.0)
+
+    # add bc for each of the shape functions
     R = []
     for k, shape in enumerate(shapes):
-        R.append(df.Function(V, name="r_" + str(k)))
+        r = df.Function(V, name="r_" + str(k))
+        R.append(r)
         shape_function = df.Function(V)
         shape_function.vector().set_local(shape)
         problem.bc_handler.add_bc(gamma, shape_function)
+        parameter_functionals.append(
+            ProjectionParameterFunctional("mu", shapes.shape[0], index=k)
+        )
 
+    # add additional dirichlet bcs
     n_add_bcs = len(additional_bcs)
     if n_add_bcs > 0:
         for j, abc in enumerate(additional_bcs):
             R.append(df.Function(V, name="r_" + str(k + j)))
             problem.bc_handler.add_bc(**abc)
+            parameter_functionals.append(1.0)
 
     bcs = problem.bc_handler.bcs()
     n_bcs = len(bcs)
     a = problem.get_lhs()
     A = df.assemble(a)
 
-    # ### rhs vector operators
-    S = FenicsVectorSpace(V)
-    vop = []
+    # add vector operators for all inhomogeneous dirichlet bcs
     for i in range(n_bcs):
         bcs[i].zero_columns(A.copy(), R[i].vector(), 1.0)
-        vop.append(VectorOperator(S.make_array([R[i].vector().copy()])))
-
-    parameter_functionals = [
-        ProjectionParameterFunctional("mu", shapes.shape[0], index=i)
-        for i in range(shapes.shape[0])
-    ]
+        vector_operators.append(VectorOperator(S.make_array([R[i].vector().copy()])))
 
     # ### operator
     # lift bcs for one of the shapes and for each additional bc
@@ -103,8 +122,6 @@ def discretize_block(problem, gamma, serendipity=True, additional_bcs=(), solver
     bcs[0].zero_columns(A_0, dummy.vector(), 1.0)
     for j in range(n_add_bcs):
         bcs[len(shapes) + j].zero_columns(A_0, dummy.vector(), 1.0)
-        # add 1.0 for each additional bc
-        parameter_functionals.append(1.0)
 
     if solver is not None:
         solver_options = {
@@ -116,7 +133,7 @@ def discretize_block(problem, gamma, serendipity=True, additional_bcs=(), solver
     else:
         solver_options = None
 
-    rhs = LincombOperator(vop, parameter_functionals)
+    rhs = LincombOperator(vector_operators, parameter_functionals)
     lhs = FenicsMatrixOperator(A_0, V, V, solver_options=solver_options)
 
     fom = StationaryModel(

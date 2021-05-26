@@ -5,7 +5,7 @@ import numpy as np
 from multi import Domain, LinearElasticityProblem
 from multi.shapes import NumpyQuad
 from multi.misc import get_solver
-from fenics_helpers.boundary import plane_at
+from fenics_helpers.boundary import plane_at, within_range
 from multi.discr import discretize_block
 
 
@@ -49,6 +49,11 @@ def fenics_stuff(problem, mu, solver):
 
     problem.bc_handler.add_bc(plane_at(0, "y"), fix)
     problem.bc_handler.add_bc(plane_at(1, "y"), pull)
+    force = {
+        "boundary": within_range([1.0, 0.3], [1.0, 0.7]),
+        "value": df.Constant((20e3, 0.0)),
+    }
+    problem.bc_handler.add_force(**force)
 
     u = problem.solve(solver_parameters=solver["solver_parameters"])
     return u
@@ -72,6 +77,9 @@ def test():
     problem = LinearElasticityProblem(
         domain, V, E=mat["E"], NU=mat["NU"], plane_stress=True
     )
+    u = fenics_stuff(problem, mu, solver)
+    problem.bc_handler.remove_bcs()
+    problem.bc_handler.remove_forces()
 
     def bottom(x, on_boundary):
         """equivalent to plane_at(0, 'y').inside(x, on_boundary)"""
@@ -81,14 +89,20 @@ def test():
             return False
 
     bcs = ({"boundary": bottom, "value": df.Constant((0, 0))},)
+    forces = (
+        {
+            "boundary": within_range([1.0, 0.3], [1.0, 0.7]),
+            "value": df.Constant((20e3, 0.0)),
+        },
+    )
     fom = discretize_block(
         problem,
         gamma=plane_at(1, "y"),
         serendipity=True,
         additional_bcs=bcs,
+        forces=forces,
         solver=solver,
     )
-    u = fenics_stuff(problem, mu, solver)
     U = fom.solve(mu)
     v = df.Function(fom.solution_space.V)
     v.vector().set_local(U.to_numpy().flatten())
