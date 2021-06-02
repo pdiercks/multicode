@@ -64,15 +64,15 @@ def parse_arguments(args):
     args["--check-interface"] = (
         float(args["--check-interface"]) if args["--check-interface"] else None
     )
-    args["solver"] = get_solver(args["--solver"])
+    args["--solver"] = get_solver(args["--solver"])
     prm = df.parameters
-    prm["krylov_solver"]["relative_tolerance"] = args["solver"]["krylov_solver"][
+    prm["krylov_solver"]["relative_tolerance"] = args["--solver"]["krylov_solver"][
         "relative_tolerance"
     ]
-    prm["krylov_solver"]["absolute_tolerance"] = args["solver"]["krylov_solver"][
+    prm["krylov_solver"]["absolute_tolerance"] = args["--solver"]["krylov_solver"][
         "absolute_tolerance"
     ]
-    prm["krylov_solver"]["maximum_iterations"] = args["solver"]["krylov_solver"][
+    prm["krylov_solver"]["maximum_iterations"] = args["--solver"]["krylov_solver"][
         "maximum_iterations"
     ]
     return args
@@ -90,7 +90,9 @@ def compute_coarse_scale_basis(args, fom):
     return phi
 
 
-def compute_psi(args, problem, boundary_data, V_to_L, product=None, method="trivial"):
+def compute_psi(
+    problem, boundary_data, V_to_L, product=None, method="trivial", opts=None
+):
     """compute psi with boundary data prescribed on edge
 
     Parameters
@@ -105,6 +107,8 @@ def compute_psi(args, problem, boundary_data, V_to_L, product=None, method="triv
         The inner product wrt which psi is orthonormalized.
     method : str
         How to extend the VectorArray psi.
+    opts : dict
+        Solver parameters.
 
     Returns
     -------
@@ -131,10 +135,13 @@ def compute_psi(args, problem, boundary_data, V_to_L, product=None, method="triv
 
         gvalues[V_to_L] = boundary_data[m]
         g.vector().set_local(gvalues)
-
         problem.bc_handler.add_bc(boundary, g)
-        solver_parameters = args["solver"]["solver_parameters"]
-        problem.solve(u, solver_parameters=solver_parameters)
+
+        bcs = problem.bc_handler.bcs()
+        a = problem.get_lhs()
+        L = problem.get_rhs()
+        A, b = df.assemble_system(a, L, bcs)
+        df.solve(A, u.vector(), b, opts["linear_solver"], opts["preconditioner"])
 
         d = u.copy(deepcopy=True)
         U = S.make_array([d.vector()])
@@ -210,7 +217,7 @@ def discretize_rve(args):
     ]
 
     rhs = LincombOperator(vector_operators, parameter_functionals)
-    opts = args["solver"]["solver_parameters"]
+    opts = args["--solver"]["solver_parameters"]
     solver_options = {
         "inverse": {
             "solver": opts["linear_solver"],
@@ -323,12 +330,12 @@ def main(args):
         psi = []
         for i in range(len(rve_problem.domain.edges)):
             psi_ = compute_psi(
-                args,
                 rve_problem,
                 chi[i].to_numpy(),
                 V_to_L[i],
                 product=None,
                 method="trivial",
+                opts=args["--solver"]["solver_parameters"],
             )
             psi.append(psi_)
 
