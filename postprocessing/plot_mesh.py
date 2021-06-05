@@ -12,6 +12,7 @@ Options:
     --subdomains       Plot subdomains as well.
     --colorbar         Use a colorbar for different subdomains.
     --colormap=CMAP    Choose the colormap [default: viridis].
+    --axis-off         Do not plot axes.
     --pdf=FILE         Write result to PDF.
 """
 
@@ -65,6 +66,10 @@ def main(args):
             ps = plot(subdomains, cmap=cmap)
             if args["--colorbar"]:
                 fig.colorbar(ps)
+            if args["--axis-off"]:
+                import matplotlib.pyplot as plt
+
+                plt.axis("off")
         plot(mesh)
 
 
