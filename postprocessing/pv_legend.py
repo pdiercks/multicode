@@ -110,7 +110,7 @@ def main(args):
         ColorBar.Orientation = "Horizontal"
     else:
         ColorBar.Orientation = "Vertical"
-    ColorBar.Title = rf"${args.title}$"
+    ColorBar.Title = rf"{args.title}"
     ColorBar.ComponentTitle = ""
     ColorBar.TitleColor = BLACK
     ColorBar.LabelColor = BLACK
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog=f"pvbatch {__file__}",
         description="Plot the legend for given data.",
-        usage="%(prog)s [options] Path N field component PNG",
+        usage="%(prog)s [options] Path field component PNG",
     )
     parser.add_argument("Path", type=str, help="FilePath to XDMFFile to read.")
     parser.add_argument("field", type=str, help="Field variable to show")
