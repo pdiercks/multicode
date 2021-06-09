@@ -66,10 +66,14 @@ def main(args):
             ps = plot(subdomains, cmap=cmap)
             if args["--colorbar"]:
                 fig.colorbar(ps)
-            if args["--axis-off"]:
-                import matplotlib.pyplot as plt
+        if args["--axis-off"]:
+            import matplotlib.pyplot as plt
 
-                plt.axis("off")
+            plt.axis("off")
+        else:
+            ax = fig.axes[0]
+            ax.set_xlabel(r"$x$")
+            ax.set_ylabel(r"$y$")
         plot(mesh)
 
 
