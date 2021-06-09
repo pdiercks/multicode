@@ -74,7 +74,11 @@ def main(args):
         min_values.append(data_range[0])
         max_values.append(data_range[1])
 
-    Range = (min(min_values), max(max_values))
+    if args.range is not None:
+        Range = args.range
+    else:
+        Range = (min(min_values), max(max_values))
+
     sources = GetSources()
     view = GetActiveViewOrCreate("RenderView")
     for source in sources.values():
@@ -124,7 +128,17 @@ if __name__ == "__main__":
     parser.add_argument("component", type=str, help="Component of the field variable")
     parser.add_argument("PNG", type=str, help="The target png filepath.")
     parser.add_argument(
-        "--viewsize", nargs="+", type=int, help="Set the view size for higher quality."
+        "--viewsize",
+        nargs="+",
+        type=int,
+        help="Set the view size for higher quality.",
+        default=[1468, 678],
+    )
+    parser.add_argument(
+        "--range",
+        nargs="+",
+        type=float,
+        help="Set the value range (default is determined from Path).",
     )
     args = parser.parse_args(sys.argv[1:])
     main(args)
