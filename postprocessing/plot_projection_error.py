@@ -68,10 +68,10 @@ def main(args):
 
         # FIXME should be part of DATA to load ...
         reference = exp(-modes / 5)
-        ax.semilogy(modes, reference, color=black[0], ls="--", label=r"$\exp(-N/5)$")
+        ax.semilogy(modes, reference, color=black[0], ls="--", label=r"$\exp(-n/5)$")
 
-        ax.set_xlabel(r"Number of modes $N$")
-        ylabel = r"\max_j\norm{s_j - \sum_i(s_j, \xi_i)_V \xi_i}_V"
+        ax.set_xlabel(r"Number of modes $n$")
+        ylabel = r"\max_j\norm{\bm{s}_j - \sum_{k=1}^n (\bm{s}_j, \bm{\xi}_k)_{\mathbb{V}} \bm{\xi}_k}_{\mathbb{V}}"
         ax.set_ylabel(r"${}$".format(ylabel))
         ax.legend()
 
