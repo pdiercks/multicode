@@ -9,7 +9,7 @@ The library contains
 
 To use the library you need to install all software dependencies which are listed in the below command(s) (using conda and pip).
 ```
-conda create -n <env-name> fenics=2019.1.0 gmsh=4.6.0 doit meshio=4.3.1 matplotlib pyaml line_profiler pymor=2020.1.2 pytest
+conda create -n <env-name> fenics=2019.1.0 gmsh=4.6.0 doit meshio=4.3.1 matplotlib pyaml line_profiler pymor=2020.1.2 pytest fenics_helpers
 conda activate <env-name> && conda install -c pdiercks pygmsh
 ```
 Or:
@@ -23,11 +23,6 @@ Note that you need to change the `prefix` in `env.yml`
 
 Unfortunately not all required packages are available from `anaconda.org`.
 These are installed via pip *after* everything else was installed successfully.
-
-#### fenics_helpers
-```
-pip3 install --user git+https://github.com/BAMresearch/fenics_helpers.git
-```
 
 #### multi
 ```
