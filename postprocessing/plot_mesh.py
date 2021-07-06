@@ -72,8 +72,8 @@ def main(args):
             plt.axis("off")
         else:
             ax = fig.axes[0]
-            ax.set_xlabel(r"$x$")
-            ax.set_ylabel(r"$y$")
+            ax.set_xlabel(r"$x$ in $\mathrm{mm}$")
+            ax.set_ylabel(r"$y$ in $\mathrm{mm}$")
         plot(mesh)
 
 

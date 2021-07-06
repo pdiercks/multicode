@@ -83,10 +83,10 @@ def main(args):
                 marker=markers[i],
                 label=args["--label"][i],
             )
-        ax.set_xlabel("Number of modes per edge.")
-        numerator = r"\norm{u_{\mathrm{dns}} - u_{\mathrm{rb}}}"
-        denominator = r"\norm{u_{\mathrm{dns}}}"
-        ax.set_ylabel(r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator))
+        ax.set_xlabel("Number of modes per edge.", fontsize=12)
+        numerator = r"\norm{u_{\mathrm{fom}} - u_{\mathrm{rom}}}"
+        denominator = r"\norm{u_{\mathrm{fom}}}"
+        ax.set_ylabel(r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator), fontsize=12)
         if args["legend"]:
             ax.legend()
 
