@@ -35,12 +35,6 @@ git clone https://git.bam.de/mechanics/pdiercks/multicode.git && cd multi
 pip install .
 ```
 
-#### plotstuff
-```
-git clone https://git.bam.de/mechanics/cpohl/plotstuff.git && cd plotstuff
-pip install .
-```
-
 ## Usage
 
 The following tasks can be completed with this library:
