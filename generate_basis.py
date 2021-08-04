@@ -66,6 +66,7 @@ from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.constructions import LincombOperator, VectorOperator
 from pymor.parameters.functionals import ProjectionParameterFunctional
 from pymor.reductors.basic import extend_basis
+from pymor.tools.timing import Timer
 
 
 def parse_arguments(args):
@@ -733,6 +734,8 @@ def main(args):
     logger = getLogger("basis construction")
     logger.setLevel(args["--log"])
 
+    timer = Timer("main")
+    timer.start()
     rve_fom, rve_problem = discretize_rve(args)
     V = rve_problem.V
     with logger.block("Computing coarse scale basis phi ..."):
@@ -813,16 +816,6 @@ def main(args):
                 3: hier_chi,
             }
 
-    if args["--chi"]:
-        logger.info(f"Saving edge basis chi to file {args['--chi']} ...")
-        np.savez(
-            args["--chi"],
-            b=chi[0].to_numpy(),
-            r=chi[1].to_numpy(),
-            t=chi[2].to_numpy(),
-            l=chi[3].to_numpy(),
-        )
-
     with logger.block("Computing psi_j ..."):
         psi = []
         for i in range(len(rve_problem.domain.edges)):
@@ -836,14 +829,6 @@ def main(args):
             )
             psi.append(psi_)
 
-    if args["--check-interface"]:
-        ctol = args["--check-interface"]
-        with logger.block(f"Checking interface compatibility with tol={ctol} ... "):
-            check_interface_compatibility(psi[0], psi[2], V_to_L[0], V_to_L[2], ctol)
-            logger.info("Set bottom-top is okay.")
-            check_interface_compatibility(psi[1], psi[3], V_to_L[1], V_to_L[3], ctol)
-            logger.info("Set right-left is okay.")
-
     S = FenicsVectorSpace(rve_problem.V)
     basis = S.empty()
     basis.append(phi)
@@ -852,6 +837,27 @@ def main(args):
         for k in range(len(psi)):
             # append mode i for k in (bottom, right, top, left)
             basis.append(psi[k][i])
+
+    timer.stop()
+    logger.info(f"Time for offline phase: {timer.dt}")
+
+    if args["--check-interface"]:
+        ctol = args["--check-interface"]
+        with logger.block(f"Checking interface compatibility with tol={ctol} ... "):
+            check_interface_compatibility(psi[0], psi[2], V_to_L[0], V_to_L[2], ctol)
+            logger.info("Set bottom-top is okay.")
+            check_interface_compatibility(psi[1], psi[3], V_to_L[1], V_to_L[3], ctol)
+            logger.info("Set right-left is okay.")
+
+    if args["--chi"]:
+        logger.info(f"Saving edge basis chi to file {args['--chi']} ...")
+        np.savez(
+            args["--chi"],
+            b=chi[0].to_numpy(),
+            r=chi[1].to_numpy(),
+            t=chi[2].to_numpy(),
+            l=chi[3].to_numpy(),
+        )
 
     if args["--psi"]:
         np.savez(
