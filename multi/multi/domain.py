@@ -59,6 +59,8 @@ class Domain:
 
         if edges:
             self._load_edges(translate)
+        else:
+            self.edges = False
         self.id = int(id_)
 
     def translate(self, point):
@@ -77,7 +79,7 @@ class Domain:
         self.xmax = np.amax(coord[:, 0])
         self.ymin = np.amin(coord[:, 1])
         self.ymax = np.amax(coord[:, 1])
-        # update edges
+        # update edges if True
         if self.edges:
             for edge in self.edges:
                 edge.translate(point)
