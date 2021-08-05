@@ -767,7 +767,7 @@ def main(args):
                     training_set.append({"mu": row})
             else:
                 logger.info(
-                    "Reading training-set from file {args['--trainig-set']} ... "
+                    f"Reading training-set from file {args['--trainig-set']} ... "
                 )
                 training_set = []
                 try:
