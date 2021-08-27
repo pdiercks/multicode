@@ -22,7 +22,7 @@ from pathlib import Path
 from docopt import docopt
 
 import yaml
-from plotstuff import PlottingContext
+from multi.plotting_context import PlottingContext
 import numpy as np
 
 import dolfin as df
