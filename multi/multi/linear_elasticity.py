@@ -142,21 +142,24 @@ class LinearElasticityProblem:
             mat = self.materials[0]
             return df.inner(mat.sigma(u), mat.eps(v)) * self.dx
 
-    def get_rhs(self, gravity=None):
+    def get_rhs(self, body_forces=None):
         """get linear form f(v) of the problem"""
         v = self.v
         zero = (0.0,) * self.gdim
-        if gravity:
-            # TODO allow value for gravity
-            raise NotImplementedError
-        if not self.bc_handler.has_forces():
-            self.logger.info(
-                "No neumann data was defined for this problem."
-                + " Returning zero right hand side ..."
-            )
-            return df.dot(df.Constant(zero), v) * df.ds
-        else:
-            return self.bc_handler.boundary_forces()
+        rhs = df.dot(df.Constant(zero), v) * df.dx
+        if body_forces is not None:
+            if len(self.materials) > 1:
+                assert isinstance(body_forces, (list, tuple))
+                assert len(body_forces) == len(self.materials)
+                for i in range(len(self.materials)):
+                    rhs += df.dot(body_forces[i], v) * self.dx(i + 1)
+            else:
+                rhs += df.dot(body_forces, v) * self.dx
+
+        if self.bc_handler.has_forces():
+            rhs += self.bc_handler.boundary_forces()
+
+        return rhs
 
     def get_product(self, name="energy", bcs=True):
         """get inner product associated with V of the problem

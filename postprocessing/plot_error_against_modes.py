@@ -18,7 +18,7 @@ import sys
 import yaml
 from pathlib import Path
 from docopt import docopt
-from plotstuff import PlottingContext
+from multi.plotting_context import PlottingContext
 from numpy import load, arange
 from matplotlib.lines import Line2D
 
@@ -64,7 +64,7 @@ def main(args):
         colors.append(tuple(y))
 
     markers_dict = Line2D.markers
-    markers_dict.pop(',')  # do not like this one
+    markers_dict.pop(",")  # do not like this one
     markers = list(markers_dict)
 
     if len(args["DATA"]) > len(colors):
@@ -86,7 +86,9 @@ def main(args):
         ax.set_xlabel("Number of modes per edge.", fontsize=12)
         numerator = r"\norm{u_{\mathrm{fom}} - u_{\mathrm{rom}}}"
         denominator = r"\norm{u_{\mathrm{fom}}}"
-        ax.set_ylabel(r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator), fontsize=12)
+        ax.set_ylabel(
+            r"$\nicefrac{{{}}}{{{}}}$".format(numerator, denominator), fontsize=12
+        )
         if args["legend"]:
             ax.legend()
 

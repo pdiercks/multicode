@@ -16,7 +16,7 @@ import sys
 import yaml
 from pathlib import Path
 from docopt import docopt
-from plotstuff import PlottingContext
+from multi.plotting_context import PlottingContext
 from matplotlib.lines import Line2D
 from numpy import arange, genfromtxt, exp
 

@@ -25,7 +25,7 @@ import numpy as np
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
-from plotstuff import PlottingContext
+from multi.plotting_context import PlottingContext
 from multi.misc import read_basis
 
 from dolfin import XDMFFile, Mesh, FunctionSpace

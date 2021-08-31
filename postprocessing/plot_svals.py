@@ -18,7 +18,7 @@ import sys
 import yaml
 from pathlib import Path
 from docopt import docopt
-from plotstuff import PlottingContext
+from multi.plotting_context import PlottingContext
 from numpy import load, arange, amax, newaxis
 from matplotlib.lines import Line2D
 

@@ -21,7 +21,7 @@ from docopt import docopt
 from pathlib import Path
 
 from dolfin import Mesh, MeshValueCollection, XDMFFile, MeshFunction, plot
-from plotstuff import PlottingContext
+from multi.plotting_context import PlottingContext
 from matplotlib.colors import ListedColormap
 from numpy import load
 
