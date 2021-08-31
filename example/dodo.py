@@ -140,7 +140,7 @@ def task_generate_basis():
         ]
         cmd = f"python {script} {block} {rve} {a} {degree} {mat} -l 10"
         cmd += f" --training-set=delta --type={basis} --serendipity"
-        cmd += f" --output={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
+        cmd += f" --psi={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
         cmd += f" --solver={solver} --test --check-interface=1e-8"
         if basis == "hierarchical":
             cmd += " --pmax=12"
