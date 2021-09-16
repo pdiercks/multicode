@@ -239,7 +239,7 @@ def main(args):
         boundaries=False,
     )
     geom.add_raw_code("Coherence;")  # removes duplicate points
-    geom.add_raw_code("Mesh.Smoothing = 100;")
+    geom.add_raw_code("Mesh.Smoothing = 2;")
 
     mshfile = path + "/" + base + ext if ext == ".msh" else None
     geofile = path + "/" + base + ext if ext == ".geo" else None
