@@ -37,7 +37,7 @@ def main(args):
     ntransfinite = args["NT"]
     parameters = f"""NTransfinite = {ntransfinite};
     meshMatrix = 20.0 / (NTransfinite - 1.0);
-    meshAggreg = 0.8 * meshMatrix;"""
+    meshAggreg = 0.7 * meshMatrix;"""
 
     function_aggregate = """Function Aggregate
       // circle at (xC, yC) and radius "R"
