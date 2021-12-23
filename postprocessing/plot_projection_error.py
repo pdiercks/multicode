@@ -64,6 +64,8 @@ def main(args):
         ax = fig.subplots()
         for k, (e, n) in enumerate(zip(errors.T, names)):
             modes = arange(e.size)
+            if n == "h1":
+                n = r"$H_1$"
             ax.semilogy(modes, e, color=colors[k], marker=markers[k], label=n)
 
         # FIXME should be part of DATA to load ...
