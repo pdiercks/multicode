@@ -1,8 +1,14 @@
 import dolfin as df
 import numpy as np
 from multi.shapes import NumpyQuad
-from pymor.bindings.fenics import FenicsVectorSpace
+from pymor.bindings.fenics import (
+    FenicsVectorSpace,
+    FenicsMatrixOperator,
+    FenicsVisualizer,
+)
 from pymor.operators.constructions import LincombOperator, VectorOperator
+from pymor.models.basic import StationaryModel
+from pymor.parameters.functionals import ProjectionParameterFunctional
 
 
 def construct_coarse_scale_basis(problem, solver_options=None, return_fom=False):
