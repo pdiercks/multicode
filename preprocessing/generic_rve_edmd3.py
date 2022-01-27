@@ -1,3 +1,5 @@
+# This code was written by Thomas Titscher.
+# By the courtesy of Thomas Titscher it was slightly modified and used.
 import numpy as np
 import edmd
 
