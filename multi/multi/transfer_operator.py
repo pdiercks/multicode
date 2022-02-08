@@ -1,9 +1,12 @@
+# NOTE the implementation of the discretization of the transfer
+# operator with Fenics is based on the code published along with [BS18]
+# [BS18]: https://arxiv.org/abs/1706.09179
+
 import time
 import dolfin as df
 import numpy as np
 from scipy.sparse import linalg
 import scipy.sparse as sp
-from multi import Domain, LinearElasticityProblem
 from multi.misc import make_mapping
 
 
@@ -11,9 +14,7 @@ def average_remover(size):
     return np.eye(size) - np.ones((size, size)) / float(size)
 
 
-# NOTE this implementation is based on the code published along with [BS18]
-# [BS18]: https://arxiv.org/abs/1706.09179
-def transfer_operator_subdomains_2d(problem, subdomain, ar=False):
+def transfer_operator_subdomains_2d(problem, subdomain, product=None, ar=False):
     """Discretize the transfer operator
 
     Parameters
@@ -22,10 +23,18 @@ def transfer_operator_subdomains_2d(problem, subdomain, ar=False):
         A suitable oversampling problem.
     subdomain : multi.Domain
         The target subdomain.
+    product : optional, str
+        The inner product of range and source space.
+        See multi.product.InnerProduct for possible values.
 
     Returns
     -------
     tranfer_operator :
+        The transfer operator matrix for the given problem and target subdomain.
+    source_product :
+        Inner product matrix of the source space.
+    range_product :
+        Inner product matrix of the range space.
 
     """
     # full space
@@ -65,4 +74,17 @@ def transfer_operator_subdomains_2d(problem, subdomain, ar=False):
     if ar:
         ar = average_remover(transfer_operator.shape[0])
         transfer_operator = ar.dot(transfer_operator)
-    return transfer_operator
+
+    # compute inner products
+    if product is not None:
+        inner_product = problem.get_product(name=product, bcs=False)
+        P = df.as_backend_type(inner_product).mat()
+        full_product_operator = sp.csc_matrix(P.getValuesCSR()[::-1], shape=P.size)
+
+        source_product = full_product_operator[dirichlet_dofs, :][:, dirichlet_dofs]
+        range_product = full_product_operator[V_to_R, :][:, V_to_R]
+    else:
+        source_product = None
+        range_product = None
+
+    return (transfer_operator, source_product, range_product)
