@@ -8,6 +8,7 @@ import numpy as np
 from scipy.sparse import linalg
 import scipy.sparse as sp
 from multi.misc import make_mapping
+from pymor.operators.numpy import NumpyMatrixOperator
 
 
 def average_remover(size):
@@ -29,11 +30,11 @@ def transfer_operator_subdomains_2d(problem, subdomain, product=None, ar=False):
 
     Returns
     -------
-    tranfer_operator :
+    tranfer_operator : NumpyMatrixOperator
         The transfer operator matrix for the given problem and target subdomain.
-    source_product :
+    source_product : NumpyMatrixOperator or None
         Inner product matrix of the source space.
-    range_product :
+    range_product : NumpyMatrixOperator or None
         Inner product matrix of the range space.
 
     """
@@ -81,10 +82,12 @@ def transfer_operator_subdomains_2d(problem, subdomain, product=None, ar=False):
         P = df.as_backend_type(inner_product).mat()
         full_product_operator = sp.csc_matrix(P.getValuesCSR()[::-1], shape=P.size)
 
-        source_product = full_product_operator[dirichlet_dofs, :][:, dirichlet_dofs]
-        range_product = full_product_operator[V_to_R, :][:, V_to_R]
+        source_product = NumpyMatrixOperator(
+            full_product_operator[dirichlet_dofs, :][:, dirichlet_dofs]
+        )
+        range_product = NumpyMatrixOperator(full_product_operator[V_to_R, :][:, V_to_R])
     else:
         source_product = None
         range_product = None
 
-    return (transfer_operator, source_product, range_product)
+    return (NumpyMatrixOperator(transfer_operator), source_product, range_product)
