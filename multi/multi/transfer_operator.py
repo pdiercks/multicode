@@ -29,7 +29,9 @@ def modified_adaptive_rrf(
     num_testvecs=20,
     lambda_min=None,
     train_vectors=None,
+    init_basis=None,
     iscomplex=False,
+    check_ortho=True,
 ):
     r"""Adaptive randomized range approximation of `A`.
 
@@ -67,8 +69,13 @@ def modified_adaptive_rrf(
     train_vectors
         |VectorArray| containing a set of predefined training
         vectors.
+    init_basis
+        Initialize basis with numpy array init_basis.
     iscomplex
         If `True`, the random vectors are chosen complex.
+    check_ortho
+        If `True`, in modified Gram-Schmidt algorithm check if
+        the resulting |VectorArray| is really orthonormal.
 
     Returns
     -------
@@ -85,7 +92,10 @@ def modified_adaptive_rrf(
     )
     assert isinstance(A, Operator)
 
-    B = A.range.empty()
+    if init_basis is None:
+        B = A.range.empty()
+    else:
+        B = A.range.from_numpy(init_basis)
 
     R = A.source.random(num_testvecs, distribution="normal")
     if iscomplex:
@@ -120,16 +130,28 @@ def modified_adaptive_rrf(
     maxnorm = np.inf
     M = A.apply(R)
 
+    initial_basis_length = len(B)
     while maxnorm > testlimit:
         basis_length = len(B)
-        if train_vectors is not None and basis_length < len(train_vectors):
-            v = train_vectors[basis_length]
+        if (
+            train_vectors is not None
+            and basis_length < len(train_vectors) + initial_basis_length
+        ):
+            v = train_vectors[basis_length - initial_basis_length]
         else:
             v = A.source.random(distribution="normal")
             if iscomplex:
                 v += 1j * A.source.random(distribution="normal")
         B.append(A.apply(v))
-        gram_schmidt(B, range_product, atol=0, rtol=0, offset=basis_length, copy=False)
+        gram_schmidt(
+            B,
+            range_product,
+            atol=0,
+            rtol=0,
+            offset=basis_length,
+            check=check_ortho,
+            copy=False,
+        )
         M -= B.lincomb(B.inner(M, range_product).T)
         maxnorm = np.max(M.norm(range_product))
 
@@ -141,7 +163,13 @@ def average_remover(size):
 
 
 def transfer_operator_subdomains_2d(
-    problem, subdomain, gamma_out, bc_hom=None, product=None, ar=False
+    problem,
+    subdomain,
+    gamma_out,
+    bc_hom=None,
+    product=None,
+    return_range=False,
+    ar=False,
 ):
     r"""Discretize the transfer operator
 
@@ -163,6 +191,8 @@ def transfer_operator_subdomains_2d(
     product : optional, str
         The inner product of range and source space.
         See multi.product.InnerProduct for possible values.
+    return_range : optional, bool
+        If `True`, return range space.
 
     Returns
     -------
@@ -172,6 +202,8 @@ def transfer_operator_subdomains_2d(
         Inner product matrix of the source space.
     range_product : NumpyMatrixOperator or None
         Inner product matrix of the range space.
+    range_space : dolfin.FunctionSpace
+        The range space (if `return_range` is `True`).
 
     """
     # full space
@@ -245,4 +277,7 @@ def transfer_operator_subdomains_2d(
         source_product = None
         range_product = None
 
-    return (NumpyMatrixOperator(transfer_operator), source_product, range_product)
+    if return_range:
+        return NumpyMatrixOperator(transfer_operator), source_product, range_product, R
+    else:
+        return NumpyMatrixOperator(transfer_operator), source_product, range_product
