@@ -140,15 +140,26 @@ def average_remover(size):
     return np.eye(size) - np.ones((size, size)) / float(size)
 
 
-def transfer_operator_subdomains_2d(problem, subdomain, product=None, ar=False):
-    """Discretize the transfer operator
+def transfer_operator_subdomains_2d(
+    problem, subdomain, gamma_out, bc_hom=None, product=None, ar=False
+):
+    r"""Discretize the transfer operator
+
+    The discrete operator can then be used to construct a spectral basis.
+    The following cases are covered (see [BS18]_ for the notation):
+        (i) ∂Ω_in ∩ Σ_D = Ø and f = 0
+        (ii) ∂Ω_in ∩ Σ_D ≠ Ø and homogeneous BCs on Σ_D and f = 0
 
     Parameters
     ----------
     problem : multi.LinearElasticityProblem
         A suitable oversampling problem.
-    subdomain : multi.Domain
+    subdomain : multi.Domain or dolfin.SubDomain
         The target subdomain.
+    gamma_out : dolfin.cpp.mesh.SubDomain or dolfin.cpp.mesh.MeshFunctionSizet
+        The boundary Γ_out:= ∂Ω \ ∂Ω_gl.
+    bc_hom : optional, dolfin.fem.dirichletbc.DirichletBC or list thereof
+        Homogeneous dirichlet boundary conditions (case (ii)).
     product : optional, str
         The inner product of range and source space.
         See multi.product.InnerProduct for possible values.
@@ -165,18 +176,37 @@ def transfer_operator_subdomains_2d(problem, subdomain, product=None, ar=False):
     """
     # full space
     V = problem.V
+    try:
+        # subdomain is instance of multi.Domain
+        subdomain_mesh = subdomain.mesh
+    except AttributeError:
+        # subdomain is instance of dolfin.SubDomain
+        subdomain_mesh = df.SubMesh(V.mesh(), subdomain)
+
     # range space
-    R = df.FunctionSpace(subdomain.mesh, V.ufl_element())
+    R = df.FunctionSpace(subdomain_mesh, V.ufl_element())
     V_to_R = make_mapping(R, V)
 
-    # dofs
+    # operator A (oversampling domain Ω)
+    A = df.assemble(problem.get_lhs())
+    if bc_hom is not None:
+        dummy = df.Function(V)
+        try:
+            # single bc
+            bc_hom.zero_columns(A, dummy.vector(), 1.0)
+        except AttributeError:
+            # list of bcs
+            for bc in bc_hom:
+                bc.zero_columns(A, dummy.vector(), 1.0)
+
+    # dirichlet dofs associated with Γ_out
     all_dofs = np.arange(V.dim())
-    bcs = df.DirichletBC(V, df.Constant((0.0, 0.0)), df.DomainBoundary())
+    bcs = df.DirichletBC(V, df.Function(V), gamma_out)
     dirichlet_dofs = np.array(list(bcs.get_boundary_values().keys()))
     all_inner_dofs = np.setdiff1d(all_dofs, dirichlet_dofs)
 
-    A = df.as_backend_type(df.assemble(problem.get_lhs())).mat()
-    full_operator = csc_matrix(A.getValuesCSR()[::-1], shape=A.size)
+    Amat = df.as_backend_type(A).mat()
+    full_operator = csc_matrix(Amat.getValuesCSR()[::-1], shape=Amat.size)
     operator = full_operator[:, all_inner_dofs][all_inner_dofs, :]
 
     # factorization
