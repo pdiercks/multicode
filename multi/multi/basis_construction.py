@@ -1,0 +1,266 @@
+import numpy as np
+import dolfin as df
+
+from multi.shapes import NumpyQuad
+
+from scipy.sparse.linalg import eigsh, LinearOperator
+from scipy.special import erfinv
+
+from pymor.algorithms.gram_schmidt import gram_schmidt
+from pymor.bindings.fenics import (
+    FenicsVectorSpace,
+    FenicsMatrixOperator,
+    FenicsVisualizer,
+)
+from pymor.models.basic import StationaryModel
+from pymor.operators.constructions import LincombOperator, VectorOperator
+from pymor.operators.interface import Operator
+from pymor.parameters.functionals import ProjectionParameterFunctional
+from pymor.vectorarrays.interface import VectorArray
+
+
+def construct_coarse_scale_basis(problem, solver_options=None, return_fom=False):
+    """construct coarse scale basis for given subdomain problem
+
+    Parameters
+    ----------
+    problem : a suitable problem like :class:`~multi.linear_elasticity.LinearElasticityProblem`
+    solver_options : dict, optional
+        A dict of strings. See https://github.com/pymor/pymor/blob/2021.2.0/src/pymor/operators/interface.py
+    return_fom : bool, optional
+        If True, the full order model is returned.
+
+    Returns
+    -------
+    basis : Fenics VectorArray
+        The coarse scale basis for given subdomain.
+    fom
+        The full order model (if `return_fom` is `True`).
+
+    """
+    # full system matrix
+    A = df.assemble(problem.get_lhs())
+
+    # ### define bilinear shape functions as inhomogeneous dirichlet bcs
+    V = problem.V
+    f = df.Function(V)  # placeholder for rhs vector operators
+    g = df.Function(V)  # boundary data
+    n_vertices = 4  # assumes rectangular domain
+    nodes = problem.domain.get_nodes(n=n_vertices)
+    quadrilateral = NumpyQuad(nodes)
+    shape_functions = quadrilateral.interpolate(V)
+
+    null = np.zeros(V.dim())
+    space = FenicsVectorSpace(V)
+    vector_operators = []
+    for shape in shape_functions:
+        f.vector().set_local(null)
+        g.vector().set_local(shape)
+        bc = df.DirichletBC(V, g, df.DomainBoundary())
+        A_bc = A.copy()
+        bc.zero_columns(A_bc, f.vector(), 1.0)
+        vector_operators.append(VectorOperator(space.make_array([f.vector().copy()])))
+
+    lhs = FenicsMatrixOperator(A_bc, V, V, solver_options=solver_options)
+    parameter_functionals = [
+        ProjectionParameterFunctional("mu", shape_functions.shape[0], index=i)
+        for i in range(shape_functions.shape[0])
+    ]
+    rhs = LincombOperator(vector_operators, parameter_functionals)
+
+    # ### inner products
+    energy_mat = A.copy()
+    energy_0_mat = A_bc.copy()
+    l2_mat = problem.get_product(name="l2", bcs=False)
+    l2_0_mat = l2_mat.copy()
+    h1_mat = problem.get_product(name="h1", bcs=False)
+    h1_0_mat = h1_mat.copy()
+    bc.apply(l2_0_mat)
+    bc.apply(h1_0_mat)
+
+    fom = StationaryModel(
+        lhs,
+        rhs,
+        output_functional=None,
+        products={
+            "energy": FenicsMatrixOperator(energy_mat, V, V, name="energy"),
+            "energy_0": FenicsMatrixOperator(energy_0_mat, V, V, name="energy_0"),
+            "l2": FenicsMatrixOperator(l2_mat, V, V, name="l2"),
+            "l2_0": FenicsMatrixOperator(l2_0_mat, V, V, name="l2_0"),
+            "h1": FenicsMatrixOperator(h1_mat, V, V, name="h1"),
+            "h1_0": FenicsMatrixOperator(h1_0_mat, V, V, name="h1_0"),
+        },
+        estimator=None,
+        visualizer=FenicsVisualizer(space),
+        name="FOM",
+    )
+
+    # ### compute the coarse scale basis
+    dim = 2  # spatial dimension
+    z = dim * n_vertices
+    basis = fom.operator.source.empty(reserve=z)
+    Identity = np.eye(z)
+    for row in Identity:
+        basis.append(fom.solve({"mu": row}))
+
+    if return_fom:
+        return basis, fom
+    else:
+        return basis
+
+
+def construct_empirical_basis(
+    A,
+    coarse_scale_basis,
+    range_space,
+    source_product=None,
+    range_product=None,
+    tol=1e-4,
+    failure_tolerance=1e-15,
+    num_testvecs=20,
+    lambda_min=None,
+    train_vectors=None,
+    iscomplex=False,
+    check_ortho=True,
+):
+    r"""Adaptive randomized range approximation of `A`.
+
+    This is an implementation of Algorithm 1 in [BS18]_.
+    It was modified to use a predefined set of source vectors `train_vectors` as
+    training data for the first `len(train_vectors)` basis functions.
+
+    Given the |Operator| `A`, the return value of this method is the |VectorArray|
+    `B` with the property
+
+    .. math::
+        \Vert A - P_{span(B)} A \Vert \leq tol
+
+    with a failure probability smaller than `failure_tolerance`, where the norm denotes the
+    operator norm. The inner product of the range of `A` is given by `range_product` and
+    the inner product of the source of `A` is given by `source_product`.
+
+    Parameters
+    ----------
+    A
+        The (transfer) |Operator| A.
+    coarse_scale_basis
+        The |VectorArray| containing the coarse scale basis.
+    range_space
+        The dolfin.FunctionSpace representing the range space.
+    source_product
+        Inner product |Operator| of the source of A.
+    range_product
+        Inner product |Operator| of the range of A.
+    tol
+        Error tolerance for the algorithm.
+    failure_tolerance
+        Maximum failure probability.
+    num_testvecs
+        Number of test vectors.
+    lambda_min
+        The smallest eigenvalue of source_product.
+        If `None`, the smallest eigenvalue is computed using scipy.
+    train_vectors
+        |VectorArray| containing a set of predefined training
+        vectors.
+    iscomplex
+        If `True`, the random vectors are chosen complex.
+    check_ortho
+        If `True`, in modified Gram-Schmidt algorithm check if
+        the resulting |VectorArray| is really orthonormal.
+
+    Returns
+    -------
+    B
+        |VectorArray| which contains the basis, whose span approximates the range of A.
+    """
+
+    assert source_product is None or isinstance(source_product, Operator)
+    assert range_product is None or isinstance(range_product, Operator)
+    assert (
+        train_vectors is None
+        or isinstance(train_vectors, VectorArray)
+        and train_vectors.space is A.source
+    )
+    assert isinstance(A, Operator)
+    assert coarse_scale_basis.space is A.range
+
+    R = A.source.random(num_testvecs, distribution="normal")
+    if iscomplex:
+        R += 1j * A.source.random(num_testvecs, distribution="normal")
+
+    if source_product is None:
+        lambda_min = 1
+    elif lambda_min is None:
+
+        def mv(v):
+            return source_product.apply(source_product.source.from_numpy(v)).to_numpy()
+
+        def mvinv(v):
+            return source_product.apply_inverse(
+                source_product.range.from_numpy(v)
+            ).to_numpy()
+
+        L = LinearOperator(
+            (source_product.source.dim, source_product.range.dim), matvec=mv
+        )
+        Linv = LinearOperator(
+            (source_product.range.dim, source_product.source.dim), matvec=mvinv
+        )
+        lambda_min = eigsh(
+            L, sigma=0, which="LM", return_eigenvectors=False, k=1, OPinv=Linv
+        )[0]
+
+    testfail = failure_tolerance / min(A.source.dim, A.range.dim)
+    testlimit = (
+        np.sqrt(2.0 * lambda_min) * erfinv(testfail ** (1.0 / num_testvecs)) * tol
+    )
+    maxnorm = np.inf
+    M = A.apply(R)
+
+    # assumes target subdomain is rectangle
+    mesh = range_space.mesh()
+    coord = mesh.coordinates()
+    xmin = np.amin(coord[:, 0])
+    xmax = np.amax(coord[:, 0])
+    ymin = np.amin(coord[:, 1])
+    ymax = np.amax(coord[:, 1])
+    nodes = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
+    f = df.Function(range_space)
+
+    B = coarse_scale_basis
+    initial_basis_length = len(B)
+    while maxnorm > testlimit:
+        basis_length = len(B)
+        if (
+            train_vectors is not None
+            and basis_length < len(train_vectors) + initial_basis_length
+        ):
+            v = train_vectors[basis_length - initial_basis_length]
+        else:
+            v = A.source.random(distribution="normal")
+            if iscomplex:
+                v += 1j * A.source.random(distribution="normal")
+
+        # subtract coarse scale part
+        r = A.apply(v)
+        f.vector().set_local(r.to_numpy().flatten())
+        nodal_values = np.array([], float)
+        for n in nodes:
+            nodal_values = np.append(nodal_values, f(n))
+        r -= B[:initial_basis_length].lincomb(nodal_values)
+
+        B.append(r)
+        gram_schmidt(
+            B,
+            range_product,
+            atol=0,
+            rtol=0,
+            offset=basis_length,
+            check=check_ortho,
+            copy=False,
+        )
+        M -= B.lincomb(B.inner(M, range_product).T)
+        maxnorm = np.max(M.norm(range_product))
+
+    return B
