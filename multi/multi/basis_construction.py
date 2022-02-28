@@ -2,6 +2,7 @@ import numpy as np
 import dolfin as df
 
 from multi.shapes import NumpyQuad
+from multi.misc import locate_dofs
 
 from scipy.sparse.linalg import eigsh, LinearOperator
 from scipy.special import erfinv
@@ -109,7 +110,7 @@ def construct_coarse_scale_basis(problem, solver_options=None, return_fom=False)
         return basis
 
 
-def construct_empirical_basis(
+def compute_fine_scale_snapshots(
     A,
     coarse_scale_basis,
     range_space,
@@ -172,7 +173,7 @@ def construct_empirical_basis(
     Returns
     -------
     B
-        |VectorArray| which contains the basis, whose span approximates the range of A.
+        |VectorArray| which contains fine scale part of the training vectors.
     """
 
     assert source_product is None or isinstance(source_product, Operator)
@@ -227,16 +228,14 @@ def construct_empirical_basis(
     ymax = np.amax(coord[:, 1])
     nodes = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
     f = df.Function(range_space)
+    zero_dofs = locate_dofs(range_space.tabulate_dof_coordinates(), nodes)
 
-    B = coarse_scale_basis
-    initial_basis_length = len(B)
+    B = A.range.empty()
+    snapshots = A.range.empty()
     while maxnorm > testlimit:
         basis_length = len(B)
-        if (
-            train_vectors is not None
-            and basis_length < len(train_vectors) + initial_basis_length
-        ):
-            v = train_vectors[basis_length - initial_basis_length]
+        if train_vectors is not None and basis_length < len(train_vectors):
+            v = train_vectors[basis_length]
         else:
             v = A.source.random(distribution="normal")
             if iscomplex:
@@ -248,9 +247,10 @@ def construct_empirical_basis(
         nodal_values = np.array([], float)
         for n in nodes:
             nodal_values = np.append(nodal_values, f(n))
-        r -= B[:initial_basis_length].lincomb(nodal_values)
+        r -= coarse_scale_basis.lincomb(nodal_values)
+        snapshots.append(r)
 
-        B.append(r)
+        B.append(A.apply(v))
         gram_schmidt(
             B,
             range_product,
@@ -263,4 +263,9 @@ def construct_empirical_basis(
         M -= B.lincomb(B.inner(M, range_product).T)
         maxnorm = np.max(M.norm(range_product))
 
-    return B
+    zero_at_dofs = np.allclose(
+        snapshots.to_numpy()[:, zero_dofs], np.zeros(zero_dofs.size)
+    )
+    assert zero_at_dofs
+
+    return snapshots
