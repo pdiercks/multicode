@@ -3,7 +3,7 @@
 import numpy as np
 
 
-def compute_proj_errors(basis, V, product):
+def compute_proj_errors(basis, V, product, relative=True):
     G = basis.gramian(product=product)
     R = basis.inner(V, product=product)
     errors = []
@@ -24,8 +24,9 @@ def compute_proj_errors(basis, V, product):
             print("---- OOOOPS! ---- ")
             print("---- NaN for product {}, N = {} ----".format(product.name, N))
             break
-        alpha = V.norm(product=product)
-        err /= alpha
+        if relative:
+            alpha = V.norm(product=product)
+            err /= alpha
         errors.append(np.max(err))
     return errors
 
@@ -44,13 +45,14 @@ def project(basis, V, product, orth=False):
     return V_proj
 
 
-def compute_proj_errors_orth_basis(basis, V, product):
+def compute_proj_errors_orth_basis(basis, V, product, relative=True):
     errors = []
     for N in range(len(basis) + 1):
         v = V.inner(basis[:N], product=product)
         V_proj = basis[:N].lincomb(v)
         err = (V - V_proj).norm(product=product)
-        alpha = V.norm(product=product)
-        err /= alpha
+        if relative:
+            alpha = V.norm(product=product)
+            err /= alpha
         errors.append(np.max(err))
     return errors
