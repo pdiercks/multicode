@@ -163,8 +163,8 @@ def average_remover(size):
 
 
 def transfer_operator_subdomains_2d(
-    problem,
-    subdomain,
+    oversampling_problem,
+    subdomain_problem,
     gamma_out,
     bc_hom=None,
     product=None,
@@ -180,10 +180,10 @@ def transfer_operator_subdomains_2d(
 
     Parameters
     ----------
-    problem : multi.LinearElasticityProblem
+    oversampling_problem : multi.LinearElasticityProblem
         A suitable oversampling problem.
-    subdomain : multi.Domain or dolfin.SubDomain
-        The target subdomain.
+    subdomain_problem : multi.LinearElasticityProblem
+        The target subdomain problem.
     gamma_out : dolfin.cpp.mesh.SubDomain or dolfin.cpp.mesh.MeshFunctionSizet
         The boundary Γ_out:= ∂Ω \ ∂Ω_gl.
     bc_hom : optional, dolfin.fem.dirichletbc.DirichletBC or list thereof
@@ -207,20 +207,14 @@ def transfer_operator_subdomains_2d(
 
     """
     # full space
-    V = problem.V
-    try:
-        # subdomain is instance of multi.Domain
-        subdomain_mesh = subdomain.mesh
-    except AttributeError:
-        # subdomain is instance of dolfin.SubDomain
-        subdomain_mesh = df.SubMesh(V.mesh(), subdomain)
+    V = oversampling_problem.V
 
     # range space
-    R = df.FunctionSpace(subdomain_mesh, V.ufl_element())
+    R = subdomain_problem.V
     V_to_R = make_mapping(R, V)
 
     # operator A (oversampling domain Ω)
-    A = df.assemble(problem.get_lhs())
+    A = df.assemble(oversampling_problem.get_lhs())
     if bc_hom is not None:
         dummy = df.Function(V)
         try:
@@ -265,14 +259,21 @@ def transfer_operator_subdomains_2d(
 
     # compute inner products
     if product is not None:
-        inner_product = problem.get_product(name=product, bcs=False)
+        inner_product = oversampling_problem.get_product(name=product, bcs=False)
         P = df.as_backend_type(inner_product).mat()
         full_product_operator = csc_matrix(P.getValuesCSR()[::-1], shape=P.size)
 
         source_product = NumpyMatrixOperator(
             full_product_operator[dirichlet_dofs, :][:, dirichlet_dofs]
         )
-        range_product = NumpyMatrixOperator(full_product_operator[V_to_R, :][:, V_to_R])
+        # NOTE slice of full operaton not equal inner product from R directly
+        # range_product = NumpyMatrixOperator(full_product_operator[V_to_R, :][:, V_to_R])
+        inner_product_R = subdomain_problem.get_product(name=product, bcs=False)
+        range_product_mat = df.as_backend_type(inner_product_R).mat()
+        range_product_operator = csc_matrix(
+            range_product_mat.getValuesCSR()[::-1], shape=range_product_mat.size
+        )
+        range_product = NumpyMatrixOperator(range_product_operator)
     else:
         source_product = None
         range_product = None

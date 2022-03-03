@@ -2,6 +2,7 @@
 import numpy as np
 import dolfin as df
 from multi.transfer_operator import transfer_operator_subdomains_2d
+from multi.product import InnerProduct
 
 
 class DummyProblem:
@@ -11,6 +12,17 @@ class DummyProblem:
 
     def get_lhs(self):
         return self.lhs_form
+
+    def get_product(self, name="energy", bcs=False):
+        if bcs:
+            raise NotImplementedError
+        else:
+            bcs = ()
+        if name == "energy":
+            product = InnerProduct(self.V, name, bcs=bcs, form=self.get_lhs())
+        else:
+            product = InnerProduct(self.V, name, bcs=bcs)
+        return product.assemble()
 
 
 class TargetSubdomain(df.SubDomain):
@@ -43,8 +55,14 @@ def test():
 
     problem = DummyProblem(V, lhs_form)
     omega_in = TargetSubdomain()
+    submesh = df.SubMesh(mesh, omega_in)
+    R = df.FunctionSpace(submesh, V.ufl_element())
+    trial = df.TrialFunction(R)
+    test = df.TestFunction(R)
+    sub_lhs_form = df.inner(df.grad(trial), df.grad(test)) * df.dx
+    sub_problem = DummyProblem(R, sub_lhs_form)
     transfer_operator, _, _ = transfer_operator_subdomains_2d(
-        problem, omega_in, gamma_out, bc_hom=bc_hom, product=None
+        problem, sub_problem, gamma_out, bc_hom=bc_hom, product="energy"
     )
 
     # construct souce vector and solve
