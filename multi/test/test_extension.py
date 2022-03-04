@@ -10,6 +10,9 @@ if not df.has_linear_algebra_backend("PETSc"):
 # Set backend to PETSC
 prm = df.parameters
 prm["linear_algebra_backend"] = "PETSc"
+solver_prm = prm["krylov_solver"]
+solver_prm["relative_tolerance"] = 1e-7
+solver_prm["absolute_tolerance"] = 1e-9
 
 
 def test():
@@ -34,9 +37,7 @@ def test():
     u_ref = df.Function(V)
 
     A, b = df.assemble_system(lhs, rhs, bc)
-    pc = df.PETScPreconditioner("default")
-    solver = df.PETScKrylovSolver("default", pc)
-    solver.set_operator(A)
+    solver = df.KrylovSolver(A, "default", "default")
     solver.solve(u_ref.vector(), b)
 
     problem = DummyProblem(V, lhs)
