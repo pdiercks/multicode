@@ -228,7 +228,7 @@ def compute_fine_scale_snapshots(
     ymax = np.amax(coord[:, 1])
     nodes = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
     f = df.Function(range_space)
-    zero_dofs = locate_dofs(range_space.tabulate_dof_coordinates(), nodes)
+    vertex_dofs = locate_dofs(range_space.tabulate_dof_coordinates(), nodes)
 
     B = A.range.empty()
     snapshots = A.range.empty()
@@ -243,10 +243,7 @@ def compute_fine_scale_snapshots(
 
         # subtract coarse scale part
         r = A.apply(v)
-        f.vector().set_local(r.to_numpy().flatten())
-        nodal_values = np.array([], float)
-        for n in nodes:
-            nodal_values = np.append(nodal_values, f(n))
+        nodal_values = r.dofs(vertex_dofs)
         r -= coarse_scale_basis.lincomb(nodal_values)
         snapshots.append(r)
 
@@ -264,7 +261,7 @@ def compute_fine_scale_snapshots(
         maxnorm = np.max(M.norm(range_product))
 
     zero_at_dofs = np.allclose(
-        snapshots.to_numpy()[:, zero_dofs], np.zeros(zero_dofs.size)
+        snapshots.to_numpy()[:, vertex_dofs], np.zeros(vertex_dofs.size)
     )
     assert zero_at_dofs
 
