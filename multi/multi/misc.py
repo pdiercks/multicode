@@ -368,6 +368,29 @@ def set_zero_at_dofs(U, dofs, atol=1e-6):
         array[:, dofs] = np.zeros_like(zero)
 
 
+def restrict_to(domain, function):
+    """restrict given function to domain"""
+
+    try:
+        V = function.function_space()
+        U = [
+            function,
+        ]
+    except AttributeError:
+        V = function[0].function_space()
+        U = function
+
+    element = V.ufl_element()
+    Vsub = df.FunctionSpace(domain.mesh, element)
+    assert Vsub.dim() < V.dim()
+
+    interp = []
+    for u in U:
+        Iu = df.interpolate(u, Vsub)
+        interp.append(Iu)
+    return interp
+
+
 def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
     """returns dofs at coordinates X
 
