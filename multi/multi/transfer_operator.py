@@ -203,7 +203,7 @@ def transfer_operator_subdomains_2d(
     range_product : NumpyMatrixOperator or None
         Inner product matrix of the range space.
     range_space : dolfin.FunctionSpace
-        The range space (if `return_range` is `True`).
+        The range space as Fenics FunctionSpace (if `return_range` is `True`).
 
     """
     # full space
