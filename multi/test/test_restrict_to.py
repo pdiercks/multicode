@@ -10,7 +10,7 @@ class TargetSubdomain(df.SubDomain):
 
 
 def test():
-    mesh = df.UnitSquareMesh(6, 6)
+    mesh = df.UnitSquareMesh(100, 100)
     V = df.FunctionSpace(mesh, "CG", 2)
 
     omega_in = TargetSubdomain()
