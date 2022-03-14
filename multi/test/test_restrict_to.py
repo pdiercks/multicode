@@ -34,7 +34,7 @@ def test():
         assert value
 
     r = restrict_to(subdomain, f)
-    value = np.allclose(f.vector()[V_to_S], r[0].vector()[:])
+    value = np.allclose(f.vector()[V_to_S], r.vector()[:])
     assert value
 
 

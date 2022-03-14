@@ -369,26 +369,24 @@ def set_zero_at_dofs(U, dofs, atol=1e-6):
 
 
 def restrict_to(domain, function):
-    """restrict given function to domain"""
-
-    try:
-        V = function.function_space()
-        U = [
-            function,
-        ]
-    except AttributeError:
+    """restrict given function(s) to domain"""
+    if isinstance(function, list):
+        # assuming all functions are elements of V
         V = function[0].function_space()
-        U = function
-
-    element = V.ufl_element()
-    Vsub = df.FunctionSpace(domain.mesh, element)
-    assert Vsub.dim() < V.dim()
-
-    interp = []
-    for u in U:
-        Iu = df.interpolate(u, Vsub)
-        interp.append(Iu)
-    return interp
+        element = V.ufl_element()
+        Vsub = df.FunctionSpace(domain.mesh, element)
+        assert Vsub.dim() < V.dim()
+        interp = []
+        for f in function:
+            If = df.interpolate(f, Vsub)
+            interp.append(If)
+        return interp
+    else:
+        V = function.function_space()
+        element = V.ufl_element()
+        Vsub = df.FunctionSpace(domain.mesh, element)
+        assert Vsub.dim() < V.dim()
+        return df.interpolate(function, Vsub)
 
 
 def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
