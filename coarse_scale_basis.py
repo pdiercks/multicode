@@ -24,7 +24,7 @@ def construct_coarse_scale_basis(problem, solver_options=None, return_fom=False)
 
     Returns
     -------
-    basis : pymor.vectorarrays.numpy.NumpyVectorArray
+    basis : FenicsVectorArray
         The coarse scale basis for given subdomain.
     fom
         The full order model (if `return_fom` is `True`).
