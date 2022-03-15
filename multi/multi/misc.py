@@ -369,7 +369,7 @@ def set_zero_at_dofs(U, dofs, atol=1e-6):
 
 
 def restrict_to(domain, function):
-    """restrict given function(s) to domain"""
+    """restrict given function or list of functions to domain"""
     if isinstance(function, list):
         # assuming all functions are elements of V
         V = function[0].function_space()
