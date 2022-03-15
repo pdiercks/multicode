@@ -240,7 +240,7 @@ def transfer_operator_subdomains_2d(
     start = time.time()
     operator = factorized(operator)
     end = time.time()
-    print(f"factorization of {matrix_shape} matrix in {end-start}")
+    print(f"factorization of {matrix_shape} matrix in {end-start}", flush=True)
 
     # mapping from old to new dof numbers
     newdofs = np.zeros((V.dim(),), dtype=int)
@@ -251,7 +251,7 @@ def transfer_operator_subdomains_2d(
     start = time.time()
     transfer_operator = -operator(rhs_op.todense())[range_dofs, :]
     end = time.time()
-    print(f"applied operator to rhs in {end-start}")
+    print(f"applied operator to rhs in {end-start}", flush=True)
 
     if ar:
         ar = average_remover(transfer_operator.shape[0])
