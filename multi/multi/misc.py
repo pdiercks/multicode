@@ -5,6 +5,7 @@ import dolfin as df
 import numpy as np
 import yaml
 from multi import Domain, ResultFile, LinearElasticityProblem
+from pymor.vectorarrays.numpy import NumpyVectorArray
 from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 
 
@@ -358,14 +359,13 @@ def select_modes(basis, modes_per_edge, max_modes):
     return basis[ind]
 
 
-def set_zero_at_dofs(U, dofs, atol=1e-6):
-    """set U to zero at dofs if within relaxed tolerance"""
-    zero = U.dofs(dofs)
-    if np.allclose(np.zeros_like(zero), zero, atol=atol):
-        # set respective dofs to zero
-        # this modifies U._data in-place
-        array = U.to_numpy()
-        array[:, dofs] = np.zeros_like(zero)
+def set_values(U, dofs, values):
+    """set ``dofs`` entries of all vectors in VectorArray U to ``values``"""
+    assert isinstance(U, NumpyVectorArray)
+    # unfortunately, I cannot figure out how to achieve the same
+    # for ListVectorArray of FenicsVectors
+    array = U.to_numpy()
+    array[:, dofs] = values
 
 
 def restrict_to(domain, function):
