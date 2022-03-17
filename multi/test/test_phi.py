@@ -23,7 +23,7 @@ def test():
     V = df.VectorFunctionSpace(mesh, "CG", 2)
     domain = Domain(mesh)
     problem = LinearElasticityProblem(domain, V, E=60e3, NU=0.2, plane_stress=True)
-    solver_options = {"linear_solver": "cg", "preconditioner": "default"}
+    solver_options = {"solver": "cg", "preconditioner": "default"}
     phi = construct_coarse_scale_basis(problem, solver_options=solver_options)
     space = phi.space
 
@@ -47,6 +47,7 @@ def test():
     U = space.make_array(coarse)
     err = phi - U
     norm = err.norm()  # should be near relative tolerance ...
+    assert np.all(norm < 1e-7)
     test = np.allclose(phi.to_numpy(), U.to_numpy())
     assert test
 

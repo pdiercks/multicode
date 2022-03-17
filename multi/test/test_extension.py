@@ -22,7 +22,7 @@ def test_rhs():
 
     # ### compute using pymor
     B = FenicsMatrixOperator(
-        A.copy(), V, V, solver_options={"solver": "mumps"}, name="B"
+        A.copy(), V, V, solver_options={"inverse": {"solver": "mumps"}}, name="B"
     )
     g = df.Function(V)  # boundary data
     gvec = g.vector()
@@ -45,7 +45,7 @@ def test_rhs():
 
 
 def test():
-    num_cells = 50
+    num_cells = 20
     mesh = df.UnitSquareMesh(num_cells, num_cells)
     V = df.FunctionSpace(mesh, "CG", 2)
     print(f"Number of DoFs={V.dim()}")
@@ -125,13 +125,11 @@ def test():
     assert norm < 1e-9
 
     # ### Profiling Results
-    # usage: kernprof -lv __file__ with num_test=10 and num_cells=50
-
-    # num_test | Dofs  | method | preconditioner | extend | extend_pymor
-    # 10       | 10201 | mumps  | -              | 2.479s | 22.2s
-    # 10       | 10201 | cg     | petsc_amg      | 0.433s | 0.661s
-    # 30       | 10201 | cg     | petsc_amg      | 1.155s | 1.981s
-    # 100      | 10201 | cg     | petsc_amg      | 3.699s | 6.433s
+    # usage: kernprof -lv __file__ with num_test=100 and varying num_cells
+    # num_test | num_cells | Dofs  | method | preconditioner | extend   | extend_pymor
+    # 100      | 20        | 1681  | mumps  | -              | 0.19612s | 0.112597s
+    # 100      | 50        | 10201 | cg     | petsc_amg      | 3.46028s | 3.04381s
+    # 100      | 80        | 25921 | cg     | petsc_amg      | 8.66885s | 7.88604s
 
 
 if __name__ == "__main__":
