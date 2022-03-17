@@ -12,7 +12,7 @@ prm = df.parameters
 prm["linear_algebra_backend"] = "PETSc"
 
 
-@profile
+# @profile
 def extend_pymor(
     problem,
     boundary_data,
@@ -74,7 +74,7 @@ def extend_pymor(
     return U
 
 
-@profile
+# @profile
 def extend(
     problem,
     boundary_data,
