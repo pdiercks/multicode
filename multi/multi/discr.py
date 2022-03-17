@@ -125,7 +125,7 @@ def discretize_rve(rvemeshfile, degree, material, translate=None, opts=None):
             "h1": FenicsMatrixOperator(h1_mat, V, V, name="h1"),
             "h1_0": FenicsMatrixOperator(h1_0_mat, V, V, name="h1_0"),
         },
-        estimator=None,
+        error_estimator=None,
         visualizer=FenicsVisualizer(S),
         name="RVE",
     )
@@ -262,7 +262,7 @@ def discretize_block(
             "energy": FenicsMatrixOperator(A.copy(), V, V, name="energy"),
             "energy_0": FenicsMatrixOperator(A_0, V, V, name="energy_0"),
         },
-        estimator=None,
+        error_estimator=None,
         visualizer=FenicsVisualizer(S),
         name="BLOCK",
     )
