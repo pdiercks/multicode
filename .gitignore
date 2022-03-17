@@ -123,3 +123,5 @@ example/results/
 
 # tags
 tags
+# profiling
+*.lprof
