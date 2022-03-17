@@ -91,7 +91,7 @@ def construct_coarse_scale_basis(problem, solver_options=None, return_fom=False)
             "h1": FenicsMatrixOperator(h1_mat, V, V, name="h1"),
             "h1_0": FenicsMatrixOperator(h1_0_mat, V, V, name="h1_0"),
         },
-        estimator=None,
+        error_estimator=None,
         visualizer=FenicsVisualizer(space),
         name="FOM",
     )
@@ -227,7 +227,6 @@ def compute_fine_scale_snapshots(
     ymin = np.amin(coord[:, 1])
     ymax = np.amax(coord[:, 1])
     nodes = np.array([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
-    f = df.Function(range_space)
     vertex_dofs = locate_dofs(range_space.tabulate_dof_coordinates(), nodes)
 
     B = A.range.empty()
