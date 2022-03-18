@@ -1,50 +1,84 @@
 import numpy as np
 import dolfin as df
-from multi.solver import create_solver, _solver_options
+from multi.misc import make_mapping
 from pymor.core.logger import getLogger
 from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
-
-# discretize oversampling problem and return FenicsMatrixOperator
-# for LHS (with bcs applied) and to construct later RHS
-# --> LHS can make use of all that solver stuff implemented for FenicsMatrixOperator
-# then only need to create appropriate VectorArray that contains all
-# right hand side vectors for which the problem should be solved
+from scipy.sparse import csc_matrix
 
 
 class OversamplingProblem(object):
 
-    """Docstring for OversamplingProblem."""
+    """General class for oversampling problems.
+
+    This class aids the solution of oversampling problems given by:
+
+        A(u) = 0 in Ω,
+        with homogeneous dirichlet bcs on Γ_D,
+        with homogeneous neumann bcs on Γ_N,
+        with inhomogeneous neumann bcs on Γ_N_inhom,
+        with arbitrary dirichlet boundary conditions on Γ_out.
+
+    Here, we are only interested in the solution u restricted to the
+    space defined on a target subdomain Ω_in ⊂ Ω.
+
+    The boundaries Γ_D, Γ_N and Γ_N_inhom are the part of ∂Ω that
+    intersects with the (respective dirichlet or neumann) boundary
+    of the global domain Ω_gl ( Ω ⊂ Ω_gl).
+    The boundary Γ_out is the part of ∂Ω that does not intersect with ∂Ω_gl.
+
+    Note: The above problem can be formulated as a transfer operator which
+    maps the boundary data on Γ_out (source space) to the solution u in
+    the (range) space defined on Ω_in. Since fenics (version 2019.1.0) does
+    not allow to define function spaces on some part of the boundary of a domain,
+    the full space is defined as the source space. The range space is the
+    space defined on Ω_in.
+
+    Parameters
+    ----------
+    problem : multi.linear_elasticity.LinearElasticityProblem
+        The problem defined on the oversampling domain Ω.
+    subdomain_problem : multi.linear_elasticity.LinearElasticityProblem
+        The problem defined on the target subdomain Ω_in.
+    gamma_out : df.SubDomain
+        The part of the boundary of the oversampling domain that does
+        not intersect with the boundary of the global domain.
+    dirichlet : list of dict or dict, optional
+        Homogeneous or inhomogeneous dirichlet boundary conditions.
+        See multi.bcs.MechanicsBCs.add_bc for suitable values.
+    neumann : list of dict or dict, optional
+        Inhomogeneous neumann boundary conditions.
+        See multi.bcs.MechanicsBCs.add_force for suitable values.
+    solver_options : dict, optional
+        The user is required to use pymor style options ({'inverse': options}),
+        because the value of solver_options is directly passed to FenicsMatrixOperator.
+        See https://github.com/pymor/pymor/blob/main/src/pymor/operators/interface.py#L32-#L41
+
+
+    """
 
     def __init__(
-        self, problem, gamma_out, dirichlet=None, neumann=None, solver_options=None
+        self,
+        problem,
+        subdomain_problem,
+        gamma_out,
+        dirichlet=None,
+        neumann=None,
+        solver_options=None,
     ):
-        """TODO: to be defined.
-
-        Parameters
-        ----------
-        problem : multi.linear_elasticity.LinearElasticityProblem
-            The problem defined on the oversampling domain.
-        gamma_out : df.SubDomain
-            The part of the boundary of the oversampling domain that does
-            not intersect with the boundary of the global domain.
-        dirichlet : list of dict or dict, optional
-            See multi.bcs.MechanicsBCs.add_bc for suitable values.
-        neumann : list of dict or dict, optional
-            See multi.bcs.MechanicsBCs.add_force for suitable values.
-        solver_options : dict, optional
-            The user is required to use pymor style options ({'inverse': options}),
-            because the value of solver_options is directly passed to FenicsMatrixOperator.
-
-
-        """
         self._logger = getLogger("multi.oversampling.OversamplingProblem")
         self.problem = problem
+        self.subdomain_problem = subdomain_problem
         self.source = FenicsVectorSpace(problem.V)
+        self.range = FenicsVectorSpace(subdomain_problem.V)
         self.gamma_out = gamma_out
         self.dirichlet = dirichlet
         self.neumann = neumann
         self.solver_options = solver_options
+        # initialize commonly used quantities
+        self._init_bc_gamma_out()
+        self._S_to_R = self._make_mapping()
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -52,6 +86,10 @@ class OversamplingProblem(object):
         dummy = df.Function(V)
         self._bc_gamma_out = df.DirichletBC(V, dummy, self.gamma_out)
         self._bc_dofs_gamma_out = list(self._bc_gamma_out.get_boundary_values().keys())
+
+    def _make_mapping(self):
+        """builds map from source space to range space"""
+        return make_mapping(self.subdomain_problem.V, self.problem.V)
 
     def _discretize_operator(self):
         """discretize the operator"""
@@ -68,9 +106,6 @@ class OversamplingProblem(object):
         )
 
         # ### apply bcs to operator
-        if not hasattr(self, "_bc_gamma_out"):
-            self._init_bc_gamma_out()
-
         # make sure there are no unwanted bcs present
         self.problem.bc_handler.remove_bcs()
         if self.dirichlet is not None:
@@ -91,7 +126,6 @@ class OversamplingProblem(object):
 
     def _discretize_rhs(self, boundary_data):
         """discretize the right hand side"""
-        # R = self.source.make_array(boundary_data)
         R = boundary_data
         assert R in self.source
 
@@ -104,7 +138,7 @@ class OversamplingProblem(object):
             else:
                 self.problem.bc_handler.add_force(**self.neumann)
 
-        # will always be zero in case neumann is None see LinearElasticityProblem.get_rhs
+        # will always be null vector in case neumann is None see LinearElasticityProblem.get_rhs
         rhs = self.source.make_array([df.assemble(self.problem.get_rhs())])
 
         # subtract g(x_i) times the i-th column of A from the rhs
@@ -112,7 +146,6 @@ class OversamplingProblem(object):
         AR = self._A.apply(R)
         AR.axpy(-1, rhs)
         rhs = -AR
-        # ensure len(rhs) == len(R)
 
         # set g(x_i) for i-th dof in rhs
         bc_dofs = list(self._bc_gamma_out.get_boundary_values().keys())
@@ -130,9 +163,6 @@ class OversamplingProblem(object):
         # initialize
         D = np.zeros((count, self.source.dim))
 
-        if not hasattr(self, "_bc_gamma_out"):
-            self._init_bc_gamma_out()
-
         # use NumpyVectorSpace to create random values
         bc_dofs = self._bc_dofs_gamma_out
         space = NumpyVectorSpace(len(bc_dofs))
@@ -143,9 +173,6 @@ class OversamplingProblem(object):
         D[:, bc_dofs] = random_values.to_numpy()
         return self.source.from_numpy(D)
 
-    # TODO how is the boundary data best created?
-    # 1. data comes from projection of SoI data into full space
-    # 2. random data on Γ_out
     def solve(self, boundary_data):
         """solve the problem for boundary_data
 
@@ -157,8 +184,8 @@ class OversamplingProblem(object):
 
         Returns
         -------
-        U : VectorArray
-            The solutions in the full space.
+        U_in : VectorArray
+            The solutions in the range space.
         """
         if not hasattr(self, "operator"):
             self._discretize_operator()
@@ -166,4 +193,54 @@ class OversamplingProblem(object):
         rhs = self._discretize_rhs(boundary_data)
         self._logger.info(f"Solving OversamplingProblem for {len(rhs)} vectors.")
         U = self.operator.apply_inverse(rhs)
-        return U
+        return self.range.from_numpy(U.dofs(self._S_to_R))
+
+    def get_source_product(self, product=None):
+        """get source product
+
+        Parameters
+        ----------
+        product : str, optional
+            The inner product to use.
+
+        Returns
+        -------
+        source_product : NumpyMatrixOperator or None
+        """
+        if product is not None:
+            # compute source product
+            matrix = self.problem.get_product(name=product, bcs=False)
+            M = df.as_backend_type(matrix).mat()
+            # FIXME figure out how to use (take slice of) dolfin matrix directly?
+            full_matrix = csc_matrix(M.getValuesCSR()[::-1], shape=M.size)
+            dofs = self._bc_dofs_gamma_out
+            source_matrix = full_matrix[dofs, :][:, dofs]
+            source_product = NumpyMatrixOperator(
+                source_matrix, name=f"{product}_product"
+            )
+            return source_product
+        else:
+            return None
+
+    def get_range_product(self, product=None):
+        """get range product
+
+        Parameters
+        ----------
+        product : str, optional
+            The inner product to use.
+
+        Returns
+        -------
+        range_product : FenicsMatrixOperator or None
+        """
+        if product is not None:
+            # compute range product
+            matrix = self.subdomain_problem.get_product(name=product, bcs=False)
+            V = self.range.V
+            range_product = FenicsMatrixOperator(
+                matrix, V, V, name=f"{product}_product"
+            )
+            return range_product
+        else:
+            return None
