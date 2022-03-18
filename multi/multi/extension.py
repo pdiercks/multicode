@@ -1,6 +1,6 @@
 import numpy as np
 import dolfin as df
-from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
+from pymor.bindings.fenics import FenicsMatrixOperator
 
 # Test for PETSc
 if not df.has_linear_algebra_backend("PETSc"):
@@ -16,7 +16,7 @@ prm["linear_algebra_backend"] = "PETSc"
 def extend_pymor(
     problem,
     boundary_data,
-    solver_options={"solver": "mumps"},
+    solver_options={"inverse": {"solver": "mumps"}},
 ):
     """extend boundary data into domain associated with the given problem
 
@@ -25,11 +25,15 @@ def extend_pymor(
     problem
         The variational problem.
     boundary_data
-        A list of dolfin functions (elements of problem.V).
+        A list of dolfin vectors (elements of problem.V),
+        a numpy array or a VectorArray.
+    solver_options : dict, optional
+        Options in pymor format.
 
     Returns
     -------
-    A list of dolfin vectors.
+    U : VectorArray
+        The extended vectors.
     """
 
     # assemble lhs
@@ -39,22 +43,24 @@ def extend_pymor(
 
     # rhs
     V = problem.V
-    B = FenicsMatrixOperator(
-        A.copy(), V, V, solver_options={"inverse": solver_options}, name="B"
-    )
+    B = FenicsMatrixOperator(A.copy(), V, V, solver_options=solver_options, name="B")
 
     # prepare operator
     dummy = df.Function(V)
     bc = df.DirichletBC(V, dummy, df.DomainBoundary())
     bc.zero_columns(A, dummy.vector(), 1.0)
     # see FenicsMatrixOperator._real_apply_inverse_one_vector
-    A = FenicsMatrixOperator(
-        A, V, V, solver_options={"inverse": solver_options}, name="A"
-    )
+    A = FenicsMatrixOperator(A, V, V, solver_options=solver_options, name="A")
 
     # wrap boundary_data as FenicsVectorArray
-    space = FenicsVectorSpace(V)
-    R = space.make_array(boundary_data)
+    space = problem.source
+    if isinstance(boundary_data, np.ndarray):
+        R = space.from_numpy(boundary_data)
+    elif isinstance(boundary_data, list):
+        R = space.make_array(boundary_data)
+    else:
+        assert boundary_data.space is space
+        R = boundary_data
 
     # form rhs for each problem
     # subtract g(x_i) times the i-th column of A from the rhs
