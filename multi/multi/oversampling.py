@@ -4,7 +4,7 @@ from multi.misc import make_mapping
 from pymor.core.logger import getLogger
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
-from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
+from pymor.bindings.fenics import FenicsMatrixOperator
 from scipy.sparse import csc_matrix
 
 
@@ -70,8 +70,8 @@ class OversamplingProblem(object):
         self._logger = getLogger("multi.oversampling.OversamplingProblem")
         self.problem = problem
         self.subdomain_problem = subdomain_problem
-        self.source = FenicsVectorSpace(problem.V)
-        self.range = FenicsVectorSpace(subdomain_problem.V)
+        self.source = problem.source
+        self.range = subdomain_problem.range
         self.gamma_out = gamma_out
         self.dirichlet = dirichlet
         self.neumann = neumann
@@ -124,12 +124,8 @@ class OversamplingProblem(object):
             matrix, V, V, solver_options=self.solver_options, name="A_0"
         )
 
-    def _discretize_rhs(self, boundary_data):
-        """discretize the right hand side"""
-        R = boundary_data
-        assert R in self.source
-
-        # inhomogeneous neumann bc(s)
+    def _discretize_neumann(self):
+        """discretize inhomogeneous neumann bc(s)"""
         self.problem.bc_handler.remove_forces()
         if self.neumann is not None:
             if isinstance(self.neumann, list):
@@ -140,6 +136,17 @@ class OversamplingProblem(object):
 
         # will always be null vector in case neumann is None see LinearElasticityProblem.get_rhs
         rhs = self.source.make_array([df.assemble(self.problem.get_rhs())])
+        self._f_ext = rhs
+
+    def _discretize_rhs(self, boundary_data):
+        """discretize the right hand side"""
+        R = boundary_data
+        assert R in self.source
+
+        if not hasattr(self, "_f_ext"):
+            # assemble external force only once
+            self._discretize_neumann()
+        rhs = self._f_ext
 
         # subtract g(x_i) times the i-th column of A from the rhs
         # rhs = rhs - self._A.apply(R)
