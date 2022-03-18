@@ -39,10 +39,16 @@ def exact_solution(problem, neumann_bc, dirichlet_bc):
     # ### exact solution full space
     u_exact = problem.solve(solver_parameters={"linear_solver": "mumps"})
 
+    # ### exact solution in range space
+    omega_in = TargetSubDomain()
+    submesh = df.SubMesh(problem.domain.mesh, omega_in)
+    Vsub = df.FunctionSpace(submesh, problem.V.ufl_element())
+    u_ex = df.interpolate(u_exact, Vsub)
+
     # clean up
     problem.bc_handler.remove_bcs()
     problem.bc_handler.remove_forces()
-    return u_exact
+    return u_ex
 
 
 def test_dirichlet_neumann():
@@ -64,14 +70,22 @@ def test_dirichlet_neumann():
 
     domain = Domain(mesh)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
+    # subdomain problem
+    omega_in = TargetSubDomain()
+    submesh = df.SubMesh(mesh, omega_in)
+    subdomain = Domain(submesh)
+    Vsub = df.FunctionSpace(submesh, V.ufl_element())
+    subproblem = LinearElasticityProblem(
+        subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True
+    )
     neumann_bc = {"boundary": sigma_inhom, "value": df.Constant((0.0, 6e3))}
     dirichlet_bc = {"boundary": sigma_d, "value": df.Constant(0.0), "sub": 0}
-    # ### data on Γ_out for exact solution
     gamma_out = plane_at(0.0, "x")
 
     # NOTE pymor solver options have different format
     os_problem = OversamplingProblem(
         problem,
+        subproblem,
         gamma_out,
         dirichlet=dirichlet_bc,
         neumann=neumann_bc,
@@ -121,18 +135,24 @@ def test_neumann():
     mesh = df.UnitSquareMesh(20, 20)
     V = df.VectorFunctionSpace(mesh, "CG", 1)
 
-    sigma_inhom = plane_at(0.0, "y")
-    # sigma_hom = plane_at(1.0, "x")
-
     domain = Domain(mesh)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
+    # subdomain problem
+    omega_in = TargetSubDomain()
+    submesh = df.SubMesh(mesh, omega_in)
+    subdomain = Domain(submesh)
+    Vsub = df.FunctionSpace(submesh, V.ufl_element())
+    subproblem = LinearElasticityProblem(
+        subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True
+    )
+    sigma_inhom = plane_at(0.0, "y")
     neumann_bc = {"boundary": sigma_inhom, "value": df.Constant((0.0, 6e3))}
-    # ### data on Γ_out for exact solution
     gamma_out = GammaOut()
 
     # NOTE pymor solver options have different format
     os_problem = OversamplingProblem(
         problem,
+        subproblem,
         gamma_out,
         dirichlet=None,
         neumann=neumann_bc,
