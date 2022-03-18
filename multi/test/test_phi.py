@@ -1,9 +1,8 @@
 import numpy as np
 import dolfin as df
-from multi.extension import extend
 from multi import Domain, LinearElasticityProblem
-from multi.basis_construction import construct_coarse_scale_basis
-from multi.shapes import NumpyQuad
+from multi.basis_construction import compute_phi
+from multi.misc import locate_dofs
 
 # Test for PETSc
 if not df.has_linear_algebra_backend("PETSc"):
@@ -23,33 +22,14 @@ def test():
     V = df.VectorFunctionSpace(mesh, "CG", 2)
     domain = Domain(mesh)
     problem = LinearElasticityProblem(domain, V, E=60e3, NU=0.2, plane_stress=True)
-    solver_options = {"solver": "cg", "preconditioner": "default"}
-    phi = construct_coarse_scale_basis(problem, solver_options=solver_options)
-    space = phi.space
+    solver_options = {"inverse": {"solver": "mumps"}}
+    phi = compute_phi(problem, solver_options=solver_options)
 
-    # alternatively, construct coarse scale basis via extension
     vertices = domain.get_nodes(n=4)
-    quadrilateral = NumpyQuad(vertices)
-    shapes = quadrilateral.interpolate(V)
-    boundary_data = []
-    for shape in shapes:
-        g = df.Function(V)
-        gvec = g.vector()
-        gvec.zero()
-        gvec.set_local(shape)
-        boundary_data.append(g)
-
-    for i in range(len(shapes)):
-        ed = shapes[i] - boundary_data[0].vector()[:]
-        assert np.sum(ed) < 1e-9
-
-    coarse = extend(problem, boundary_data, solver_options=solver_options)
-    U = space.make_array(coarse)
-    err = phi - U
-    norm = err.norm()  # should be near relative tolerance ...
-    assert np.all(norm < 1e-7)
-    test = np.allclose(phi.to_numpy(), U.to_numpy())
-    assert test
+    vertex_dofs = locate_dofs(V.tabulate_dof_coordinates(), vertices)
+    nodal_values = phi.dofs(vertex_dofs)
+    assert len(phi) == 8
+    assert np.sum(nodal_values) == 8
 
 
 if __name__ == "__main__":
