@@ -3,6 +3,7 @@ import dolfin as df
 import numpy as np
 from multi.bcs import MechanicsBCs
 from multi.product import InnerProduct
+from pymor.bindings.fenics import FenicsVectorSpace
 
 
 class LinearElasticMaterial:
@@ -118,6 +119,8 @@ class LinearElasticityProblem:
         self.logger = logging.getLogger("LinearElasticityProblem")
         self.domain = domain
         self.V = V
+        self.source = FenicsVectorSpace(V)
+        self.range = FenicsVectorSpace(V)
         self.gdim = V.element().geometric_dimension()
         self.u = df.TrialFunction(V)
         self.v = df.TestFunction(V)
