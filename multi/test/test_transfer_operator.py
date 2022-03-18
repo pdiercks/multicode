@@ -35,9 +35,11 @@ def test():
     V = df.FunctionSpace(mesh, "CG", 1)
 
     def gamma_out(x, on_boundary):
+        """top or right"""
         return df.near(x[1], 1.0) or df.near(x[0], 1.0) and on_boundary
 
     def sigma_d(x, on_boundary):
+        """bottom edge with x[0] <= 0.5"""
         return x[0] <= 0.5 and x[1] < 1e-2 and on_boundary
 
     bc_out = df.DirichletBC(V, df.Expression("x[0] * x[1]", degree=2), gamma_out)
