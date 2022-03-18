@@ -2,7 +2,7 @@ import numpy as np
 import dolfin as df
 from multi.solver import create_solver
 from multi.extension import extend, extend_pymor
-from pymor.bindings.fenics import FenicsMatrixOperator
+from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 
 
 def test_rhs():
@@ -54,6 +54,7 @@ def test():
         def __init__(self, V, lhs):
             self.V = V
             self.lhs = lhs
+            self.source = FenicsVectorSpace(V)
 
         def get_lhs(self):
             return self.lhs
@@ -111,7 +112,7 @@ def test():
     problem = DummyProblem(V, lhs)
     s = extend(problem, boundary_functions, solver_options=options)
 
-    U = extend_pymor(problem, boundary_vectors, solver_options=options)
+    U = extend_pymor(problem, boundary_vectors, solver_options={"inverse": options})
     err = u_ref.vector()[:] - U.to_numpy()[0]
     norm = np.linalg.norm(err)
     print(f"norm pymor version {norm}")
