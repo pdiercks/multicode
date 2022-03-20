@@ -109,7 +109,7 @@ class OversamplingProblem(object):
         # make sure there are no unwanted bcs present
         self.problem.bc_handler.remove_bcs()
         if self.dirichlet is not None:
-            if isinstance(self.dirichlet, list):
+            if isinstance(self.dirichlet, (list, tuple)):
                 for dirichlet_bc in self.dirichlet:
                     self.problem.bc_handler.add_bc(**dirichlet_bc)
             else:
@@ -128,7 +128,7 @@ class OversamplingProblem(object):
         """discretize inhomogeneous neumann bc(s)"""
         self.problem.bc_handler.remove_forces()
         if self.neumann is not None:
-            if isinstance(self.neumann, list):
+            if isinstance(self.neumann, (list, tuple)):
                 for force in self.neumann:
                     self.problem.bc_handler.add_force(**force)
             else:
