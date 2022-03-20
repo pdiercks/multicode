@@ -45,7 +45,7 @@ def test_rhs():
 
 
 def test():
-    num_cells = 20
+    num_cells = 10
     mesh = df.UnitSquareMesh(num_cells, num_cells)
     V = df.FunctionSpace(mesh, "CG", 2)
     print(f"Number of DoFs={V.dim()}")
@@ -67,7 +67,7 @@ def test():
     lhs = df.inner(df.grad(u), df.grad(v)) * df.dx
     rhs = df.Constant(0.0) * v * df.dx
     bcs = []
-    num_test = 100
+    num_test = 10
     for i in range(num_test):
         bc = df.DirichletBC(
             V, df.Expression(boundary_expression(), degree=2), df.DomainBoundary()
@@ -76,7 +76,9 @@ def test():
     u_ref = df.Function(V)
 
     A, b = df.assemble_system(lhs, rhs, bcs[0])
-    if V.dim() < 10e3:
+
+    direct = True
+    if direct:
         options = {"solver": "mumps"}
     else:
         options = {"solver": "cg", "preconditioner": "petsc_amg"}
@@ -129,6 +131,8 @@ def test():
     # usage: kernprof -lv __file__ with num_test=100 and varying num_cells
     # num_test | num_cells | Dofs  | method | preconditioner | extend   | extend_pymor
     # 100      | 20        | 1681  | mumps  | -              | 0.19612s | 0.112597s
+    # 100      | 50        | 10201 | mumps  | -              | 0.75441s | 0.526256s
+    # 100      | 80        | 25921 | mumps  | -              | 1.72926s | 1.28737s
     # 100      | 50        | 10201 | cg     | petsc_amg      | 3.46028s | 3.04381s
     # 100      | 80        | 25921 | cg     | petsc_amg      | 8.66885s | 7.88604s
 

@@ -2,17 +2,7 @@ import numpy as np
 import dolfin as df
 from pymor.bindings.fenics import FenicsMatrixOperator
 
-# Test for PETSc
-if not df.has_linear_algebra_backend("PETSc"):
-    print("DOLFIN has not been configured with PETSc. Exiting.")
-    exit()
 
-# Set backend to PETSC
-prm = df.parameters
-prm["linear_algebra_backend"] = "PETSc"
-
-
-# @profile
 def extend_pymor(
     problem,
     boundary_data,
@@ -80,7 +70,6 @@ def extend_pymor(
     return U
 
 
-# @profile
 def extend(
     problem,
     boundary_data,
