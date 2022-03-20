@@ -1,11 +1,10 @@
 import dolfin as df
 import numpy as np
 
+
 # adapted version of MechanicsBCs by Thomas Titscher
-
-
-class MechanicsBCs:
-    """Handles displacement (dirichlet) and force (neumann) boundary conditions
+class BoundaryConditions:
+    """Handles dirichlet and neumann boundary conditions
 
     Parameters
     ----------
@@ -22,46 +21,44 @@ class MechanicsBCs:
 
         self._bc_expressions = []
 
-        # for disp bcs:
+        # list of dirichlet boundary conditions
         self._bcs = []
 
-        # for force bcs
+        # for neumann boundary conditions
         mesh = space.mesh()
         self._v = df.TestFunction(space)
-        self._boundary_forces = []
+        self._neumann_bcs = []
         self._boundary_markers = df.MeshFunction(
             "size_t", mesh, mesh.topology().dim() - 1, 0
         )
         self._ds_marker = 0
         self._ds = df.Measure("ds", domain=mesh, subdomain_data=self._boundary_markers)
-        self._dim = self._V.element().geometric_dimension()
+        # number of components of the (vector) field
+        self._ncomp = self._V.ufl_element().value_size()
 
     def _value_to_expression(self, value, degree):
-        if (isinstance(value, list) or isinstance(value, tuple)) and isinstance(
-            value[0], str
-        ):
+        if isinstance(value, (list, tuple)):
+            assert all([isinstance(v, str) for v in value])
             # transform list of strings to expression
             return df.Expression(value, t=0.0, degree=degree)
 
         if isinstance(value, str):
-            if self._dim == 1:
-                value = [value]
             return df.Expression(value, t=0.0, degree=degree)
 
         # in all other cases, we try to use `value` directly as expression
         return value
 
-    def fix(self, boundary, sub=None, method="topological"):
+    def set_zero(self, boundary, sub=None, method="topological"):
         """
         Adds the dirichlet BC u[sub] = 0. If `sub` is None, it will constrain
         the whole vector [ux uy uz] = [0 0 0]
         """
-        if self._dim == 1 or sub is not None:
-            self.add_bc(boundary, "0", 0, sub, method)
+        if self._ncomp == 1:
+            self.add_dirichlet(boundary, "0", 0, None, method)
         else:
-            self.add_bc(boundary, ["0"] * self._dim, 0, sub, method)
+            self.add_dirichlet(boundary, ["0"] * self._ncomp, 0, sub, method)
 
-    def add_bc(self, boundary, value, degree=0, sub=None, method="topological"):
+    def add_dirichlet(self, boundary, value, degree=0, sub=None, method="topological"):
         """Adds a dirchlet BC. `value` may be a string, a collection of strings or
         something that behaves like a dolfin.Expression. (e.g. dolfin.Constant).
         If this `value` contains a `t`, it will be treated as a time dependent
@@ -88,8 +85,8 @@ class MechanicsBCs:
             bc = df.DirichletBC(space, expression, boundary, method)
         self._bcs.append(bc)
 
-    def add_force(self, boundary, value, degree=0):
-        """Adds a force BC. `value` may be a string, a collection of strings or
+    def add_neumann(self, boundary, value, degree=0):
+        """Adds a neumann BC. `value` may be a string, a collection of strings or
         something that behaves like a dolfin.Expression. (e.g. dolfin.Constant).
         If this `value` contains a `t`, it will be treated as a time dependent
         expression and modified to tx when `update(tx)` is called.
@@ -109,31 +106,31 @@ class MechanicsBCs:
 
         self._ds_marker += 1
         boundary.mark(self._boundary_markers, self._ds_marker)
-        self._boundary_forces.append([expression, self._ds_marker])
+        self._neumann_bcs.append([expression, self._ds_marker])
 
-    def has_forces(self):
-        return len(self._boundary_forces) > 0
+    def has_neumann(self):
+        return len(self._neumann_bcs) > 0
 
     def update(self, t):
         for bc_expression in self._bc_expressions:
             bc_expression.t = t
 
     def bcs(self):
+        """returns list of dirichlet bcs"""
         return self._bcs
 
-    def remove_bcs(self):
-        self._bcs.clear()
+    def clear(self, dirichlet=True, neumann=True):
+        """clear list of boundary conditions"""
+        if dirichlet:
+            self._bcs.clear()
+        if neumann:
+            self._neumann_bcs.clear()
 
-    def remove_forces(self):
-        self._boundary_forces.clear()
-
-    def boundary_forces(self):
-        """
-        Adds the weak form of the boundary forces to a resiual-like value
-        """
+    def neumann_bcs(self):
+        """returns ufl form of (sum of) neumann bcs"""
         r = 0
-        for force_expression, marker in self._boundary_forces:
-            r += df.dot(force_expression, self._v) * self._ds(marker)
+        for expression, marker in self._neumann_bcs:
+            r += df.dot(expression, self._v) * self._ds(marker)
         return r
 
 
