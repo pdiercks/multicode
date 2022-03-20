@@ -5,28 +5,23 @@ import dolfin as df
 import numpy as np
 
 
-class Domain:
-    """Class to represent a subdomain Ω_i in the context of a multiscale method
+class Domain(object):
+    """Class to represent a computational domain
 
     Parameters
     ----------
     mesh : str, dolfin.cpp.mesh.Mesh
         The discretization of the subdomain given as XMDF file (incl. ext) to load or
         instance of dolfin.cpp.mesh.Mesh.
-    id_ : int
-        The identification number of the subdomain.
+    _id : int
+        The identification number of the domain.
     subdomains : optional
-        Set to True if Ω_i has subdomains represented by a df.MeshFunction stored in
+        Set to True if domain has subdomains represented by a df.MeshFunction stored in
         the XDMF file given as `mesh` or provide df.MeshFunction directly.
-    edges : bool, optional
-        If True load mesh for each edge of the mesh.
-    translate : optional
-        A dolfin.Point by which the mesh is translated. If `edges=True` the edge
-        meshes are translated as well.
 
     """
 
-    def __init__(self, mesh, id_=0, subdomains=None, edges=False, translate=None):
+    def __init__(self, mesh, _id=1, subdomains=None):
         if isinstance(mesh, df.cpp.mesh.Mesh):
             self.mesh = mesh
             self.subdomains = subdomains
@@ -46,22 +41,9 @@ class Domain:
                 self.subdomains = df.MeshFunction("size_t", self.mesh, mvc)
             else:
                 self.subdomains = subdomains
-
-        if translate:
-            self.mesh.translate(translate)
-
-        # ### domain coordinates
-        coord = self.mesh.coordinates()
-        self.xmin = np.amin(coord[:, 0])
-        self.xmax = np.amax(coord[:, 0])
-        self.ymin = np.amin(coord[:, 1])
-        self.ymax = np.amax(coord[:, 1])
-
-        if edges:
-            self._load_edges(translate)
-        else:
-            self.edges = False
-        self.id = int(id_)
+        self._id = int(_id)
+        self.gdim = self.mesh.geometric_dimension()
+        self.tdim = self.mesh.topology().dim()
 
     def translate(self, point):
         """translate the domain in space
@@ -71,30 +53,69 @@ class Domain:
         point : dolfin.Point
             The point by which to translate.
 
+        Note: if `self.edges` evaluates to True, edge
+        meshes are translated as well.
         """
         self.mesh.translate(point)
-        # update coordinates
+
+
+class RectangularDomain(Domain):
+    """
+    Parameters
+    ----------
+    mesh : str, dolfin.cpp.mesh.Mesh
+        The discretization of the subdomain given as XMDF file (incl. ext) to load or
+        instance of dolfin.cpp.mesh.Mesh.
+    _id : int
+        The identification number of the domain.
+    subdomains : optional
+        Set to True if domain has subdomains represented by a df.MeshFunction stored in
+        the XDMF file given as `mesh` or provide df.MeshFunction directly.
+    edges : bool, optional
+        If True read mesh for each edge (boundary) of the mesh.
+    """
+
+    def __init__(self, mesh, _id=1, subdomains=None, edges=False):
+        super().__init__(mesh, _id, subdomains)
+        if edges:
+            self._read_edges()
+        else:
+            self.edges = False
         coord = self.mesh.coordinates()
         self.xmin = np.amin(coord[:, 0])
         self.xmax = np.amax(coord[:, 0])
         self.ymin = np.amin(coord[:, 1])
         self.ymax = np.amax(coord[:, 1])
-        # update edges if True
-        if self.edges:
-            for edge in self.edges:
-                edge.translate(point)
+
+    def _read_edges(self):
+        """reads meshes assuming `mesh` was a xdmf file and edge meshes
+        are present in the same directory"""
+        path = os.path.dirname(os.path.abspath(self.xdmf_file))
+        base = os.path.splitext(os.path.basename(self.xdmf_file))[0]
+        ext = os.path.splitext(os.path.basename(self.xdmf_file))[1]
+
+        def read(xdmf):
+            mesh = df.Mesh()
+            with df.XDMFFile(xdmf) as f:
+                f.read(mesh)
+            return mesh
+
+        edge_meshes = []
+        boundary = ["bottom", "right", "top", "left"]
+        for b in boundary:
+            edge = path + "/" + base + f"_{b}" + ext
+            mesh = read(edge)
+            edge_meshes.append(mesh)
+        self.edges = tuple(edge_meshes)
 
     def get_nodes(self, n=4):
-        """get nodes to define shape functions
+        """get nodes of the rectangular domain
 
         Parameters
         ----------
         n : int, optional
             Number of nodes.
 
-        Note
-        ----
-        This only makes sense for square shaped domains.
         """
 
         def midpoint(a, b):
@@ -115,23 +136,25 @@ class Domain:
         )
         return nodes[:n]
 
-    def _load_edges(self, translate=None):
-        path = os.path.dirname(os.path.abspath(self.xdmf_file))
-        base = os.path.splitext(os.path.basename(self.xdmf_file))[0]
-        ext = os.path.splitext(os.path.basename(self.xdmf_file))[1]
+    def translate(self, point):
+        """translate the domain in space
 
-        def read(xdmf):
-            mesh = df.Mesh()
-            with df.XDMFFile(xdmf) as f:
-                f.read(mesh)
-            return mesh
+        Parameters
+        ----------
+        point : dolfin.Point
+            The point by which to translate.
 
-        edge_meshes = []
-        boundary = ["bottom", "right", "top", "left"]
-        for b in boundary:
-            edge = path + "/" + base + f"_{b}" + ext
-            mesh = read(edge)
-            if translate:
-                mesh.translate(translate)
-            edge_meshes.append(mesh)
-        self.edges = tuple(edge_meshes)
+        Note: if `self.edges` evaluates to True, edge
+        meshes are translated as well.
+        """
+        self.mesh.translate(point)
+        # update coordinates
+        coord = self.mesh.coordinates()
+        self.xmin = np.amin(coord[:, 0])
+        self.xmax = np.amax(coord[:, 0])
+        self.ymin = np.amin(coord[:, 1])
+        self.ymax = np.amax(coord[:, 1])
+        # update edges if True
+        if self.edges:
+            for edge in self.edges:
+                edge.translate(point)

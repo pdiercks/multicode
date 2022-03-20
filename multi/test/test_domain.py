@@ -2,7 +2,7 @@
 
 import dolfin as df
 import numpy as np
-from multi import Domain
+from multi import Domain, RectangularDomain
 
 
 def get_dolfin_mesh():
@@ -21,19 +21,17 @@ def get_dolfin_mesh():
 
 def test():
     mesh, subs = get_dolfin_mesh()
-    domain = Domain(mesh, id_=0, subdomains=subs, edges=False, translate=None)
+    domain = Domain(mesh, _id=0, subdomains=subs)
     assert np.isclose(np.sum(domain.subdomains.array()), 64)
-    assert np.isclose(domain.xmin, 0.0)
 
-    other = Domain(
-        mesh, id_=1, subdomains=None, edges=False, translate=df.Point((2.1, 0.4))
-    )
+    other = Domain(mesh, _id=1, subdomains=None)
     assert other.subdomains is None
-    assert np.isclose(other.ymax, 1.4)
-    assert np.isclose(other.xmax, 3.1)
+    other.translate(df.Point((2.1, 0.4)))
+    assert np.isclose(np.amax(other.mesh.coordinates()[:, 1]), 1.4)
+    assert np.isclose(np.amax(other.mesh.coordinates()[:, 0]), 3.1)
 
-    another = Domain(
-        "data/rvedomain.xdmf", id_=2, subdomains=True, edges=True, translate=None
+    another = RectangularDomain(
+        "data/rvedomain.xdmf", _id=2, subdomains=True, edges=True
     )
     assert len(another.edges) == 4
     assert all([isinstance(e, df.cpp.mesh.Mesh) for e in another.edges])
@@ -41,6 +39,9 @@ def test():
     # subdomain numbering is assumed to start with 1 (pygmsh default)
     Ω_i = np.amin(another.subdomains.array())
     assert Ω_i > 0 and Ω_i < 2
+    assert np.isclose(another.xmin, 0.0)
+    assert np.isclose(another.ymin, 0.0)
+    assert np.isclose(another.xmax, another.ymax)
 
 
 if __name__ == "__main__":
