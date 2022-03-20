@@ -1,7 +1,7 @@
 import logging
 import dolfin as df
 import numpy as np
-from multi.bcs import MechanicsBCs
+from multi.bcs import BoundaryConditions
 from multi.product import InnerProduct
 from pymor.bindings.fenics import FenicsVectorSpace
 
