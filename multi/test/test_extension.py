@@ -56,7 +56,7 @@ def test():
             self.lhs = lhs
             self.source = FenicsVectorSpace(V)
 
-        def get_lhs(self):
+        def get_form_lhs(self):
             return self.lhs
 
     def boundary_expression():

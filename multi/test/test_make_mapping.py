@@ -1,11 +1,11 @@
 """test make mapping"""
 import dolfin as df
-from multi import make_mapping, Domain
+from multi import make_mapping, RectangularDomain
 from numpy import allclose
 
 
 def test():
-    domain = Domain("data/rvedomain.xdmf", edges=True)
+    domain = RectangularDomain("data/rvedomain.xdmf", edges=True)
     V = df.FunctionSpace(domain.mesh, "CG", 2)
     L = df.FunctionSpace(domain.edges[0], "CG", 2)
     V_to_L = make_mapping(L, V)

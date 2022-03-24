@@ -3,8 +3,8 @@ inhomogeneous neumann boundary conditions"""
 
 import numpy as np
 import dolfin as df
-from multi import Domain, LinearElasticityProblem
-from multi.oversampling import OversamplingProblem
+from multi import RectangularDomain, LinearElasticityProblem
+from multi.problems import OversamplingProblem
 from fenics_helpers.boundary import plane_at
 
 
@@ -27,17 +27,17 @@ def exact_solution(problem, neumann_bc, dirichlet_bc):
     """exact solution in full space"""
     if isinstance(neumann_bc, list):
         for force in neumann_bc:
-            problem.bc_handler.add_force(**force)
+            problem.add_neumann_bc(**force)
     else:
-        problem.bc_handler.add_force(**neumann_bc)
+        problem.add_neumann_bc(**neumann_bc)
     if isinstance(dirichlet_bc, list):
         for bc in dirichlet_bc:
-            problem.bc_handler.add_bc(**bc)
+            problem.add_dirichlet_bc(**bc)
     else:
-        problem.bc_handler.add_bc(**dirichlet_bc)
+        problem.add_dirichlet_bc(**dirichlet_bc)
 
     # ### exact solution full space
-    u_exact = problem.solve(solver_parameters={"linear_solver": "mumps"})
+    u_exact = problem.solve(solver_options={"solver": "mumps"})
 
     # ### exact solution in range space
     omega_in = TargetSubDomain()
@@ -46,8 +46,7 @@ def exact_solution(problem, neumann_bc, dirichlet_bc):
     u_ex = df.interpolate(u_exact, Vsub)
 
     # clean up
-    problem.bc_handler.remove_bcs()
-    problem.bc_handler.remove_forces()
+    problem.clear_bcs()
     return u_ex
 
 
@@ -68,12 +67,12 @@ def test_dirichlet_neumann():
     sigma_inhom = plane_at(0.0, "y")
     sigma_d = plane_at(1.0, "x")
 
-    domain = Domain(mesh)
+    domain = RectangularDomain(mesh)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
     # subdomain problem
     omega_in = TargetSubDomain()
     submesh = df.SubMesh(mesh, omega_in)
-    subdomain = Domain(submesh)
+    subdomain = RectangularDomain(submesh)
     Vsub = df.FunctionSpace(submesh, V.ufl_element())
     subproblem = LinearElasticityProblem(
         subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True
@@ -135,12 +134,12 @@ def test_neumann():
     mesh = df.UnitSquareMesh(20, 20)
     V = df.VectorFunctionSpace(mesh, "CG", 1)
 
-    domain = Domain(mesh)
+    domain = RectangularDomain(mesh)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
     # subdomain problem
     omega_in = TargetSubDomain()
     submesh = df.SubMesh(mesh, omega_in)
-    subdomain = Domain(submesh)
+    subdomain = RectangularDomain(submesh)
     Vsub = df.FunctionSpace(submesh, V.ufl_element())
     subproblem = LinearElasticityProblem(
         subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True

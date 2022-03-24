@@ -1,4 +1,4 @@
-"""test MechanicsBCs"""
+"""test boundary conditions"""
 
 import dolfin as df
 import numpy as np
