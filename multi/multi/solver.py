@@ -15,7 +15,7 @@ def _solver_options(solver=_DEFAULT_SOLVER, preconditioner=None, keep_solver=Tru
 
 
 def create_solver(matrix, solver_options=_solver_options()):
-    options = solver_options
+    options = solver_options or _solver_options()
     method = options.get("solver")
     preconditioner = options.get("preconditioner")
     if method == "lu" or method in df.lu_solver_methods():
