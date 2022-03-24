@@ -75,8 +75,9 @@ def project_soi_data(
     ----------
     data_path : FilePath
         The path to the structure of interest data.
-    domain : multi.Domain
-        The computational domain.
+    domain : multi.RectangularDomain
+        The computational domain. Note that this has to
+        be a rectangular domain.
     V : dolfin.FunctionSpace
         The function space to project to.
     restrict_to_boundary : dolfin.SubDomain, optional
