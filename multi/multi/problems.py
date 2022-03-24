@@ -392,7 +392,7 @@ class OversamplingProblem(object):
         """
         if product is not None:
             # compute source product
-            matrix = self.problem.discretize_product(name=product, bcs=False)
+            matrix = self.problem.discretize_product(product, bcs=False)
             M = df.as_backend_type(matrix).mat()
             # FIXME figure out how to use (take slice of) dolfin matrix directly?
             full_matrix = csc_matrix(M.getValuesCSR()[::-1], shape=M.size)
@@ -419,7 +419,7 @@ class OversamplingProblem(object):
         """
         if product is not None:
             # compute range product
-            matrix = self.subdomain_problem.get_product(name=product, bcs=False)
+            matrix = self.subdomain_problem.discretize_product(product, bcs=False)
             V = self.range.V
             range_product = FenicsMatrixOperator(
                 matrix, V, V, name=f"{product}_product"
