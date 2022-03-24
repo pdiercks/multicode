@@ -28,7 +28,7 @@ def extend_pymor(
 
     # assemble lhs
     A = df.PETScMatrix()
-    lhs_form = problem.get_lhs()
+    lhs_form = problem.get_form_lhs()
     df.assemble(lhs_form, tensor=A)
 
     # rhs
@@ -43,14 +43,13 @@ def extend_pymor(
     A = FenicsMatrixOperator(A, V, V, solver_options=solver_options, name="A")
 
     # wrap boundary_data as FenicsVectorArray
-    space = problem.source
+    space = B.range
     if isinstance(boundary_data, np.ndarray):
         R = space.from_numpy(boundary_data)
-    elif isinstance(boundary_data, list):
-        R = space.make_array(boundary_data)
+    # elif isinstance(boundary_data, list):
+    #     R = space.make_array(boundary_data)
     else:
-        assert boundary_data.space is space
-        R = boundary_data
+        R = space.make_array(boundary_data)
 
     # form rhs for each problem
     # subtract g(x_i) times the i-th column of A from the rhs
@@ -91,7 +90,7 @@ def extend(
 
     # assemble lhs
     A = df.PETScMatrix()
-    lhs_form = problem.get_lhs()
+    lhs_form = problem.get_form_lhs()
     df.assemble(lhs_form, tensor=A)
 
     # rhs
