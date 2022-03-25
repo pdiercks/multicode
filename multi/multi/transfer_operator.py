@@ -214,7 +214,7 @@ def transfer_operator_subdomains_2d(
     V_to_R = make_mapping(R, V)
 
     # operator A (oversampling domain Ω)
-    A = df.assemble(oversampling_problem.get_lhs())
+    A = df.assemble(oversampling_problem.get_form_lhs())
     if bc_hom is not None:
         dummy = df.Function(V)
         try:
@@ -259,7 +259,7 @@ def transfer_operator_subdomains_2d(
 
     # compute inner products
     if product is not None:
-        inner_product = oversampling_problem.get_product(name=product, bcs=False)
+        inner_product = oversampling_problem.discretize_product(product, bcs=False)
         P = df.as_backend_type(inner_product).mat()
         full_product_operator = csc_matrix(P.getValuesCSR()[::-1], shape=P.size)
 
@@ -268,7 +268,7 @@ def transfer_operator_subdomains_2d(
         )
         # NOTE slice of full operaton not equal inner product from R directly
         # range_product = NumpyMatrixOperator(full_product_operator[V_to_R, :][:, V_to_R])
-        inner_product_R = subdomain_problem.get_product(name=product, bcs=False)
+        inner_product_R = subdomain_problem.discretize_product(product, bcs=False)
         range_product_mat = df.as_backend_type(inner_product_R).mat()
         range_product_operator = csc_matrix(
             range_product_mat.getValuesCSR()[::-1], shape=range_product_mat.size

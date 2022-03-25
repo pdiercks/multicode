@@ -10,16 +10,16 @@ class DummyProblem:
         self.V = V
         self.lhs_form = lhs_form
 
-    def get_lhs(self):
+    def get_form_lhs(self):
         return self.lhs_form
 
-    def get_product(self, name="energy", bcs=False):
+    def discretize_product(self, name="energy", bcs=False):
         if bcs:
             raise NotImplementedError
         else:
             bcs = ()
         if name == "energy":
-            product = InnerProduct(self.V, name, bcs=bcs, form=self.get_lhs())
+            product = InnerProduct(self.V, name, bcs=bcs, form=self.get_form_lhs())
         else:
             product = InnerProduct(self.V, name, bcs=bcs)
         return product.assemble()

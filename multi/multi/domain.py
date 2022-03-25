@@ -59,7 +59,49 @@ class Domain(object):
         self.mesh.translate(point)
 
 
-class RectangularDomain(Domain):
+class TwoDimDomain(Domain):
+    """Class to represent two-dimensional computational domains
+
+    Parameters
+    ----------
+    mesh : str, dolfin.cpp.mesh.Mesh
+        The discretization of the subdomain given as XMDF file (incl. ext) to load or
+        instance of dolfin.cpp.mesh.Mesh.
+    _id : int
+        The identification number of the domain.
+    subdomains : optional
+        Set to True if domain has subdomains represented by a df.MeshFunction stored in
+        the XDMF file given as `mesh` or provide df.MeshFunction directly.
+
+    """
+
+    def __init__(self, mesh, _id=1, subdomains=None):
+        super().__init__(mesh, _id, subdomains)
+        coord = self.mesh.coordinates()
+        self.xmin = np.amin(coord[:, 0])
+        self.xmax = np.amax(coord[:, 0])
+        self.ymin = np.amin(coord[:, 1])
+        self.ymax = np.amax(coord[:, 1])
+
+    def translate(self, point):
+        """translate the domain in space
+
+        Parameters
+        ----------
+        point : dolfin.Point
+            The point by which to translate.
+
+        """
+        self.mesh.translate(point)
+        # update coordinates
+        coord = self.mesh.coordinates()
+        self.xmin = np.amin(coord[:, 0])
+        self.xmax = np.amax(coord[:, 0])
+        self.ymin = np.amin(coord[:, 1])
+        self.ymax = np.amax(coord[:, 1])
+
+
+class RectangularDomain(TwoDimDomain):
     """
     Parameters
     ----------
@@ -81,11 +123,6 @@ class RectangularDomain(Domain):
             self._read_edges()
         else:
             self.edges = False
-        coord = self.mesh.coordinates()
-        self.xmin = np.amin(coord[:, 0])
-        self.xmax = np.amax(coord[:, 0])
-        self.ymin = np.amin(coord[:, 1])
-        self.ymax = np.amax(coord[:, 1])
 
     def _read_edges(self):
         """reads meshes assuming `mesh` was a xdmf file and edge meshes
