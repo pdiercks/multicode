@@ -224,7 +224,10 @@ def homogenize(args):
     # print("Apparent Poisson ratio:", nu_hom)
 
     rve_type = args["RVE"].parent.stem
-    material.update({"Homogenized stiffness": {rve_type: Chom.tolist()}})
+    # get value of key; return empty dict if None
+    homogenized_stiffness = material.get("Homogenized stiffness", {})
+    homogenized_stiffness.update({rve_type: Chom.tolist()})
+    material.update({"Homogenized stiffness": homogenized_stiffness})
     with open(args["MAT"], "w") as outStream:
         yaml.safe_dump(material, outStream)
 
