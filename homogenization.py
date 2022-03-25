@@ -17,7 +17,6 @@ Options:
     -h, --help               Show this message.
     --plot-mesh              Plot the mesh.
     --plot-exy               Plot solution for the case Exy.
-    --solver=SOLVER          Solver parameters.
 """
 
 import sys
@@ -27,25 +26,13 @@ import yaml
 import dolfin as df
 import numpy as np
 import matplotlib.pyplot as plt
-from multi.misc import get_solver
+
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["RVE"] = Path(args["RVE"])
     args["DEG"] = int(args["DEG"])
     args["MAT"] = Path(args["MAT"])
-     
-    args["solver"] = get_solver(args["--solver"])
-    prm = df.parameters
-    prm["krylov_solver"]["relative_tolerance"] = args["solver"]["krylov_solver"][
-        "relative_tolerance"
-    ]
-    prm["krylov_solver"]["absolute_tolerance"] = args["solver"]["krylov_solver"][
-        "absolute_tolerance"
-    ]
-    prm["krylov_solver"]["maximum_iterations"] = args["solver"]["krylov_solver"][
-        "maximum_iterations"
-    ]
     return args
 
 
@@ -81,7 +68,7 @@ def homogenize(args):
     # class used to define the periodic boundary map
     class PeriodicBoundary(df.SubDomain):
         def __init__(self, vertices, tolerance=df.DOLFIN_EPS):
-            """ vertices stores the coordinates of the 4 unit cell corners"""
+            """vertices stores the coordinates of the 4 unit cell corners"""
             df.SubDomain.__init__(self, tolerance)
             self.tol = tolerance
             self.vv = vertices
@@ -177,7 +164,6 @@ def homogenize(args):
 
     Eps = df.Constant(((0, 0), (0, 0)))
     F = sum([df.inner(sigma(dv, i, Eps), eps(v_)) * dx(i + 1) for i in range(nphases)])
-    # F = sum([df.inner(sigma(dv, i, Eps), eps(v_)) * dx(i) for i in range(nphases)])
     a, L = df.lhs(F), df.rhs(F)
     a += df.dot(lamb_, dv) * dx + df.dot(dlamb, v_) * dx
 
@@ -192,7 +178,6 @@ def homogenize(args):
     def stress2Voigt(s):
         return df.as_vector([s[0, 0], s[1, 1], s[0, 1]])
 
-    #  solver_parameters = run["Run parameters"]["solver_parameters"]
     Chom = np.zeros((3, 3))
     for (j, case) in enumerate(["Exx", "Eyy", "Exy"]):
         print("Solving {} case...".format(case))
@@ -212,7 +197,6 @@ def homogenize(args):
                 )
                 / vol
             )
-        # TODO computation of truly symmetric Chom
         Chom[j, :] = Sigma
 
     print("Homogenized Stiffness:\n")
@@ -224,20 +208,23 @@ def homogenize(args):
 
     csymm = (Chom + Chom.T) / 2
     cskew = (Chom - Chom.T) / 2
-    sym_mea = (np.linalg.norm(csymm) - np.linalg.norm(cskew)) / (np.linalg.norm(csymm) + np.linalg.norm(cskew))
+    sym_mea = (np.linalg.norm(csymm) - np.linalg.norm(cskew)) / (
+        np.linalg.norm(csymm) + np.linalg.norm(cskew)
+    )
     summary = f"""Summary for Stiffness:
         relative error isotropy:        {iso_err}
         measure for symmetry:           {sym_mea}"""
     print(summary)
 
-    if plane_stress:
-        lmbda_hom = - 2 * mu_hom * lmbda_hom / (lmbda_hom - 2 * mu_hom)
-    E_hom = mu_hom * (3 * lmbda_hom + 2 * mu_hom) / (lmbda_hom + mu_hom)
-    nu_hom = lmbda_hom / (lmbda_hom + mu_hom) / 2
+    # if plane_stress:
+    #     lmbda_hom = - 2 * mu_hom * lmbda_hom / (lmbda_hom - 2 * mu_hom)
+    # E_hom = mu_hom * (3 * lmbda_hom + 2 * mu_hom) / (lmbda_hom + mu_hom)
+    # nu_hom = lmbda_hom / (lmbda_hom + mu_hom) / 2
     # print("Apparent Young modulus:", E_hom)
     # print("Apparent Poisson ratio:", nu_hom)
 
-    material.update({"Homogenized stiffness": Chom.tolist()})
+    rve_type = args["RVE"].parent.stem
+    material.update({"Homogenized stiffness": {rve_type: Chom.tolist()}})
     with open(args["MAT"], "w") as outStream:
         yaml.safe_dump(material, outStream)
 
