@@ -46,10 +46,10 @@ def extend_pymor(
     space = B.range
     if isinstance(boundary_data, np.ndarray):
         R = space.from_numpy(boundary_data)
-    # elif isinstance(boundary_data, list):
-    #     R = space.make_array(boundary_data)
-    else:
+    elif isinstance(boundary_data, list):
         R = space.make_array(boundary_data)
+    else:
+        R = space.from_numpy(boundary_data.to_numpy())
 
     # form rhs for each problem
     # subtract g(x_i) times the i-th column of A from the rhs

@@ -175,14 +175,49 @@ class NumpyQuad:
             raise NotImplementedError
 
 
-def get_hierarchical_shape_1d(degree):
+def get_hierarchical_shape_functions(x, max_degree, ncomp=2):
+    """construct hierarchical shape functions
+
+    Parameters
+    ----------
+    x : np.ndarray
+        The physical coordinates.
+        An array of ``ndim`` 1.
+    max_degree : int
+        The maximum polynomial degree of the shape functions.
+        Must be greater than or equal to 2.
+    ncomp : int, optional
+        The number of components of the field variable.
+
+    Returns
+    -------
+    shape_functions : np.ndarray
+        The hierarchical shape functions.
+        ``len(edge_basis)`` equals ``ncomp * (max_degree-1)``.
+
+    """
+    # reference coordinates
+    xi = mapping(x, x.min(), x.max())
+
+    shapes = []
+    for degree in range(2, max_degree + 1):
+        fun = _get_hierarchical_shape_fun_expr(degree)
+        shapes.append(fun(xi))
+
+    shape_functions = np.kron(shapes, np.eye(ncomp))
+    return shape_functions
+
+
+def _get_hierarchical_shape_fun_expr(degree):
     """get hierarchical shape function of degree
 
     Note
     ----
-    If degree < 2 linear functions (1 ± x) / 2 are returned.
     For degree >= 2 return the integrand of the Legendre polynomial of degree
     p = degree - 1.
+    The functions are defined on the interval [-1, 1].
+    This method implements equation (8.61) in the book
+    "The finite element method volume 1" by Zienkiewicz and Taylor
 
     Parameters
     ----------
@@ -191,13 +226,11 @@ def get_hierarchical_shape_1d(degree):
 
     Returns
     -------
-    N : function
-        A polynomial of degree if degree >= 2 else (1 ± x) / 2
+    shape_function : function
+        A polynomial of degree `degree`.
     """
-    if degree == 0:
-        return lambda x: (1 - x) / 2
-    elif degree == 1:
-        return lambda x: (1 + x) / 2
+    if degree < 2:
+        raise NotImplementedError
     else:
         p = degree - 1
         x = sympy.symbols("x")
@@ -248,91 +281,3 @@ def mapping(x, a, b, a_tol=1e-3):
         beta = np.float(sympy.limit(f_beta, a, 0))
         alpha = np.float(sympy.limit(f_alpha, a, 0))
     return alpha * x + beta
-
-
-def get_hierarchical_shapes_2d(V, degree):
-    """compute hierarchical shapes in V
-
-    Parameters
-    ----------
-    V
-        dolfin FE space.
-    degree
-        Maximum polynomial degree.
-
-    """
-
-    from multi.dofmap import Quadrilateral
-
-    # TODO extend up to any degree?
-    if degree > 3:
-        raise NotImplementedError
-    ndofs_per_edge = degree - 1
-    ndofs_per_vert = 1
-    cell = Quadrilateral("quad8")
-    cell.set_entity_dofs(ndofs_per_vert, ndofs_per_edge, 0)
-
-    #  cell.enitiy_dofs ordering
-    """e.g. for degree=3, cubic dofs = (5, 7, 9, 11)
-
-    3----8,9----2
-    |           |
-    10,11       6,7
-    |           |
-    0----4,5----1
-
-    """
-
-    nsub = V.num_sub_spaces()
-    if nsub > 0:
-        V = V.sub(0).collapse()
-
-    x_dofs = V.tabulate_dof_coordinates()
-    x = x_dofs[:, 0]
-    y = x_dofs[:, 1]
-    xmin = np.amin(x)
-    xmax = np.amax(x)
-    ymin = np.amin(y)
-    ymax = np.amax(y)
-
-    xi = mapping(x, xmin, xmax)
-    eta = mapping(y, ymin, ymax)
-
-    def get_indices(d):
-        if d < 2:
-            return [(0, 0), (1, 0), (1, 1), (0, 1)]
-        else:
-            return [(d, 0), (1, d), (d, 1), (0, d)]
-
-    deg_to_entdim = {0: 0, 1: 0, 2: 1, 3: 1}
-
-    h = {}
-    for deg in range(degree + 1):
-        h[deg] = get_hierarchical_shape_1d(deg)
-
-    # TODO why so complicated?
-    node_indices = {}
-    entity_dofs = cell.get_entity_dofs()
-    for deg in range(1, degree + 1):
-        dim = deg_to_entdim[deg]
-        entities = entity_dofs[dim].keys()
-        indices = get_indices(deg)
-        for entity in entities:
-            if deg > 1:
-                dofs = entity_dofs[dim][entity][: deg - 1]
-            else:
-                dofs = entity_dofs[dim][entity]
-            for dof in dofs:
-                if dof not in node_indices.keys():
-                    node_indices.update({dof: indices[entity]})
-
-    H = np.zeros((len(node_indices.keys()), V.dim()))
-    N_xi = [N(xi) for N in h.values()]
-    N_eta = [N(eta) for N in h.values()]
-    for i, (p, q) in node_indices.items():
-        H[i] = N_xi[p] * N_eta[q]
-
-    if nsub:
-        return np.kron(H, np.eye(nsub))
-    else:
-        return H

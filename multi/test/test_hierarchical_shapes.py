@@ -1,31 +1,33 @@
 """test hierarchical shape functions"""
-import dolfin as df
 import numpy as np
-from multi.shapes import get_hierarchical_shapes_2d
+from multi.shapes import _get_hierarchical_shape_fun_expr, mapping
+
+
+def analytical(x, p):
+    """
+    _get_hierarchical_shape_fun_expr implements
+    equation (8.61) in the book "The finite element
+    method volume 1" by Zienkiewicz and Taylor
+    """
+    if p == 2:
+        return x ** 2 - 1
+    elif p == 3:
+        return 2 * (x ** 3 - x)
+    else:
+        raise NotImplementedError
 
 
 def test():
-    mesh = df.UnitSquareMesh(8, 8)
-    mesh.translate(df.Point((1.0, 1.0)))
-    V = df.FunctionSpace(mesh, "CG", 2)
-    N = get_hierarchical_shapes_2d(V, 2)
-    points = [(1, 1), (2, 1), (2, 2), (1, 2)]
-    edges = [(1.5, 1), (2, 1.5), (1.5, 2), (1, 1.5)]
-    values = [1, 1, 1, 1]
-    edge_values = [-1, -1, -1, -1]
-
-    f = df.Function(V)
-    g = df.Function(V)
-    for k, (p, v) in enumerate(zip(points, values)):
-        f.vector().set_local(N[k])
-        assert np.isclose(f(p), v)
-        other_points = set(points).difference([p])
-        for op in other_points:
-            assert np.isclose(f(op), 0)
-
-    for k, (p, v) in enumerate(zip(edges, edge_values)):
-        g.vector().set_local(N[k + 4])
-        assert np.isclose(g(p), v)
+    x = np.linspace(0, 1, num=51)
+    # map phyiscal to reference coordinates
+    xi = mapping(x, x.min(), x.max())
+    equal = []
+    for degree in range(2, 4):
+        f_ex = analytical(xi, degree)
+        shape_fun = _get_hierarchical_shape_fun_expr(degree)
+        f = shape_fun(xi)
+        equal.append(np.allclose(f_ex, f))
+    assert np.all(equal)
 
 
 if __name__ == "__main__":

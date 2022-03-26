@@ -2,22 +2,78 @@ import numpy as np
 import dolfin as df
 
 from multi.extension import extend_pymor
-from multi.shapes import NumpyQuad
-from multi.misc import locate_dofs
+from multi.shapes import NumpyQuad, get_hierarchical_shape_functions
+from multi.misc import locate_dofs, make_mapping
 
 from scipy.sparse.linalg import eigsh, LinearOperator
 from scipy.special import erfinv
 
 from pymor.algorithms.gram_schmidt import gram_schmidt
-from pymor.bindings.fenics import (
-    FenicsMatrixOperator,
-    FenicsVisualizer,
-)
-from pymor.models.basic import StationaryModel
-from pymor.operators.constructions import LincombOperator, VectorOperator
 from pymor.operators.interface import Operator
-from pymor.parameters.functionals import ProjectionParameterFunctional
 from pymor.vectorarrays.interface import VectorArray
+
+
+def construct_hierarchical_edge_basis(problem, max_degree, solver_options=None):
+    """construct hierarchical edge basis
+
+    Parameters
+    ----------
+    problem : multi.problems.LinearProblemBase
+        A suitable problem for which to compute hierarchical
+        edge basis functions.
+    max_degree : int
+        The maximum polynomial degree of the shape functions.
+        Must be greater than or equal to 2.
+    solver_options : dict, optional
+        Solver options in pymor format.
+
+    Returns
+    -------
+    basis : VectorArray
+        The hierarchical basis extended into the interior of
+        the domain of the problem.
+
+    """
+    V = problem.V
+    try:
+        edge_meshes = problem.domain.edges
+    except AttributeError as err:
+        raise err("There are no edges to define hierarchical edge basis")
+
+    # ### construct the edge basis on the bottom edge
+    bottom = edge_meshes[0]
+    ufl_element = V.ufl_element()
+    L = df.FunctionSpace(bottom, ufl_element.family(), ufl_element.degree())
+    x_dofs = L.tabulate_dof_coordinates()
+    shape_funcs = get_hierarchical_shape_functions(
+        x_dofs[:, 0], max_degree, ncomp=ufl_element.value_size()
+    )
+
+    # ### initialize boundary data
+    basis_length = len(shape_funcs)
+    Vdim = V.dim()
+    boundary_data = np.zeros((basis_length * 4, Vdim))
+
+    def mask(index):
+        start = index * basis_length
+        end = (index + 1) * basis_length
+        return np.s_[start:end]
+
+    # ### fill in values for boundary data
+    V_to_L = {}
+    Lambda = {}
+    for i, edge in enumerate(edge_meshes):
+        # FIXME how to reconstruct the finite element / function space
+        # for any problem?
+        # for some reason ufl_element.reconstruct did not work ...
+        L = df.VectorFunctionSpace(edge, ufl_element.family(), ufl_element.degree())
+        Lambda[i] = L
+        V_to_L[i] = make_mapping(L, V)
+        boundary_data[mask(i), V_to_L[i]] = shape_funcs
+
+    # ### extend edge basis into the interior of the domain
+    basis = extend_pymor(problem, boundary_data, solver_options=solver_options)
+    return basis
 
 
 def compute_phi(problem, solver_options=None):
@@ -36,98 +92,6 @@ def compute_phi(problem, solver_options=None):
 
     phi = extend_pymor(problem, boundary_data, solver_options=solver_options)
     return phi
-
-
-def construct_coarse_scale_basis(problem, solver_options=None, return_fom=False):
-    """construct coarse scale basis for given subdomain problem
-
-    Parameters
-    ----------
-    problem : a suitable problem like :class:`~multi.linear_elasticity.LinearElasticityProblem`
-    solver_options : dict, optional
-        A dict of strings. See https://github.com/pymor/pymor/blob/2021.2.0/src/pymor/operators/interface.py
-    return_fom : bool, optional
-        If True, the full order model is returned.
-
-    Returns
-    -------
-    basis : Fenics VectorArray
-        The coarse scale basis for given subdomain.
-    fom
-        The full order model (if `return_fom` is `True`).
-
-    """
-    # full system matrix
-    A = df.assemble(problem.get_lhs())
-
-    # ### define bilinear shape functions as inhomogeneous dirichlet bcs
-    V = problem.V
-    f = df.Function(V)  # placeholder for rhs vector operators
-    g = df.Function(V)  # boundary data
-    n_vertices = 4  # assumes rectangular domain
-    nodes = problem.domain.get_nodes(n=n_vertices)
-    quadrilateral = NumpyQuad(nodes)
-    shape_functions = quadrilateral.interpolate(V)
-
-    null = np.zeros(V.dim())
-    # source = problem.source
-    vector_operators = []
-    for shape in shape_functions:
-        f.vector().set_local(null)
-        g.vector().set_local(shape)
-        bc = df.DirichletBC(V, g, df.DomainBoundary())
-        A_bc = A.copy()
-        bc.zero_columns(A_bc, f.vector(), 1.0)
-        vector_operators.append(
-            VectorOperator(problem.range.make_array([f.vector().copy()]))
-        )
-
-    lhs = FenicsMatrixOperator(A_bc, V, V, solver_options=solver_options)
-    parameter_functionals = [
-        ProjectionParameterFunctional("mu", shape_functions.shape[0], index=i)
-        for i in range(shape_functions.shape[0])
-    ]
-    rhs = LincombOperator(vector_operators, parameter_functionals)
-
-    # ### inner products
-    energy_mat = A.copy()
-    energy_0_mat = A_bc.copy()
-    l2_mat = problem.get_product(name="l2", bcs=False)
-    l2_0_mat = l2_mat.copy()
-    h1_mat = problem.get_product(name="h1", bcs=False)
-    h1_0_mat = h1_mat.copy()
-    bc.apply(l2_0_mat)
-    bc.apply(h1_0_mat)
-
-    fom = StationaryModel(
-        lhs,
-        rhs,
-        output_functional=None,
-        products={
-            "energy": FenicsMatrixOperator(energy_mat, V, V, name="energy"),
-            "energy_0": FenicsMatrixOperator(energy_0_mat, V, V, name="energy_0"),
-            "l2": FenicsMatrixOperator(l2_mat, V, V, name="l2"),
-            "l2_0": FenicsMatrixOperator(l2_0_mat, V, V, name="l2_0"),
-            "h1": FenicsMatrixOperator(h1_mat, V, V, name="h1"),
-            "h1_0": FenicsMatrixOperator(h1_0_mat, V, V, name="h1_0"),
-        },
-        error_estimator=None,
-        visualizer=FenicsVisualizer(problem.range),
-        name="FOM",
-    )
-
-    # ### compute the coarse scale basis
-    dim = 2  # spatial dimension
-    z = dim * n_vertices
-    basis = fom.operator.source.empty(reserve=z)
-    Identity = np.eye(z)
-    for row in Identity:
-        basis.append(fom.solve({"mu": row}))
-
-    if return_fom:
-        return basis, fom
-    else:
-        return basis
 
 
 # adapted from pymor.algorithms.randrangefinder.adaptive_rrf
