@@ -5,7 +5,7 @@ import numpy as np
 from multi import Domain, RectangularDomain
 
 
-def get_dolfin_mesh():
+def get_unit_square_mesh():
     mesh = df.UnitSquareMesh(8, 8)
     subdomains = df.MeshFunction("size_t", mesh, 2, value=0)
 
@@ -19,16 +19,35 @@ def get_dolfin_mesh():
     return mesh, subdomains
 
 
-def test():
-    mesh, subs = get_dolfin_mesh()
+def get_unit_interval_mesh():
+    mesh = df.UnitIntervalMesh(10)
+    return mesh
+
+
+def test_1d():
+    mesh = get_unit_interval_mesh()
+    domain = Domain(mesh)
+    xmax = domain.xmax
+    ymax = domain.ymax
+    zmin = domain.zmin
+    assert xmax == 1.0
+    assert ymax == 0.0
+    assert zmin == 0.0
+    domain.translate(df.Point([1.5]))
+    assert domain.xmax == 2.5
+    assert domain.ymax == 0.0
+
+
+def test_2d():
+    mesh, subs = get_unit_square_mesh()
     domain = Domain(mesh, _id=0, subdomains=subs)
     assert np.isclose(np.sum(domain.subdomains.array()), 64)
 
     other = Domain(mesh, _id=1, subdomains=None)
     assert other.subdomains is None
     other.translate(df.Point((2.1, 0.4)))
-    assert np.isclose(np.amax(other.mesh.coordinates()[:, 1]), 1.4)
-    assert np.isclose(np.amax(other.mesh.coordinates()[:, 0]), 3.1)
+    assert np.isclose(other.ymax, 1.4)
+    assert np.isclose(other.xmax, 3.1)
 
     another = RectangularDomain(
         "data/rvedomain.xdmf", _id=2, subdomains=True, edges=True
@@ -45,4 +64,5 @@ def test():
 
 
 if __name__ == "__main__":
-    test()
+    test_1d()
+    test_2d()

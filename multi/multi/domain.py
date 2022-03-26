@@ -58,50 +58,48 @@ class Domain(object):
         """
         self.mesh.translate(point)
 
+    @property
+    def xmin(self):
+        return self.mesh.coordinates()[:, 0].min()
 
-class TwoDimDomain(Domain):
-    """Class to represent two-dimensional computational domains
+    @property
+    def xmax(self):
+        return self.mesh.coordinates()[:, 0].max()
 
-    Parameters
-    ----------
-    mesh : str, dolfin.cpp.mesh.Mesh
-        The discretization of the subdomain given as XMDF file (incl. ext) to load or
-        instance of dolfin.cpp.mesh.Mesh.
-    _id : int
-        The identification number of the domain.
-    subdomains : optional
-        Set to True if domain has subdomains represented by a df.MeshFunction stored in
-        the XDMF file given as `mesh` or provide df.MeshFunction directly.
+    @property
+    def ymin(self):
+        try:
+            v = self.mesh.coordinates()[:, 1].min()
+        except IndexError:
+            v = 0.0
+        return v
 
-    """
+    @property
+    def ymax(self):
+        try:
+            v = self.mesh.coordinates()[:, 1].max()
+        except IndexError:
+            v = 0.0
+        return v
 
-    def __init__(self, mesh, _id=1, subdomains=None):
-        super().__init__(mesh, _id, subdomains)
-        coord = self.mesh.coordinates()
-        self.xmin = np.amin(coord[:, 0])
-        self.xmax = np.amax(coord[:, 0])
-        self.ymin = np.amin(coord[:, 1])
-        self.ymax = np.amax(coord[:, 1])
+    @property
+    def zmin(self):
+        try:
+            v = self.mesh.coordinates()[:, 2].min()
+        except IndexError:
+            v = 0.0
+        return v
 
-    def translate(self, point):
-        """translate the domain in space
-
-        Parameters
-        ----------
-        point : dolfin.Point
-            The point by which to translate.
-
-        """
-        self.mesh.translate(point)
-        # update coordinates
-        coord = self.mesh.coordinates()
-        self.xmin = np.amin(coord[:, 0])
-        self.xmax = np.amax(coord[:, 0])
-        self.ymin = np.amin(coord[:, 1])
-        self.ymax = np.amax(coord[:, 1])
+    @property
+    def zmax(self):
+        try:
+            v = self.mesh.coordinates()[:, 2].max()
+        except IndexError:
+            v = 0.0
+        return v
 
 
-class RectangularDomain(TwoDimDomain):
+class RectangularDomain(Domain):
     """
     Parameters
     ----------
@@ -185,12 +183,6 @@ class RectangularDomain(TwoDimDomain):
         meshes are translated as well.
         """
         self.mesh.translate(point)
-        # update coordinates
-        coord = self.mesh.coordinates()
-        self.xmin = np.amin(coord[:, 0])
-        self.xmax = np.amax(coord[:, 0])
-        self.ymin = np.amin(coord[:, 1])
-        self.ymax = np.amax(coord[:, 1])
         # update edges if True
         if self.edges:
             for edge in self.edges:
