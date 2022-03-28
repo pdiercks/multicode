@@ -3,7 +3,7 @@ import dolfin as df
 
 from multi.extension import extend_pymor
 from multi.shapes import NumpyQuad, get_hierarchical_shape_functions
-from multi.misc import locate_dofs, make_mapping
+from multi.misc import locate_dofs
 
 from scipy.sparse.linalg import eigsh, LinearOperator
 from scipy.special import erfinv
@@ -11,10 +11,18 @@ from scipy.special import erfinv
 from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.operators.interface import Operator
 from pymor.vectorarrays.interface import VectorArray
+from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 
-def construct_hierarchical_edge_basis(problem, max_degree, solver_options=None):
-    """construct hierarchical edge basis
+def construct_hierarchical_basis(
+    problem,
+    max_degree,
+    solver_options=None,
+    orthonormalize=False,
+    product=None,
+    return_edge_basis=False,
+):
+    """construct hierarchical basis (full space)
 
     Parameters
     ----------
@@ -26,31 +34,43 @@ def construct_hierarchical_edge_basis(problem, max_degree, solver_options=None):
         Must be greater than or equal to 2.
     solver_options : dict, optional
         Solver options in pymor format.
+    orthonormalize : bool, optional
+        If True, orthonormalize the edge basis to inner ``product``.
+    product : optional
+        Inner product wrt to which the edge basis is orthonormalized
+        if ``orthonormalize`` is True.
 
     Returns
     -------
     basis : VectorArray
         The hierarchical basis extended into the interior of
         the domain of the problem.
+    edge_basis : VectorArray
+        The hierarchical edge basis (if ``return_edge_basis`` is True).
 
     """
     V = problem.V
     try:
-        edge_meshes = problem.domain.edges
+        edge_spaces = problem.edge_spaces
     except AttributeError as err:
-        raise err("There are no edges to define hierarchical edge basis")
+        raise err("There are no edge spaces defined for given problem.")
 
     # ### construct the edge basis on the bottom edge
-    bottom = edge_meshes[0]
     ufl_element = V.ufl_element()
-    L = df.FunctionSpace(bottom, ufl_element.family(), ufl_element.degree())
-    x_dofs = L.tabulate_dof_coordinates()
-    shape_funcs = get_hierarchical_shape_functions(
+    L = edge_spaces[0]
+    x_dofs = L.sub(0).collapse().tabulate_dof_coordinates()
+    edge_basis = get_hierarchical_shape_functions(
         x_dofs[:, 0], max_degree, ncomp=ufl_element.value_size()
     )
+    source = NumpyVectorSpace(L.dim())
+    B = source.make_array(edge_basis)
+    if product is not None:
+        # TODO implement other inner products as NumpyMatrixOperator or FenicsMatrixOperator
+        raise NotImplementedError
+    gram_schmidt(B, product=product, copy=False)
 
     # ### initialize boundary data
-    basis_length = len(shape_funcs)
+    basis_length = len(edge_basis)
     Vdim = V.dim()
     boundary_data = np.zeros((basis_length * 4, Vdim))
 
@@ -60,20 +80,15 @@ def construct_hierarchical_edge_basis(problem, max_degree, solver_options=None):
         return np.s_[start:end]
 
     # ### fill in values for boundary data
-    V_to_L = {}
-    Lambda = {}
-    for i, edge in enumerate(edge_meshes):
-        # FIXME how to reconstruct the finite element / function space
-        # for any problem?
-        # for some reason ufl_element.reconstruct did not work ...
-        L = df.VectorFunctionSpace(edge, ufl_element.family(), ufl_element.degree())
-        Lambda[i] = L
-        V_to_L[i] = make_mapping(L, V)
-        boundary_data[mask(i), V_to_L[i]] = shape_funcs
+    for i in range(len(problem.edge_spaces)):
+        boundary_data[mask(i), problem.V_to_L[i]] = B.to_numpy()
 
     # ### extend edge basis into the interior of the domain
     basis = extend_pymor(problem, boundary_data, solver_options=solver_options)
-    return basis
+    if return_edge_basis:
+        return basis, B
+    else:
+        return basis
 
 
 def compute_phi(problem, solver_options=None):

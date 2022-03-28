@@ -30,6 +30,24 @@ class LinearProblemBase(object):
         self.domain = domain
         self.V = V
         self._bc_handler = BoundaryConditions(domain, V)
+        if hasattr(domain, "edges"):
+            if domain.edges:
+                self._init_edge_spaces()
+
+    def _init_edge_spaces(self):
+        edge_meshes = self.domain.edges
+        V = self.V
+        ufl_element = V.ufl_element()
+
+        V_to_L = []
+        Lambda = []
+        for i, edge in enumerate(edge_meshes):
+            edge_element = ufl_element.reconstruct(cell=edge.ufl_cell())
+            L = df.FunctionSpace(edge, edge_element)
+            V_to_L.append(make_mapping(L, V))
+            Lambda.append(L)
+        self.V_to_L = V_to_L
+        self.edge_spaces = Lambda
 
     def add_dirichlet_bc(
         self, boundary, value, degree=0, sub=None, method="topological"
