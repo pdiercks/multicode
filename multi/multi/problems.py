@@ -1,3 +1,4 @@
+import ufl
 import dolfin as df
 import numpy as np
 from multi.bcs import BoundaryConditions
@@ -89,8 +90,10 @@ class LinearProblemBase(object):
             bcs = ()
         if isinstance(product, str):
             product = InnerProduct(self.V, name=product, bcs=bcs, form=None)
-        else:
+        elif isinstance(product, ufl.form.Form):
             product = InnerProduct(self.V, name=None, bcs=bcs, form=product)
+        else:
+            product = None
         return product.assemble() if product else None
 
     def get_form_lhs(self):
