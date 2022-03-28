@@ -1,5 +1,7 @@
 import dolfin as df
 import numpy as np
+from multi.shapes import NumpyLine
+from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 
 # adapted version of MechanicsBCs by Thomas Titscher
@@ -132,6 +134,100 @@ class BoundaryConditions:
         for expression, marker in self._neumann_bcs:
             r += df.dot(expression, self._v) * self._ds(marker)
         return r
+
+
+def compute_multiscale_bcs(
+    problem, edge_id, boundary_data, dofmap, chi, product=None, orth=False
+):
+    """compute multiscale bcs from given boundary data
+
+    The dof values for the fine scale edge basis are computed
+    via projection of the boundary data onto the fine scale basis.
+    The coarse scale basis functions are assumed to be linear functions
+    with value 1 or 0 at the endpoints of the edge mesh.
+
+    Parameters
+    ----------
+    problem : multi.problems.LinearProblemBase
+        The linear problem.
+    edge_id : int
+        Integer specifying the boundary edge.
+    boundary_data : dolfin.Expression or similar
+        The (total) displacement value on the boundary.
+        Will be projected onto the edge space.
+    dofmap : multi.dofmap.DofMap
+        The dofmap of the reduced order model.
+    chi : np.ndarray
+        The fine scale edge basis. ``chi.shape`` has to agree
+        with number of dofs for current coarse grid cell.
+    product : optional
+        The inner product wrt which chi was orthonormalized.
+    orth : bool, optional
+        If True, assume orthonormal basis.
+
+
+    Returns
+    -------
+    bcs : dict
+        The dofs (dict.keys()) and values (dict.values()) of the
+        projected boundary conditions.
+
+    """
+    edge = problem.domain.edges[edge_id]
+    edge_space = problem.edge_spaces[edge_id]
+    source = NumpyVectorSpace(edge_space.dim())
+
+    edge_coord = edge.coordinates()
+    edge_xmin = np.amin(edge_coord[:, 0])
+    edge_xmax = np.amax(edge_coord[:, 0])
+    edge_ymin = np.amin(edge_coord[:, 1])
+    edge_ymax = np.amax(edge_coord[:, 1])
+
+    bcs = {}  # dofs are keys, bc_values are values
+    coarse_vertices = np.array([[edge_xmin, edge_ymin], [edge_xmax, edge_ymax]])
+    coarse_values = np.hstack([boundary_data(point) for point in coarse_vertices])
+    coarse_dofs = dofmap.locate_dofs(coarse_vertices)
+
+    for dof, val in zip(coarse_dofs, coarse_values):
+        bcs.update({dof: val})
+
+    # ### subtract coarse scale part from boundary data
+    g = df.interpolate(boundary_data, edge_space)
+    G = source.make_array(g.vector()[:])
+
+    component = 0 if edge_id in (0, 2) else 1
+    if edge_id in (0, 2):
+        # horizontal edge
+        component = 0
+        nodes = np.array([edge_xmin, edge_xmax])
+    else:
+        # vertical edge
+        component = 1
+        nodes = np.array([edge_ymin, edge_ymax])
+    line = NumpyLine(nodes)
+    phi_array = line.interpolate(edge_space, component)
+    phi = source.make_array(phi_array)
+    Gfine = G - phi.lincomb(coarse_values)
+
+    edge_basis = source.make_array(chi)
+    if orth:
+        coeff = Gfine.inner(edge_basis, product=product)
+    else:
+        Gramian = edge_basis.gramian(product=product)
+        R = edge_basis.inner(Gfine, product=product)
+        coeff = np.linalg.solve(Gramian, R)
+    edge_mid_point = [
+        [
+            (edge_xmax - edge_xmin) / 2 + edge_xmin,
+            (edge_ymax - edge_ymin) / 2 + edge_ymin,
+        ]
+    ]
+    fine_dofs = dofmap.locate_dofs(edge_mid_point)
+
+    for dof, val in zip(fine_dofs, coeff.flatten().tolist()):
+        bcs.update({dof: val})
+
+    return bcs
 
 
 def apply_bcs(lhs, rhs, bc_indices, bc_values):
