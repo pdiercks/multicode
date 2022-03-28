@@ -98,21 +98,40 @@ class Quadrilateral:
         return self._entity_dofs
 
     def set_entity_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face):
-        n_vertex_dofs = len(self.verts) * dofs_per_vert
-        n_edge_dofs = len(self.edges) * dofs_per_edge
-        #  n_face_dofs = len(self.faces) * dofs_per_face
+        """set local dof indices for each entity of the cell
+
+        Parameters
+        ----------
+        dofs_per_vert : int
+            Number of DoFs per vertex.
+        dofs_per_edge : int, np.ndarray
+            Number of DoFs per edge. Either an integer value or a numpy array
+            of shape ``(4, )``.
+        dofs_per_face : int
+            Number of DoFs per face.
+        """
+
+        counter = 0
         self._entity_dofs = {0: {}, 1: {}, 2: {}}
         for v in range(len(self.verts)):
             self._entity_dofs[0][v] = [
                 dofs_per_vert * v + i for i in range(dofs_per_vert)
             ]
-        for e in range(len(self.edges)):
-            self._entity_dofs[1][e] = [
-                n_vertex_dofs + dofs_per_edge * e + i for i in range(dofs_per_edge)
-            ]
+        counter += len(self.verts) * dofs_per_vert
+        if isinstance(dofs_per_edge, int):
+            for e in range(len(self.edges)):
+                self._entity_dofs[1][e] = [
+                    counter + dofs_per_edge * e + i for i in range(dofs_per_edge)
+                ]
+        else:
+            for e in range(len(self.edges)):
+                self._entity_dofs[1][e] = [
+                    counter + dof for dof in range(dofs_per_edge[e])
+                ]
+                counter += dofs_per_edge[e]
         for f in range(len(self.faces)):
             self._entity_dofs[2][f] = [
-                n_edge_dofs + dofs_per_face * f + i for i in range(dofs_per_face)
+                counter + dofs_per_face * f + i for i in range(dofs_per_face)
             ]
 
 
@@ -216,29 +235,54 @@ class DofMap:
         ----------
         dofs_per_vert : int
             Number of DoFs per vertex.
-        dofs_per_edge : int
-            Number of DoFs per edge
+        dofs_per_edge : int, np.ndarray
+            Number of DoFs per edge. This can be an integer value to set number
+            of DoFs for each edge to the same value or an array of shape
+            ``(len(self.cells), 4)`` to set number of DoFs for each cell and
+            its four edges individually.
         dofs_per_face : int, optional
             Number of DoFs per face.
         """
-        self._cell.set_entity_dofs(dofs_per_vert, dofs_per_edge, dofs_per_face)
-        entity_dofs = self._cell.get_entity_dofs()
-        dimension = list(range(self.tdim + 1))
+        # ### initialize
+        # there are only vertices, edges and faces for quadrilaterals
+        dimension = [0, 1, 2]
         x_dofs = []
         self._dm = {dim: {} for dim in dimension}
         DoF = 0
-        for ci, cell in enumerate(self.cells):
-            self._cell.set_entities(cell)
-            for dim in dimension:
-                entities = self._cell.get_entities()[dim]
-                for local_ent, ent in enumerate(entities):
-                    if ent not in self._dm[dim].keys():
-                        self._dm[dim][ent] = []
-                        dofs = entity_dofs[dim][local_ent]
-                        for dof in dofs:
-                            x_dofs.append(self.points[ent])  # store dof coordinates
-                            self._dm[dim][ent].append(DoF)
-                            DoF += 1
+
+        if isinstance(dofs_per_edge, int):
+            self._cell.set_entity_dofs(dofs_per_vert, dofs_per_edge, dofs_per_face)
+            entity_dofs = self._cell.get_entity_dofs()
+            for ci, cell in enumerate(self.cells):
+                self._cell.set_entities(cell)
+                for dim in dimension:
+                    entities = self._cell.get_entities()[dim]
+                    for local_ent, ent in enumerate(entities):
+                        if ent not in self._dm[dim].keys():
+                            self._dm[dim][ent] = []
+                            dofs = entity_dofs[dim][local_ent]
+                            for dof in dofs:
+                                x_dofs.append(self.points[ent])  # store dof coordinates
+                                self._dm[dim][ent].append(DoF)
+                                DoF += 1
+        else:
+            assert dofs_per_edge.shape == (len(self.cells), 4)
+            for ci, cell in enumerate(self.cells):
+                self._cell.set_entity_dofs(
+                    dofs_per_vert, dofs_per_edge[ci], dofs_per_face
+                )
+                entity_dofs = self._cell.get_entity_dofs()
+                self._cell.set_entities(cell)
+                for dim in dimension:
+                    entities = self._cell.get_entities()[dim]
+                    for local_ent, ent in enumerate(entities):
+                        if ent not in self._dm[dim].keys():
+                            self._dm[dim][ent] = []
+                            dofs = entity_dofs[dim][local_ent]
+                            for dof in dofs:
+                                x_dofs.append(self.points[ent])  # store dof coordinates
+                                self._dm[dim][ent].append(DoF)
+                                DoF += 1
         self.n_dofs = DoF
         self.dofs_per_vert = dofs_per_vert
         self.dofs_per_edge = dofs_per_edge
