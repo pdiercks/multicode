@@ -191,41 +191,48 @@ def compute_multiscale_bcs(
     for dof, val in zip(coarse_dofs, coarse_values):
         bcs.update({dof: val})
 
-    # ### subtract coarse scale part from boundary data
-    g = df.interpolate(boundary_data, edge_space)
-    G = source.make_array(g.vector()[:])
-
-    component = 0 if edge_id in (0, 2) else 1
-    if edge_id in (0, 2):
-        # horizontal edge
-        component = 0
-        nodes = np.array([edge_xmin, edge_xmax])
+    dofs_per_edge = dofmap.dofs_per_edge
+    if isinstance(dofs_per_edge, int):
+        add_fine_bcs = dofs_per_edge > 0
     else:
-        # vertical edge
-        component = 1
-        nodes = np.array([edge_ymin, edge_ymax])
-    line = NumpyLine(nodes)
-    phi_array = line.interpolate(edge_space, component)
-    phi = source.make_array(phi_array)
-    Gfine = G - phi.lincomb(coarse_values)
+        add_fine_bcs = np.sum(dofs_per_edge) > 0
 
-    edge_basis = source.make_array(chi)
-    if orth:
-        coeff = Gfine.inner(edge_basis, product=product)
-    else:
-        Gramian = edge_basis.gramian(product=product)
-        R = edge_basis.inner(Gfine, product=product)
-        coeff = np.linalg.solve(Gramian, R)
-    edge_mid_point = [
-        [
-            (edge_xmax - edge_xmin) / 2 + edge_xmin,
-            (edge_ymax - edge_ymin) / 2 + edge_ymin,
+    if add_fine_bcs:
+        # ### subtract coarse scale part from boundary data
+        g = df.interpolate(boundary_data, edge_space)
+        G = source.make_array(g.vector()[:])
+
+        component = 0 if edge_id in (0, 2) else 1
+        if edge_id in (0, 2):
+            # horizontal edge
+            component = 0
+            nodes = np.array([edge_xmin, edge_xmax])
+        else:
+            # vertical edge
+            component = 1
+            nodes = np.array([edge_ymin, edge_ymax])
+        line = NumpyLine(nodes)
+        phi_array = line.interpolate(edge_space, component)
+        phi = source.make_array(phi_array)
+        Gfine = G - phi.lincomb(coarse_values)
+
+        edge_basis = source.make_array(chi)
+        if orth:
+            coeff = Gfine.inner(edge_basis, product=product)
+        else:
+            Gramian = edge_basis.gramian(product=product)
+            R = edge_basis.inner(Gfine, product=product)
+            coeff = np.linalg.solve(Gramian, R)
+        edge_mid_point = [
+            [
+                (edge_xmax - edge_xmin) / 2 + edge_xmin,
+                (edge_ymax - edge_ymin) / 2 + edge_ymin,
+            ]
         ]
-    ]
-    fine_dofs = dofmap.locate_dofs(edge_mid_point)
+        fine_dofs = dofmap.locate_dofs(edge_mid_point)
 
-    for dof, val in zip(fine_dofs, coeff.flatten().tolist()):
-        bcs.update({dof: val})
+        for dof, val in zip(fine_dofs, coeff.flatten().tolist()):
+            bcs.update({dof: val})
 
     return bcs
 
