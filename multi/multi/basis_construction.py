@@ -67,12 +67,14 @@ def construct_hierarchical_basis(
     if product is not None:
         # TODO implement other inner products as NumpyMatrixOperator or FenicsMatrixOperator
         raise NotImplementedError
-    gram_schmidt(B, product=product, copy=False)
+
+    if orthonormalize:
+        gram_schmidt(B, product=product, copy=False)
 
     # ### initialize boundary data
-    basis_length = len(edge_basis)
+    basis_length = len(B)
     Vdim = V.dim()
-    boundary_data = np.zeros((basis_length * 4, Vdim))
+    boundary_data = np.zeros((basis_length * len(edge_spaces), Vdim))
 
     def mask(index):
         start = index * basis_length
@@ -80,7 +82,7 @@ def construct_hierarchical_basis(
         return np.s_[start:end]
 
     # ### fill in values for boundary data
-    for i in range(len(problem.edge_spaces)):
+    for i in range(len(edge_spaces)):
         boundary_data[mask(i), problem.V_to_L[i]] = B.to_numpy()
 
     # ### extend edge basis into the interior of the domain
