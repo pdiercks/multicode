@@ -1,8 +1,19 @@
 import pathlib
+import yaml
 import numpy as np
 import dolfin as df
-from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
+from pymor.bindings.fenics import FenicsVectorSpace
 from multi.io import ResultFile
+from multi.product import InnerProduct
+
+
+def read_bam_colors():
+    """get primary(0), secondary(1), tertiary(2) or all(3) for
+    bam colors black, blue, green red, and yellow"""
+    yamlfile = pathlib.Path(__file__).parent / "bamcolors_rgb.yml"
+    with yamlfile.open("r") as instream:
+        bam_cd = yaml.safe_load(instream)
+    return bam_cd
 
 
 def write_local_fields(
@@ -19,8 +30,8 @@ def write_local_fields(
     V = problem.V
 
     source = FenicsVectorSpace(V)
-    product_matrix = problem.discretize_product(product, bcs=False)
-    product = FenicsMatrixOperator(product_matrix, V, V) if product_matrix else None
+    inner_product = InnerProduct(V, product, bcs=())
+    product = inner_product.assemble_operator()
 
     for cell_index, cell in enumerate(dofmap.cells):
         offset = np.around(dofmap.points[cell][0], decimals=5)
@@ -50,7 +61,7 @@ def write_local_fields(
         rerr_vec.axpy(1.0, aerr_vec)
         rerr_vec /= fom_norm
 
-        xdmf = ResultFile(output.parent / (basename + f"_{cell_index}.xdmf"))
+        xdmf = ResultFile(output.parent / (basename + f"_{cell_index:02}.xdmf"))
         xdmf.add_function(u_rom_local, name="u-rom")
         xdmf.add_function(u_fom_local, name="u-fom")
         xdmf.add_function(aerr, name="aerr")
@@ -73,8 +84,8 @@ def compute_local_error_norm(
 
     V = problem.V
     source = FenicsVectorSpace(V)
-    product_matrix = problem.discretize_product(product, bcs=False)
-    product = FenicsMatrixOperator(product_matrix, V, V) if product_matrix else None
+    inner_product = InnerProduct(V, product, bcs=())
+    product = inner_product.assemble_operator()
 
     reconstructed = []
     fom_solutions = []
