@@ -115,11 +115,16 @@ def select_modes(basis, modes_per_edge, max_modes):
 
 def set_values(U, dofs, values):
     """set ``dofs`` entries of all vectors in VectorArray U to ``values``"""
-    assert isinstance(U, NumpyVectorArray)
-    # unfortunately, I cannot figure out how to achieve the same
-    # for ListVectorArray of FenicsVectors
-    array = U.to_numpy()
-    array[:, dofs] = values
+    if isinstance(U, NumpyVectorArray):
+        # unfortunately, I cannot figure out how to achieve the same
+        # for ListVectorArray of FenicsVectors
+        array = U.to_numpy()
+        array[:, dofs] = values
+    else:
+        space = U.space
+        array = U.to_numpy()
+        array[:, dofs] = values
+        return space.from_numpy(array)
 
 
 def restrict_to(domain, function):
