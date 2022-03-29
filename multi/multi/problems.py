@@ -65,7 +65,7 @@ class LinearProblemBase(object):
     def dirichlet_bcs(self):
         return self._bc_handler.bcs()
 
-    def discretize_product(self, product, bcs=False):
+    def discretize_product(self, product, bcs=False, product_name=None):
         """discretize inner product
 
         Parameters
@@ -88,13 +88,8 @@ class LinearProblemBase(object):
                 raise Warning("Forgot to apply BCs?")
         else:
             bcs = ()
-        if isinstance(product, str):
-            product = InnerProduct(self.V, name=product, bcs=bcs, form=None)
-        elif isinstance(product, ufl.form.Form):
-            product = InnerProduct(self.V, name=None, bcs=bcs, form=product)
-        else:
-            product = None
-        return product.assemble() if product else None
+        product = InnerProduct(self.V, product, bcs=bcs, name=product_name)
+        return product.assemble()  # returns Matrix or None
 
     def get_form_lhs(self):
         # to be implemented by child
@@ -399,52 +394,52 @@ class OversamplingProblem(object):
         U = self.operator.apply_inverse(rhs)
         return self.range.from_numpy(U.dofs(self._S_to_R))
 
-    def get_source_product(self, product=None):
+    def get_source_product(self, product=None, bcs=(), product_name=None):
         """get source product
 
         Parameters
         ----------
         product : str, optional
             The inner product to use.
+        bcs : list of df.DirichletBC, optional
+            The bcs to be applied to the product matrix.
+        product_name : str, optional
+            Name of the NumpyMatrixOperator.
 
         Returns
         -------
         source_product : NumpyMatrixOperator or None
         """
         if product is not None:
-            # compute source product
-            matrix = self.problem.discretize_product(product, bcs=False)
+            inner_product = InnerProduct(
+                self.problem.V, product, bcs=bcs, name=product_name
+            )
+            matrix = inner_product.assemble()
             M = df.as_backend_type(matrix).mat()
             # FIXME figure out how to use (take slice of) dolfin matrix directly?
             full_matrix = csc_matrix(M.getValuesCSR()[::-1], shape=M.size)
             dofs = self._bc_dofs_gamma_out
             source_matrix = full_matrix[dofs, :][:, dofs]
-            source_product = NumpyMatrixOperator(
-                source_matrix, name=f"{product}_product"
-            )
+            source_product = NumpyMatrixOperator(source_matrix, name=product_name)
             return source_product
         else:
             return None
 
-    def get_range_product(self, product=None):
+    def get_range_product(self, product=None, bcs=(), product_name=None):
         """get range product
 
         Parameters
         ----------
         product : str, optional
             The inner product to use.
+        bcs : list of df.DirichletBC, optional
+            The bcs to be applied to the product matrix.
+        product_name : str, optional
+            Name of the FenicsMatrixOperator.
 
         Returns
         -------
         range_product : FenicsMatrixOperator or None
         """
-        if product is not None:
-            # compute range product
-            matrix = self.subdomain_problem.discretize_product(product, bcs=False)
-            V = self.range.V
-            range_product = FenicsMatrixOperator(
-                matrix, V, V, name=f"{product}_product"
-            )
-            return range_product
-        else:
-            return None
+        range_product = InnerProduct(self.range.V, product, bcs=bcs, name=product_name)
+        return range_product.assemble_operator()  # returns FenicsMatrixOperator or None

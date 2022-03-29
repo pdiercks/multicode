@@ -19,7 +19,7 @@ class DummyProblem:
         else:
             bcs = ()
         if name == "energy":
-            product = InnerProduct(self.V, name, bcs=bcs, form=self.get_form_lhs())
+            product = InnerProduct(self.V, self.get_form_lhs(), bcs=bcs, name=name)
         else:
             product = InnerProduct(self.V, name, bcs=bcs)
         return product.assemble()

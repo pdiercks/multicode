@@ -1,4 +1,5 @@
 import dolfin as df
+from pymor.bindings.fenics import FenicsMatrixOperator
 
 
 class InnerProduct:
@@ -8,49 +9,49 @@ class InnerProduct:
     ----------
     V
         The finite element space.
-    name : str, optional
-        The name of the inner product. Supported values are
-        euclidean, mass, l2, h1-semi, stiffness, h1.
+    product : str or ufl.form.Form, optional
+        The inner product given as string or weak form expressed in UFL.
+        Supported string values are euclidean, mass, l2, h1-semi, stiffness, h1.
     bcs : tuple, list, optional
         Boundary conditions to apply.
-    form : ufl.form.Form, optional
-        The weak form (UFL) of the inner product.
+    name : str, optional
+        The name that will be given to the FenicsMatrixOperator when
+        self.assemble_operator is called.
 
     """
 
-    def __init__(self, V, name=None, bcs=(), form=None):
+    def __init__(self, V, product=None, bcs=(), name=None):
         if not isinstance(bcs, (list, tuple)):
             bcs = (bcs,)
         self.V = V
-        self.name = name
-        self.u = df.TrialFunction(V)
-        self.v = df.TestFunction(V)
         self.bcs = bcs
-        names = ("euclidean", "mass", "l2", "h1-semi", "stiffness", "h1")
-        if name not in names:
-            if form is None:
+        if isinstance(product, str):
+            u = df.TrialFunction(V)
+            v = df.TestFunction(V)
+            names = ("euclidean", "mass", "l2", "h1-semi", "stiffness", "h1")
+            if product in ("euclidean",):
+                form = None
+            elif product in ("mass", "l2"):
+                form = df.inner(u, v) * df.dx
+            elif product in ("h1-semi", "stiffness"):
+                form = df.inner(df.grad(u), df.grad(v)) * df.dx
+            elif product in ("h1",):
+                form = (df.inner(u, v) + df.inner(df.grad(u), df.grad(v))) * df.dx
+            else:
                 raise KeyError(
-                    f"I don't know how to compute inner product with name '{self.name}'."
+                    f"I don't know how to compute inner product with name '{product}'."
                     + "You need to provide the form yourself or choose a supported value."
                 )
+            self.name = name or product
+        else:
+            # product should be either an ufl.form.Form or None
+            form = product
+            self.name = name
         self.form = form
 
     def get_form(self):
         """returns the weak form of the inner product"""
-        u = self.u
-        v = self.v
-        if self.name in ("euclidean",):
-            form = None
-        elif self.name in ("mass", "l2"):
-            form = df.inner(u, v) * df.dx
-        elif self.name in ("h1-semi", "stiffness"):
-            form = df.inner(df.grad(u), df.grad(v)) * df.dx
-        elif self.name in ("h1",):
-            form = (df.inner(u, v) + df.inner(df.grad(u), df.grad(v))) * df.dx
-        else:
-            # form specified by user
-            form = self.form
-        return form
+        return self.form
 
     def assemble(self):
         """returns the dolfin matrix representing the inner product or None
@@ -66,3 +67,11 @@ class InnerProduct:
                 # bc.apply does not preserve symmetry
                 bc.zero_columns(matrix, vector, 1.0)
             return matrix
+
+    def assemble_operator(self):
+        """returns the dolfin matrix wrapped as FenicsMatrixOperator or None"""
+        matrix = self.assemble()
+        if matrix is not None:
+            return FenicsMatrixOperator(matrix, self.V, self.V, name=self.name)
+        else:
+            return None
