@@ -118,7 +118,7 @@ class Quadrilateral:
                 dofs_per_vert * v + i for i in range(dofs_per_vert)
             ]
         counter += len(self.verts) * dofs_per_vert
-        if isinstance(dofs_per_edge, int):
+        if isinstance(dofs_per_edge, (int, np.integer)):
             for e in range(len(self.edges)):
                 self._entity_dofs[1][e] = [
                     counter + dofs_per_edge * e + i for i in range(dofs_per_edge)
@@ -250,7 +250,7 @@ class DofMap:
         self._dm = {dim: {} for dim in dimension}
         DoF = 0
 
-        if isinstance(dofs_per_edge, int):
+        if isinstance(dofs_per_edge, (int, np.integer)):
             self._cell.set_entity_dofs(dofs_per_vert, dofs_per_edge, dofs_per_face)
             entity_dofs = self._cell.get_entity_dofs()
             for ci, cell in enumerate(self.cells):
