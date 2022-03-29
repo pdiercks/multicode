@@ -1,7 +1,8 @@
 import dolfin as df
 import numpy as np
+from multi.product import InnerProduct
 from multi.shapes import NumpyLine
-from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
 
 
 # adapted version of MechanicsBCs by Thomas Titscher
@@ -160,7 +161,7 @@ def compute_multiscale_bcs(
     chi : np.ndarray
         The fine scale edge basis. ``chi.shape`` has to agree
         with number of dofs for current coarse grid cell.
-    product : optional
+    product : str or ufl.form.Form, optional
         The inner product wrt which chi was orthonormalized.
     orth : bool, optional
         If True, assume orthonormal basis.
@@ -175,7 +176,7 @@ def compute_multiscale_bcs(
     """
     edge = problem.domain.edges[edge_id]
     edge_space = problem.edge_spaces[edge_id]
-    source = NumpyVectorSpace(edge_space.dim())
+    source = FenicsVectorSpace(edge_space)
 
     edge_coord = edge.coordinates()
     edge_xmin = np.amin(edge_coord[:, 0])
@@ -200,7 +201,7 @@ def compute_multiscale_bcs(
     if add_fine_bcs:
         # ### subtract coarse scale part from boundary data
         g = df.interpolate(boundary_data, edge_space)
-        G = source.make_array(g.vector()[:])
+        G = source.make_array([g.vector()])
 
         component = 0 if edge_id in (0, 2) else 1
         if edge_id in (0, 2):
@@ -213,10 +214,22 @@ def compute_multiscale_bcs(
             nodes = np.array([edge_ymin, edge_ymax])
         line = NumpyLine(nodes)
         phi_array = line.interpolate(edge_space, component)
-        phi = source.make_array(phi_array)
+        phi = source.from_numpy(phi_array)
         Gfine = G - phi.lincomb(coarse_values)
 
-        edge_basis = source.make_array(chi)
+        # ### build inner product for edge space
+        product_bc = df.DirichletBC(
+            edge_space, df.Function(edge_space), df.DomainBoundary()
+        )
+        inner_product = InnerProduct(edge_space, product, bcs=(product_bc,))
+        try:
+            product = FenicsMatrixOperator(
+                inner_product.assemble(), edge_space, edge_space
+            )
+        except AttributeError:
+            product = None
+
+        edge_basis = source.from_numpy(chi)
         if orth:
             coeff = Gfine.inner(edge_basis, product=product)
         else:
