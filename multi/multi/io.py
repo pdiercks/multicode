@@ -1,5 +1,49 @@
-import dolfin as df
 from pathlib import Path
+import numpy as np
+import dolfin as df
+import meshio
+
+
+def msh_to_points_cells(filename, tdim, gdim=None, prune_z_0=True):
+    if not meshio.__version__ == "4.3.1":
+        raise NotImplementedError
+
+    mesh = meshio.read(filename)
+
+    if prune_z_0:
+        mesh.prune_z_0()
+
+    # set active coordinate components
+    gdim = gdim or mesh.points.shape[-1]
+    points_pruned = mesh.points[:, :gdim]
+
+    cell_types = {  # meshio cell types per topological dimension
+        3: ["tetra", "hexahedron", "tetra10", "hexahedron20"],
+        2: ["triangle", "quad", "triangle6", "quad8", "quad9"],
+        1: ["line", "line3"],
+        0: ["vertex"],
+    }
+
+    # Extract relevant cell blocks depending on supported cell types
+    subdomains_celltypes = list(
+        set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim]])
+    )
+    assert len(subdomains_celltypes) <= 1
+
+    subdomains_celltype = (
+        subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
+    )
+
+    if subdomains_celltype is not None:
+        subdomains_cells = mesh.get_cells_type(subdomains_celltype)
+    else:
+        subdomains_cells = []
+
+    # might fail in some cases if prune=True
+    assert np.allclose(
+        np.unique(subdomains_cells.flatten()), np.arange(mesh.points.shape[0])
+    )
+    return points_pruned, subdomains_cells
 
 
 class ResultFile:
