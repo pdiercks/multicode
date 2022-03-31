@@ -2,16 +2,17 @@ import numpy as np
 import dolfin as df
 
 from multi.extension import extend_pymor
-from multi.shapes import NumpyQuad, get_hierarchical_shape_functions
 from multi.misc import locate_dofs
+from multi.product import InnerProduct
+from multi.shapes import NumpyQuad, get_hierarchical_shape_functions
 
 from scipy.sparse.linalg import eigsh, LinearOperator
 from scipy.special import erfinv
 
 from pymor.algorithms.gram_schmidt import gram_schmidt
+from pymor.bindings.fenics import FenicsVectorSpace
 from pymor.operators.interface import Operator
 from pymor.vectorarrays.interface import VectorArray
-from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 
 def construct_hierarchical_basis(
@@ -62,11 +63,13 @@ def construct_hierarchical_basis(
     edge_basis = get_hierarchical_shape_functions(
         x_dofs[:, 0], max_degree, ncomp=ufl_element.value_size()
     )
-    source = NumpyVectorSpace(L.dim())
-    B = source.make_array(edge_basis)
-    if product is not None:
-        # TODO implement other inner products as NumpyMatrixOperator or FenicsMatrixOperator
-        raise NotImplementedError
+    source = FenicsVectorSpace(L)
+    B = source.from_numpy(edge_basis)
+
+    # ### build inner product for edge space
+    product_bc = df.DirichletBC(L, df.Function(L), df.DomainBoundary())
+    inner_product = InnerProduct(L, product, bcs=(product_bc,))
+    product = inner_product.assemble_operator()
 
     if orthonormalize:
         gram_schmidt(B, product=product, copy=False)
