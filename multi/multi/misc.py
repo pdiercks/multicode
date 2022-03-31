@@ -27,69 +27,88 @@ def make_mapping(sub_space, super_space):
     return (If.vector().get_local() + 0.5).astype(int)
 
 
-def read_bases(*args, modes_per_edge=None):
-    """read bases from args where each arg is a tuple of FilePath and
-    tuple of string defining edge(s) for which to load basis functions from FilePath
-    e.g. arg=("PathToFile", ("b", "r")) meaning
-        load basis functions for bottom and right from "PathToFile"
+def read_bases(*bases, modes_per_edge=None, return_num_modes=False):
+    """read basis functions for multiple reduced bases
+
+    Parameters
+    ----------
+    *bases : tuple
+        Each element of ``bases`` is a tuple where the first element is a
+        FilePath and the second element is a tuple of string specifying
+        which basis functions to load. Possible values are 'phi' (coarse
+        scale functions), and 'b', 'r', 't', 'l' (for respective fine scale
+        functions).
+    modes_per_edge : int, optional
+        Maximum number of modes per edge for the fine scale bases.
+    return_num_modes : bool, optional
+        If True, return number of modes per edge.
+
+    Returns
+    -------
+    B : np.ndarray
+        The full reduced basis.
+    num_modes : tuple of int
+        The maximum number of modes per edge (if ``return_num_modes`` is True).
 
     """
-    bases = []
-    edges = []
-    for basis, edge_set in args:
-        bases.append(np.load(basis))
-        edges.append(list(edge_set))
+    input_files = []
+    names = []
+    for filepath, strings in bases:
+        input_files.append(np.load(filepath))
+        names.append(list(strings))
 
     # check coarse scale basis phi and all edges are defined
-    alle = [s for sub_set in edges for s in sub_set]
+    alle = [s for sub_set in names for s in sub_set]
     assert not len(set(alle).difference(["phi", "b", "r", "t", "l"]))
 
     R = []
-    Nmodes = []
-
     # append coarse scale basis functions
-    for i, edge_set in enumerate(edges):
-        if "phi" in edge_set:
-            R.append(bases[i]["phi"])
-            edge_set.remove("phi")
+    for i, basis_set in enumerate(names):
+        if "phi" in basis_set:
+            R.append(input_files[i]["phi"])
+            basis_set.remove("phi")
 
     # determine max number of modes per edge
     max_modes = []
-    for basis, edge_set in zip(bases, edges):
+    for basis, edge_set in zip(input_files, names):
         if edge_set:
             max_modes.append(max([len(basis[e]) for e in edge_set]))
-    max_modes = max(max_modes)
-    if modes_per_edge is not None:
-        m = int(modes_per_edge)
-    else:
-        m = max_modes
+    # max number of modes should be a list specifying the max number of modes per edge
+    # here I determine just the max number of modes over all edges
+    max_modes = modes_per_edge or max(max_modes)
+    # max_modes = max(max_modes)
+    # if modes_per_edge is not None:
+    #     m = int(modes_per_edge)
+    # else:
+    #     m = max_modes
 
     # append fine scale basis functions
+    num_modes = []
     for key in ["b", "r", "t", "l"]:
-        for basis, edge_set in zip(bases, edges):
+        for basis, edge_set in zip(input_files, names):
             if key in edge_set:
-                rb = basis[key][:m]
-                Nmodes.append(rb.shape[0])
-                if rb.shape[0] < m:
-                    # add zero dummy modes (in case of dirichlet or neumann boundary)
-                    # such that rb.shape[0] == m
-                    rb = np.vstack((rb, np.zeros((m - rb.shape[0], rb.shape[1]))))
+                rb = basis[key][:max_modes]
+                num_modes.append(rb.shape[0])
+                # if rb.shape[0] < m:
+                #     # add zero dummy modes (in case of dirichlet or neumann boundary)
+                #     # such that rb.shape[0] == m
+                #     rb = np.vstack((rb, np.zeros((m - rb.shape[0], rb.shape[1]))))
                 R.append(rb)
                 break
 
-    return np.vstack(R), tuple(Nmodes)
+    return np.vstack(R), tuple(num_modes)
 
 
-def select_modes(basis, modes_per_edge, max_modes):
-    """select modes according to multi.DofMap
+def select_modes(basis, modes, max_modes):
+    """select modes according to local dof order in multi.dofmap.DofMap
 
     Parameters
     ----------
     basis : np.ndarray
         The multiscale basis used.
-    modes_per_edge : int
+    modes : int or list of int
         Number of modes per edge.
-    max_modes : int
+    max_modes : int or list of int
         Maximum number of modes per edge.
 
     Returns
@@ -98,19 +117,24 @@ def select_modes(basis, modes_per_edge, max_modes):
         Subset of the full basis.
 
     """
+    if isinstance(max_modes, (int, np.integer)):
+        max_modes = [max_modes] * 4
+    if isinstance(modes, (int, np.integer)):
+        modes = [modes] * 4
 
-    offset = 0
+    # make sure that modes[edge] <= max_modes[edge]
+    assert len(max_modes) == len(modes)
+    for i in range(len(max_modes)):
+        if modes[i] > max_modes[i]:
+            modes[i] = max_modes[i]
+
     coarse = [i for i in range(8)]
-    offset += len(coarse)
-    bottom = [offset + i for i in range(modes_per_edge)]
-    offset += max_modes
-    right = [offset + i for i in range(modes_per_edge)]
-    offset += max_modes
-    top = [offset + i for i in range(modes_per_edge)]
-    offset += max_modes
-    left = [offset + i for i in range(modes_per_edge)]
-    ind = coarse + bottom + right + top + left
-    return basis[ind]
+    offset = len(coarse)
+    mask = coarse
+    for edge in range(4):
+        mask += [offset + i for i in range(modes[edge])]
+        offset += max_modes[edge]
+    return basis[mask]
 
 
 def set_values(U, dofs, values):
