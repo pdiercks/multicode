@@ -2,9 +2,33 @@ import pathlib
 import yaml
 import numpy as np
 import dolfin as df
+import matplotlib.pyplot as plt
 from pymor.bindings.fenics import FenicsVectorSpace
+from multi.domain import Domain
 from multi.io import ResultFile
 from multi.product import InnerProduct
+
+
+def visualize_edge_modes(meshfile, basispath, edge, component, degree=2, N=4):
+    data = np.load(basispath)
+    modes = data[edge]
+    edge_domain = Domain(meshfile)
+    L = df.VectorFunctionSpace(edge_domain.mesh, "CG", degree)
+    x_dofs = L.sub(0).collapse().tabulate_dof_coordinates()
+
+    if component in ("x", 0):
+        modes = modes[:, ::2]
+    elif component in ("y", 1):
+        modes = modes[:, 1::2]
+
+    if edge in ("b", "t"):
+        xx = x_dofs[:, 0]
+    elif edge in ("r", "l"):
+        xx = x_dofs[:, 1]
+    oo = np.argsort(xx)
+    for mode in modes[:N]:
+        plt.plot(xx[oo], mode[oo])
+    plt.show()
 
 
 def read_bam_colors():
@@ -117,8 +141,8 @@ def compute_local_error_norm(
     fom_norm = fom.norm(product)
     rom_norm = rom.norm(product)
 
-    global_err_norm = np.sqrt(np.sum(err_norm ** 2))
-    global_fom_norm = np.sqrt(np.sum(fom_norm ** 2))
+    global_err_norm = np.sqrt(np.sum(err_norm**2))
+    global_fom_norm = np.sqrt(np.sum(fom_norm**2))
     return {
         "err_norm": err_norm,
         "fom_norm": fom_norm,
