@@ -2,7 +2,7 @@ import dolfin as df
 import numpy as np
 from multi.product import InnerProduct
 from multi.shapes import NumpyLine
-from pymor.bindings.fenics import FenicsVectorSpace, FenicsMatrixOperator
+from pymor.bindings.fenics import FenicsVectorSpace
 
 
 # adapted version of MechanicsBCs by Thomas Titscher
@@ -193,7 +193,7 @@ def compute_multiscale_bcs(
         bcs.update({dof: val})
 
     dofs_per_edge = dofmap.dofs_per_edge
-    if isinstance(dofs_per_edge, int):
+    if isinstance(dofs_per_edge, (int, np.integer)):
         add_fine_bcs = dofs_per_edge > 0
     else:
         add_fine_bcs = np.sum(dofs_per_edge) > 0
@@ -222,12 +222,7 @@ def compute_multiscale_bcs(
             edge_space, df.Function(edge_space), df.DomainBoundary()
         )
         inner_product = InnerProduct(edge_space, product, bcs=(product_bc,))
-        try:
-            product = FenicsMatrixOperator(
-                inner_product.assemble(), edge_space, edge_space
-            )
-        except AttributeError:
-            product = None
+        product = inner_product.assemble_operator()
 
         edge_basis = source.from_numpy(chi)
         if orth:
