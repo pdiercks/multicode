@@ -138,7 +138,7 @@ class BoundaryConditions:
 
 
 def compute_multiscale_bcs(
-    problem, edge_id, boundary_data, dofmap, chi, product=None, orth=False
+    problem, cell_index, edge_id, boundary_data, dofmap, chi, product=None, orth=False
 ):
     """compute multiscale bcs from given boundary data
 
@@ -151,6 +151,8 @@ def compute_multiscale_bcs(
     ----------
     problem : multi.problems.LinearProblemBase
         The linear problem.
+    cell_index : int
+        The cell index with respect to the coarse grid.
     edge_id : int
         Integer specifying the boundary edge.
     boundary_data : dolfin.Expression or similar
@@ -195,8 +197,12 @@ def compute_multiscale_bcs(
     dofs_per_edge = dofmap.dofs_per_edge
     if isinstance(dofs_per_edge, (int, np.integer)):
         add_fine_bcs = dofs_per_edge > 0
+        edge_basis_length = dofs_per_edge
     else:
+        assert dofs_per_edge.shape == (len(dofmap.cells), 4)
+        dofs_per_edge = dofs_per_edge[cell_index]
         add_fine_bcs = np.sum(dofs_per_edge) > 0
+        edge_basis_length = dofs_per_edge[edge_id]
 
     if add_fine_bcs:
         # ### subtract coarse scale part from boundary data
@@ -225,6 +231,7 @@ def compute_multiscale_bcs(
         product = inner_product.assemble_operator()
 
         edge_basis = source.from_numpy(chi)
+        edge_basis = edge_basis[:edge_basis_length]
         if orth:
             coeff = Gfine.inner(edge_basis, product=product)
         else:
@@ -239,7 +246,14 @@ def compute_multiscale_bcs(
         ]
         fine_dofs = dofmap.locate_dofs(edge_mid_point)
 
-        for dof, val in zip(fine_dofs, coeff.flatten().tolist()):
+        try:
+            coeff = coeff.reshape(fine_dofs.shape)
+        except ValueError as verr:
+            raise ValueError(
+                "Number of modes per edge (dofmap) and the number of modes of the edge basis do not agree!"
+            ) from verr
+
+        for dof, val in zip(fine_dofs, coeff):
             bcs.update({dof: val})
 
     return bcs

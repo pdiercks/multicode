@@ -41,7 +41,14 @@ def test():
     edge_id = 0
     boundary_data = df.Expression(("x[0]", "0.0"), degree=1)
     bcs = compute_multiscale_bcs(
-        problem, edge_id, boundary_data, dofmap, hierarchical, product=None, orth=False
+        problem,
+        0,
+        edge_id,
+        boundary_data,
+        dofmap,
+        hierarchical,
+        product=None,
+        orth=False,
     )
     assert np.allclose(
         np.array(list(bcs.keys())),
@@ -52,8 +59,21 @@ def test():
     assert np.allclose(np.array(list(bcs.values())), values)
 
     boundary_data = df.Expression(("0.0", "x[0] * x[0]"), degree=2)
+    dofs_per_edge = np.array(
+        [
+            [2 * (pmax - 1), 5, 2, 3],
+        ]
+    )
+    dofmap.distribute_dofs(2, dofs_per_edge, 0)
     bcs = compute_multiscale_bcs(
-        problem, edge_id, boundary_data, dofmap, hierarchical, product=None, orth=False
+        problem,
+        0,
+        edge_id,
+        boundary_data,
+        dofmap,
+        hierarchical,
+        product=None,
+        orth=False,
     )
     assert np.allclose(
         np.array(list(bcs.keys())),
