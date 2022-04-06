@@ -85,7 +85,7 @@ def write_local_fields(
         rerr_vec.axpy(1.0, aerr_vec)
         rerr_vec /= fom_norm
 
-        xdmf = ResultFile(output.parent / (basename + f"_{cell_index:02}.xdmf"))
+        xdmf = ResultFile(output.parent / (basename + f"_{cell_index:03}.xdmf"))
         xdmf.add_function(u_rom_local, name="u-rom")
         xdmf.add_function(u_fom_local, name="u-fom")
         xdmf.add_function(aerr, name="aerr")
