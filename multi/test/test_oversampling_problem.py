@@ -81,7 +81,7 @@ def test_dirichlet_neumann():
         subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True
     )
     neumann_bc = {"boundary": sigma_inhom, "value": df.Constant((0.0, 6e3))}
-    dirichlet_bc = {"boundary": sigma_d, "value": df.Constant(0.0), "sub": 0}
+    dirichlet_bc = {"boundary": sigma_d, "value": df.Constant((0.0, 0.0))}
     gamma_out = plane_at(0.0, "x")
 
     # NOTE pymor solver options have different format

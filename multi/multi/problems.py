@@ -1,4 +1,3 @@
-import ufl
 import dolfin as df
 import numpy as np
 from multi.bcs import BoundaryConditions
@@ -238,7 +237,7 @@ class OversamplingProblem(object):
         The part of the boundary of the oversampling domain that does
         not intersect with the boundary of the global domain.
     dirichlet : list of dict or dict, optional
-        Homogeneous or inhomogeneous dirichlet boundary conditions.
+        Homogeneous dirichlet boundary conditions.
         See multi.bcs.BoundaryConditinos.add_dirichlet_bc for suitable values.
     neumann : list of dict or dict, optional
         Inhomogeneous neumann boundary conditions.
@@ -265,12 +264,20 @@ class OversamplingProblem(object):
         self.source = FenicsVectorSpace(problem.V)
         self.range = FenicsVectorSpace(subdomain_problem.V)
         self.gamma_out = gamma_out
-        self.dirichlet = dirichlet
         self.neumann = neumann
         self.solver_options = solver_options
         # initialize commonly used quantities
         self._init_bc_gamma_out()
         self._S_to_R = self._make_mapping()
+        # initialize fixed set of dirichlet boundary conditions on Γ_D (using self.problem)
+        if dirichlet is not None:
+            if isinstance(dirichlet, (list, tuple)):
+                for dirichlet_bc in dirichlet:
+                    problem.add_dirichlet_bc(**dirichlet_bc)
+            else:
+                problem.add_dirichlet_bc(**dirichlet)
+            dirichlet = problem.dirichlet_bcs()
+        self.dirichlet_bcs = dirichlet or []
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -300,15 +307,7 @@ class OversamplingProblem(object):
         )
 
         # ### apply bcs to operator
-        # make sure there are no unwanted bcs present
-        self.problem.clear_bcs(neumann=False)
-        if self.dirichlet is not None:
-            if isinstance(self.dirichlet, (list, tuple)):
-                for dirichlet_bc in self.dirichlet:
-                    self.problem.add_dirichlet_bc(**dirichlet_bc)
-            else:
-                self.problem.add_dirichlet_bc(**self.dirichlet)
-        bcs = [self._bc_gamma_out] + self.problem.dirichlet_bcs()
+        bcs = [self._bc_gamma_out] + self.dirichlet_bcs
         dummy = df.Function(V)
         for bc in bcs:
             bc.zero_columns(matrix, dummy.vector(), 1.0)
@@ -328,7 +327,8 @@ class OversamplingProblem(object):
             else:
                 self.problem.add_neumann_bc(**self.neumann)
 
-        # will always be null vector in case neumann is None see LinearElasticityProblem.get_rhs
+        # will always be null vector in case neumann is None
+        # see LinearElasticityProblem.get_form_rhs
         rhs = self.source.make_array([df.assemble(self.problem.get_form_rhs())])
         self._f_ext = rhs
 
@@ -336,6 +336,9 @@ class OversamplingProblem(object):
         """discretize the right hand side"""
         R = boundary_data
         assert R in self.source
+
+        if not hasattr(self, "_A"):
+            self.discretize_operator()
 
         if not hasattr(self, "_f_ext"):
             # assemble external force only once
@@ -349,7 +352,11 @@ class OversamplingProblem(object):
         rhs = -AR
 
         # set g(x_i) for i-th dof in rhs
-        bc_dofs = list(self._bc_gamma_out.get_boundary_values().keys())
+        bcs = [self._bc_gamma_out] + self.dirichlet_bcs
+        bc_dofs = []
+        for bc in bcs:
+            dofs = list(bc.get_boundary_values().keys())
+            bc_dofs += dofs
         bc_vals = R.dofs(bc_dofs)
         # workaround
         rhs_array = rhs.to_numpy()
@@ -357,10 +364,18 @@ class OversamplingProblem(object):
 
         return self.source.from_numpy(rhs_array)
 
+    def generate_boundary_data(self, values):
+        """generate boundary data g in V with ``values`` on Γ_out and zero elsewhere"""
+        bc_dofs = self._bc_dofs_gamma_out
+        assert values.shape[1] == len(bc_dofs)
+        D = np.zeros((len(values), self.source.dim))
+        D[:, bc_dofs] = values
+        return self.source.from_numpy(D)
+
     def generate_random_boundary_data(
         self, count, distribution="normal", random_state=None, seed=None
     ):
-        """generate random boundary data"""
+        """generate random boundary data g in V with random values on Γ_out and zero elsewhere"""
         # initialize
         D = np.zeros((count, self.source.dim))
 
