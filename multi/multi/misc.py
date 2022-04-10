@@ -74,13 +74,8 @@ def read_bases(*bases, modes_per_edge=None, return_num_modes=False):
         if edge_set:
             max_modes.append(max([len(basis[e]) for e in edge_set]))
     # max number of modes should be a list specifying the max number of modes per edge
-    # here I determine just the max number of modes over all edges
+    # here determine just the max number of modes over all edges
     max_modes = modes_per_edge or max(max_modes)
-    # max_modes = max(max_modes)
-    # if modes_per_edge is not None:
-    #     m = int(modes_per_edge)
-    # else:
-    #     m = max_modes
 
     # append fine scale basis functions
     num_modes = []
@@ -89,14 +84,13 @@ def read_bases(*bases, modes_per_edge=None, return_num_modes=False):
             if key in edge_set:
                 rb = basis[key][:max_modes]
                 num_modes.append(rb.shape[0])
-                # if rb.shape[0] < m:
-                #     # add zero dummy modes (in case of dirichlet or neumann boundary)
-                #     # such that rb.shape[0] == m
-                #     rb = np.vstack((rb, np.zeros((m - rb.shape[0], rb.shape[1]))))
                 R.append(rb)
                 break
 
-    return np.vstack(R), tuple(num_modes)
+    if return_num_modes:
+        return np.vstack(R), tuple(num_modes)
+    else:
+        return np.vstack(R)
 
 
 def select_modes(basis, modes, max_modes):
