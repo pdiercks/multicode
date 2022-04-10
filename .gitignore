@@ -125,3 +125,5 @@ example/results/
 tags
 # profiling
 *.lprof
+
+multi/test/.assembly.py
