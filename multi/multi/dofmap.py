@@ -302,6 +302,13 @@ class DofMap:
         return self.n_dofs
 
     def cell_dofs(self, cell_index):
+        """returns dofs for given cell
+
+        Returns
+        -------
+        dofs : list of int
+            The dofs of the given cell.
+        """
         if not hasattr(self, "_dm"):
             raise AttributeError("You need to distribute DoFs first")
         dimension = list(range(self.tdim + 1))
