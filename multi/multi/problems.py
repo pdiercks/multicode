@@ -240,7 +240,7 @@ class OversamplingProblem(object):
         Homogeneous dirichlet boundary conditions.
         See multi.bcs.BoundaryConditinos.add_dirichlet_bc for suitable values.
     neumann : list of dict or dict, optional
-        Inhomogeneous neumann boundary conditions.
+        Inhomogeneous neumann boundary conditions or source terms.
         See multi.bcs.BoundaryConditions.add_neumann_bc for suitable values.
     solver_options : dict, optional
         The user is required to use pymor style options ({'inverse': options}),
