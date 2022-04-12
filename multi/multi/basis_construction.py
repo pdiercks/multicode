@@ -12,6 +12,7 @@ from scipy.special import erfinv
 from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenics import FenicsVectorSpace
 from pymor.operators.interface import Operator
+from pymor.reductors.basic import extend_basis
 from pymor.vectorarrays.interface import VectorArray
 
 
@@ -220,7 +221,9 @@ def _compute_fine_scale_snapshots_os(
     )
     maxnorm = np.inf
     # set of test vectors
-    R = problem.generate_random_boundary_data(num_testvecs, distribution="normal")
+    R = problem.generate_random_boundary_data(
+        num_testvecs, distribution="normal", seed=12
+    )
     M = problem.solve(R)
 
     # get vertex dofs of target subdomain
@@ -244,16 +247,28 @@ def _compute_fine_scale_snapshots_os(
         snapshots.append(r)
 
         B.append(problem.solve(v))
+        # method = ("trivial", "gram_schmidt", "pod")
+        # U = problem.solve(v)
+        # extend_basis(U, B, product=range_product, method=method[2], pod_modes=1, pod_orthonormalize=True, copy_U=True)
         gram_schmidt(
-            B,
-            range_product,
-            atol=0,
-            rtol=0,
-            offset=basis_length,
-            copy=False,
+            B, range_product, atol=0, rtol=0, offset=basis_length, copy=False,
         )
+        # ### FIXME options
+        # 1. use orthonormal B and separate snapshots. (gram schmidt)
+        # 2. use orthonormal B and separate snapshots. (pod extension)
+        # 3. use only snapshots and phi which are not orthonormal (the orthogonalization of the test vectors to the span of snapshots and phi will be inaccurate increasing length of the basis)
+
+        # non-orthogonal version
+        # M_proj = project(B, M, range_product, orth=False)
+        # M -= M_proj
+
+        # requires B to be orthonormal wrt range_product
         M -= B.lincomb(B.inner(M, range_product).T)
-        maxnorm = np.max(M.norm(range_product))
+
+        norm = M.norm(range_product)
+        if any(np.isnan(norm)):
+            breakpoint()
+        maxnorm = np.max(norm)
 
     zero_at_dofs = np.allclose(
         snapshots.to_numpy()[:, vertex_dofs], np.zeros(vertex_dofs.size)
