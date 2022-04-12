@@ -53,6 +53,12 @@ def project(basis, V, product, orth=False):
     return V_proj
 
 
+def orthogonal_part(basis, V, product, orth=False):
+    """return part of V that is orthogonal to span(basis)"""
+    V_proj = project(basis, V, product, orth=orth)
+    return V - V_proj
+
+
 def compute_proj_errors_orth_basis(basis, V, product, relative=True):
     errors = []
     for N in range(len(basis) + 1):
