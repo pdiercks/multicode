@@ -12,9 +12,9 @@ def assemble_rom(
     bases,
     edge_basis,
     cell_to_basis,
-    dirichlet,
-    edge_product,
-    neumann,
+    dirichlet=None,
+    edge_product="h1",
+    neumann=None,
 ):
     """build matrix and vector of ROM
 
@@ -64,8 +64,10 @@ def assemble_rom(
     A = np.zeros((N, N))
     b = np.zeros(N)
 
-    timer = Timer("rom")
+    dirichlet = dirichlet or {}
+    neumann = neumann or {}
 
+    timer = Timer("rom")
     bcs = {}
     edge_to_str = "brtl"
     with logger.block("Start of Assembly loop ..."):
