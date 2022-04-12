@@ -24,3 +24,50 @@ def create_solver(matrix, solver_options=_solver_options()):
     else:
         solver = df.KrylovSolver(matrix, method, preconditioner)
     return solver
+
+
+def build_nullspace2D(V, u):
+    """Function to build null space for 2D elasticity"""
+
+    # Create list of vectors for null space
+    nullspace_basis = [u.copy() for i in range(3)]
+    # Build translational null space basis
+    V.sub(0).dofmap().set(nullspace_basis[0], 1.0)
+    V.sub(1).dofmap().set(nullspace_basis[1], 1.0)
+
+    # Build rotational null space basis
+    V.sub(0).set_x(nullspace_basis[2], -1.0, 1)
+    V.sub(1).set_x(nullspace_basis[2], 1.0, 0)
+
+    for x in nullspace_basis:
+        x.apply("insert")
+
+    # Create vector space basis and orthogonalize
+    basis = df.VectorSpaceBasis(nullspace_basis)
+    basis.orthonormalize()
+
+    return basis
+
+
+def get_cg_solver(null_space, operator):
+    """get cg solver"""
+
+    df.as_backend_type(operator).set_near_nullspace(null_space)
+    pc = df.PETScPreconditioner("petsc_amg")
+
+    df.PETScOptions.set("mg_levels_ksp_type", "chebyshev")
+    df.PETScOptions.set("mg_levels_pc_type", "jacobi")
+
+    # Improve estimate of eigenvalues for Chebyshev smoothing
+    df.PETScOptions.set("mg_levels_esteig_ksp_type", "cg")
+    df.PETScOptions.set("mg_levels_ksp_chebyshev_esteig_steps", 50)
+
+    lin_solver = df.PETScKrylovSolver("cg", pc)
+    lin_solver.parameters["monitor_convergence"] = True
+    lin_solver.parameters["nonzero_initial_guess"] = True
+    lin_solver.parameters["maximum_iterations"] = 1000
+    lin_solver.parameters["relative_tolerance"] = 1.0e-9
+    lin_solver.parameters["absolute_tolerance"] = 1.0e-12
+    lin_solver.parameters["error_on_nonconvergence"] = True
+    lin_solver.set_operator(operator)
+    return lin_solver
