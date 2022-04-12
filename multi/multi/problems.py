@@ -1,11 +1,14 @@
 import dolfin as df
 import numpy as np
 from multi.bcs import BoundaryConditions
+from multi.dofmap import DofMap
 from multi.materials import LinearElasticMaterial
 from multi.misc import make_mapping
 from multi.product import InnerProduct
-from multi.solver import create_solver
+from multi.projection import orthogonal_part
+from multi.solver import create_solver, build_nullspace2D
 
+from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.core.logger import getLogger
 from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 from pymor.vectorarrays.numpy import NumpyVectorSpace
@@ -242,6 +245,14 @@ class OversamplingProblem(object):
     neumann : list of dict or dict, optional
         Inhomogeneous neumann boundary conditions or source terms.
         See multi.bcs.BoundaryConditions.add_neumann_bc for suitable values.
+    source_product : dict, optional
+        The inner product to use for the source space. The dictionary should define
+        the key `product` and optionally `bcs` and `product_name`.
+    range_product : dict, optional
+        The inner product to use for the range space. The dictionary should define
+        the key `product` and optionally `bcs` and `product_name`.
+    remove_kernel : bool, optional
+        If True, remove kernel (rigid body modes) from solution.
     solver_options : dict, optional
         The user is required to use pymor style options ({'inverse': options}),
         because the value of solver_options is directly passed to FenicsMatrixOperator.
@@ -256,6 +267,9 @@ class OversamplingProblem(object):
         gamma_out,
         dirichlet=None,
         neumann=None,
+        source_product=None,
+        range_product=None,
+        remove_kernel=False,
         solver_options=None,
     ):
         self.logger = getLogger("multi.problems.OversamplingProblem")
@@ -265,10 +279,13 @@ class OversamplingProblem(object):
         self.range = FenicsVectorSpace(subdomain_problem.V)
         self.gamma_out = gamma_out
         self.neumann = neumann
+        self.remove_kernel = remove_kernel
         self.solver_options = solver_options
+
         # initialize commonly used quantities
         self._init_bc_gamma_out()
         self._S_to_R = self._make_mapping()
+
         # initialize fixed set of dirichlet boundary conditions on Γ_D (using self.problem)
         if dirichlet is not None:
             if isinstance(dirichlet, (list, tuple)):
@@ -278,6 +295,29 @@ class OversamplingProblem(object):
                 problem.add_dirichlet_bc(**dirichlet)
             dirichlet = problem.dirichlet_bcs()
         self.dirichlet_bcs = dirichlet or []
+
+        # ### inner products
+        default_product = {"product": None, "bcs": (), "product_name": None}
+        source_prod = source_product or default_product
+        range_prod = range_product or default_product
+        self.source_product = self._get_source_product(**source_prod)
+        self.range_product = self._get_range_product(**range_prod)
+
+        # initialize kernel
+        if remove_kernel:
+            # build null space
+            u = df.Function(subdomain_problem.V)
+            vector = u.vector()
+            vector.zero()
+            null_space = build_nullspace2D(subdomain_problem.V, vector)
+            va = []
+            for i in range(null_space.dim()):
+                va.append(null_space[i])
+            self.kernel = self.range.make_array(va)
+            self.range_l2_product = self._get_range_product(product="l2")
+            gram_schmidt(
+                self.kernel, self.range_l2_product, atol=0.0, rtol=0.0, copy=False
+            )
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -407,9 +447,13 @@ class OversamplingProblem(object):
         rhs = self.discretize_rhs(boundary_data)
         self.logger.info(f"Solving OversamplingProblem for {len(rhs)} vectors.")
         U = self.operator.apply_inverse(rhs)
-        return self.range.from_numpy(U.dofs(self._S_to_R))
+        U_in = self.range.from_numpy(U.dofs(self._S_to_R))
+        if self.remove_kernel:
+            return orthogonal_part(self.kernel, U_in, self.range_l2_product, orth=True)
+        else:
+            return U_in
 
-    def get_source_product(self, product=None, bcs=(), product_name=None):
+    def _get_source_product(self, product=None, bcs=(), product_name=None):
         """get source product
 
         Parameters
@@ -440,8 +484,8 @@ class OversamplingProblem(object):
         else:
             return None
 
-    def get_range_product(self, product=None, bcs=(), product_name=None):
-        """get range product
+    def _get_range_product(self, product=None, bcs=(), product_name=None):
+        """discretize range product
 
         Parameters
         ----------
@@ -457,4 +501,74 @@ class OversamplingProblem(object):
         range_product : FenicsMatrixOperator or None
         """
         range_product = InnerProduct(self.range.V, product, bcs=bcs, name=product_name)
-        return range_product.assemble_operator()  # returns FenicsMatrixOperator or None
+        return range_product.assemble_operator()
+
+
+class RomProblemBase(object):
+    def __init__(self, coarse_grid):
+        self.dofmap = DofMap(coarse_grid, tdim=2, gdim=2)
+        self.points = self.dofmap.points
+        self.xmin = self.points[:, 0].min()
+        self.xmax = self.points[:, 0].max()
+        self.ymin = self.points[:, 1].min()
+        self.ymax = self.points[:, 1].max()
+
+    @property
+    def bases_path(self):
+        pass
+
+    @bases_path.setter
+    def bases_path(self, bases):
+        pass
+
+    @property
+    def cell_sets(self):
+        pass
+
+    @property
+    def cell_to_basis(self):
+        pass
+
+    @property
+    def config_to_cells(self):
+        pass
+
+    @property
+    def dirichlet_offline(self):
+        """dirichlet bcs for oversampling"""
+        pass
+
+    @property
+    def dirichlet_online(self):
+        """dirichlet bcs for global approx"""
+        pass
+
+    @property
+    def gamma_out(self):
+        pass
+
+    @property
+    def neumann_offline(self):
+        """neumann bcs for oversampling"""
+        pass
+
+    @property
+    def neumann_online(self):
+        """neumann bcs for global approx"""
+        pass
+
+    @property
+    def offset_oversampling_domain(self):
+        pass
+
+    @property
+    def offset_target_subdomain(self):
+        pass
+
+    @property
+    def pod_config(self):
+        pass
+
+    @property
+    def read_bases_config(self):
+        pass
