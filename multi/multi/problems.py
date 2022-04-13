@@ -508,6 +508,9 @@ class RomProblemBase(object):
     def __init__(self, coarse_grid):
         self.dofmap = DofMap(coarse_grid, tdim=2, gdim=2)
         self.points = self.dofmap.points
+        self.cells = self.dofmap.cells
+        cell_points = self.points[self.dofmap.cells[0]]
+        self.unit_length = np.around(cell_points[2] - cell_points[0])[0]
         self.xmin = self.points[:, 0].min()
         self.xmax = self.points[:, 0].max()
         self.ymin = self.points[:, 1].min()
