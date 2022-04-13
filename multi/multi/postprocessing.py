@@ -9,7 +9,30 @@ from multi.io import ResultFile
 from multi.product import InnerProduct
 
 
-def visualize_edge_modes(meshfile, basispath, edge, component, degree=2, N=4):
+def plot_modes(edge_space, edge, modes, component, mask):
+    """for hacking"""
+    L = edge_space
+    x_dofs = L.sub(0).collapse().tabulate_dof_coordinates()
+
+    if component in ("x", 0):
+        modes = modes[:, ::2]
+    elif component in ("y", 1):
+        modes = modes[:, 1::2]
+
+    if edge in ("b", "t"):
+        xx = x_dofs[:, 0]
+    elif edge in ("r", "l"):
+        xx = x_dofs[:, 1]
+    oo = np.argsort(xx)
+
+    for mode in modes[mask]:
+        plt.plot(xx[oo], mode[oo])
+    plt.show()
+
+
+def visualize_edge_modes(
+    meshfile, basispath, edge, component, degree=2, N=4, fid=1, show=False
+):
     data = np.load(basispath)
     modes = data[edge]
     edge_domain = Domain(meshfile)
@@ -26,9 +49,12 @@ def visualize_edge_modes(meshfile, basispath, edge, component, degree=2, N=4):
     elif edge in ("r", "l"):
         xx = x_dofs[:, 1]
     oo = np.argsort(xx)
+
+    plt.figure(fid)
     for mode in modes[:N]:
         plt.plot(xx[oo], mode[oo])
-    plt.show()
+    if show:
+        plt.show()
 
 
 def read_bam_colors():
@@ -141,8 +167,8 @@ def compute_local_error_norm(
     fom_norm = fom.norm(product)
     rom_norm = rom.norm(product)
 
-    global_err_norm = np.sqrt(np.sum(err_norm**2))
-    global_fom_norm = np.sqrt(np.sum(fom_norm**2))
+    global_err_norm = np.sqrt(np.sum(err_norm ** 2))
+    global_fom_norm = np.sqrt(np.sum(fom_norm ** 2))
     return {
         "err_norm": err_norm,
         "fom_norm": fom_norm,
