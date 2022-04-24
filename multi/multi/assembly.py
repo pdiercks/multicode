@@ -34,9 +34,12 @@ def assemble_rom(
     cell_to_basis : np.ndarray
         Mapping from cell index to basis (configuration).
     dirichlet : dict, optional
-        Defines the Dirichlet BCs. Keys are cell indices and values are
-        dict where keys are edge indices and values are dolfin.Expression
-        or similar.
+        Defines the Dirichlet BCs.
+        (a) Keys are bc_dofs and values are bc_values.
+        (b) Keys are cell indices and values are dict where keys are edge
+        indices and values are dolfin.Expression or similar.
+        (b) can be used to compute multiscale bcs via projection and should
+        contain extra key value pair ('compute_multiscale_bcs', True).
     edge_product : str, optional
         The inner product wrt which the edge basis was orthonormalized.
     neumann : dict, optional
@@ -65,6 +68,7 @@ def assemble_rom(
     b = np.zeros(N)
 
     dirichlet = dirichlet or {}
+    project_dirichlet = dirichlet.pop("compute_multiscale_bcs", False)
     neumann = neumann or {}
 
     timer = Timer("rom")
@@ -89,26 +93,27 @@ def assemble_rom(
                 b[dofs] += b_local
 
             # ### Dirichlet BCs
-            if cell_index in dirichlet.keys():
-                for edge, boundary_data in dirichlet[cell_index].items():
-                    try:
-                        # edge basis might be np.npzfile
-                        chi = edge_basis[edge_to_str[edge]]
-                    except IndexError:
-                        # or np.ndarray in case of hierarchical basis
-                        chi = edge_basis
-                    bc_local = compute_multiscale_bcs(
-                        problem,
-                        cell_index,
-                        edge,
-                        boundary_data,
-                        dofmap,
-                        chi,
-                        product=edge_product,
-                        orth=True,
-                    )
-                    for k, v in bc_local.items():
-                        bcs.update({k: v})
+            if project_dirichlet:
+                if cell_index in dirichlet.keys():
+                    for edge, boundary_data in dirichlet[cell_index].items():
+                        try:
+                            # edge basis might be np.npzfile
+                            chi = edge_basis[edge_to_str[edge]]
+                        except IndexError:
+                            # or np.ndarray in case of hierarchical basis
+                            chi = edge_basis
+                        bc_local = compute_multiscale_bcs(
+                            problem,
+                            cell_index,
+                            edge,
+                            boundary_data,
+                            dofmap,
+                            chi,
+                            product=edge_product,
+                            orth=True,
+                        )
+                        for k, v in bc_local.items():
+                            bcs.update({k: v})
 
             # translate back
             problem.domain.translate(df.Point(-offset))
@@ -116,5 +121,7 @@ def assemble_rom(
         logger.info(f"... Assembly took {timer.dt}s.")
 
     logger.info("Applying BCs to global ROM system ...")
+    if not project_dirichlet:
+        bcs.update(dirichlet)
     apply_bcs(A, b, list(bcs.keys()), list(bcs.values()))
     return A, b
