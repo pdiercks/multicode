@@ -352,7 +352,6 @@ class DofMap:
 
         return list(cell_indices)
 
-    # TODO remove sub
     def locate_dofs(self, X, sub=None, s_=np.s_[:], tol=1e-9):
         """returns dofs at coordinates X
 
@@ -362,6 +361,8 @@ class DofMap:
             A list of points, where each point is given as list of len(gdim).
         sub : int, optional
             Index of component.
+            Note, that this is intended for the case that X contains only vertex
+            OR only edge coordinates of the grid!
         s_ : slice, optional
             Return slice of the dofs at each point.
         tol : float, optional
@@ -391,7 +392,7 @@ class DofMap:
         if sub is not None:
             # FIXME user has to know that things might go wrong if
             # X contains vertex AND edge coordinates ...
-            dim = v.size
+            dim = self.gdim
             return dofs[sub::dim]
         else:
             return dofs
