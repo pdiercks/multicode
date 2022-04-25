@@ -9,9 +9,9 @@ def assemble_rom(
     logger,
     problem,
     dofmap,
-    bases,
-    edge_basis,
     cell_to_basis,
+    bases,
+    edge_basis=None,
     dirichlet=None,
     edge_product="h1",
     neumann=None,
@@ -26,13 +26,13 @@ def assemble_rom(
         The problem defined on the subdomain.
     dofmap : multi.dofmap.DofMap
         The DofMap of the reduced order model.
-    bases : list of np.ndarray
-        The reduced bases with local dof ordering.
-    edge_basis : np.ndarray, optional
-        The edge basis used to compute Dirichlet bcs.
-        Must agree with corresponding bases.
     cell_to_basis : np.ndarray
         Mapping from cell index to basis (configuration).
+    bases : list of np.ndarray
+        The reduced bases with local dof ordering.
+    edge_basis : np.ndarray or np.lib.npyio.NpzFile, optional
+        The edge basis used to compute Dirichlet bcs.
+        Must agree with corresponding bases.
     dirichlet : dict, optional
         Defines the Dirichlet BCs.
         (a) Keys are bc_dofs and values are bc_values.
@@ -94,6 +94,7 @@ def assemble_rom(
 
             # ### Dirichlet BCs
             if project_dirichlet:
+                assert edge_basis is not None
                 if cell_index in dirichlet.keys():
                     for edge, boundary_data in dirichlet[cell_index].items():
                         try:
