@@ -4,6 +4,8 @@ import numpy as np
 import meshio
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import reverse_cuthill_mckee
+from fenics_helpers.boundary import to_floats
+import warnings
 
 GMSH_QUADRILATERALS = ("quad", "quad8", "quad9")
 
@@ -346,9 +348,20 @@ class DofMap:
             p = np.abs(self.points - x)
             v = np.where(np.all(p < tol, axis=1))[0]
             if v.size < 1:
-                raise IndexError(f"The point {x} is not a vertex of the grid!")
-            ci = np.where(np.any(np.abs(self.cells - v) < tol, axis=1))[0]
-            cell_indices.update(tuple(ci.flatten()))
+                warnings.warn(
+                    f"The point {x} is not a vertex of the grid.\n"
+                    "Looping over cells to determine which cell might contain point.\n"
+                    "This may take a while ..."
+                )
+                for cell_index, cell in enumerate(self.cells):
+                    x_cell = self.points[cell][:4]
+                    xmin, ymin = x_cell[0]
+                    xmax, ymax = x_cell[2]
+                    if np.logical_and(xmin <= x[0] <= xmax, ymin <= x[1] <= ymax):
+                        cell_indices.add(cell_index)
+            else:
+                ci = np.where(np.any(np.abs(self.cells - v) < tol, axis=1))[0]
+                cell_indices.update(tuple(ci.flatten()))
 
         return list(cell_indices)
 
@@ -397,6 +410,64 @@ class DofMap:
         else:
             return dofs
 
+    def within_range(self, start, end, tol=1e-6, vertices_only=False, edges_only=False):
+        """return all (vertex and edge mid) points within range defined by `start` and `end`.
+        Note that a structured grid is assumed for options 'vertices_only' and 'edges_only'.
+
+        Parameters
+        ----------
+        start : list of float
+            The min values of all dimensions within range.
+        end : list of float
+            The max values of all dimensions within range.
+        tol : float, optional
+            Tolerance with which points lie within range.
+        vertices_only : bool, optional
+            If True, return only vertex points.
+        edges_only : bool, optional
+            If True, return only edge mid points.
+
+        Returns
+        -------
+        np.ndarray
+            Points of mesh within range.
+        """
+        points = self.points
+        cell_size = np.around(np.abs(points[1] - points[0])[0], decimals=5)
+
+        start = to_floats(start)
+        end = to_floats(end)
+
+        # this code block is part of fenics_helpers.boundary.within_range
+        # adjust the values such that start < end for all dimensions
+        assert len(start) == len(end)
+        for i in range(len(start)):
+            if start[i] > end[i]:
+                start[i], end[i] = end[i], start[i]
+
+        within_range = np.where(
+            np.logical_and(points[:, 0] + tol >= start[0], points[:, 0] - tol <= end[0])
+        )[0]
+        for i in range(1, self.gdim):
+            ind = np.where(
+                np.logical_and(
+                    points[:, i] + tol >= start[i], points[:, i] - tol <= end[i]
+                )
+            )[0]
+            within_range = np.intersect1d(within_range, ind)
+
+        if vertices_only:
+            p = points[within_range]
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.all(mask == 0, axis=1)]
+
+        if edges_only:
+            p = points[within_range]
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.invert(np.all(mask == 0, axis=1))]
+
+        return points[within_range]
+
     # parts of the code copied from fenics_helpers.boundary.plane_at
     def plane_at(
         self, coordinate, dim=0, tol=1e-9, vertices_only=False, edges_only=False
@@ -410,6 +481,8 @@ class DofMap:
             The coordinate.
         dim : int, str, optional
             The spatial dimension.
+        tol : float, optional
+            Tolerance with which points match coordinate.
         vertices_only : bool, optional
             If True, return only vertex points.
         edges_only : bool, optional

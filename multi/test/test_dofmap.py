@@ -43,7 +43,7 @@ def test_array():
     for ci, cell in enumerate(dofmap.cells):
         n = 4 * n_vertex_dofs + np.sum(dofs_per_edge[ci])
         a = np.ones((n, n))  # local matrix
-        summe += n ** 2
+        summe += n**2
         cell_dofs = dofmap.cell_dofs(ci)
         A[np.ix_(cell_dofs, cell_dofs)] += a
     assert np.isclose(np.sum(A), summe)
@@ -56,6 +56,20 @@ def test_array():
     assert np.allclose(
         dofmap.locate_dofs([[0, 0], [0.5, 0]]), np.array([0, 1, 8, 9, 10, 11, 12])
     )
+    xxx = dofmap.within_range([0.0, 0.0], [0.5, 0.0])
+    c1 = np.allclose(dofmap.locate_dofs(xxx), np.array([0, 1, 8, 9, 10, 11, 12]))
+    xxx = dofmap.within_range([0.0, 0.0], [0.5, 0.0], edges_only=True)
+    c2 = np.allclose(dofmap.locate_dofs(xxx, sub=0), np.array([8, 10, 12]))
+    xxx = dofmap.within_range([0.0, 0.0], [0.5, 0.0], vertices_only=True)
+    c3 = np.allclose(
+        dofmap.locate_dofs(xxx, sub=1),
+        np.array(
+            [
+                1,
+            ]
+        ),
+    )
+    assert all([c1, c2, c3])
     assert np.allclose(dofmap.locate_dofs([[0, 0], [2, 0]], sub=0), np.array([0, 46]))
     assert np.allclose(
         dofmap.locate_dofs([[2.0, 0.5], [1.0, 1.0]]),
