@@ -252,7 +252,12 @@ def compute_fine_scale_snapshots(
         snapshots.append(r)
 
         gram_schmidt(
-            B, range_product, atol=0, rtol=0, offset=basis_length, copy=False,
+            B,
+            range_product,
+            atol=0,
+            rtol=0,
+            offset=basis_length,
+            copy=False,
         )
         # requires B to be orthonormal wrt range_product
         M -= B.lincomb(B.inner(M, range_product).T)
@@ -268,3 +273,128 @@ def compute_fine_scale_snapshots(
     assert zero_at_dofs
 
     return snapshots
+
+
+# adapted from pymor.algorithms.randrangefinder.adaptive_rrf
+# to be used with multi.oversampling.OversamplingProblem
+def construct_spectral_basis(
+    logger,
+    oversampling_problem,
+    source_product=None,
+    range_product=None,
+    tol=1e-4,
+    failure_tolerance=1e-15,
+    num_testvecs=20,
+    lambda_min=None,
+):
+    r"""Adaptive randomized range approximation of `A`.
+    This is an implementation of Algorithm 1 in [BS18]_.
+
+    The following modifications where made:
+        - instead of a transfer operator A, the full oversampling
+        problem is used
+
+    The image Av = A.apply(v) is equivalent to the restriction
+    of the full solution to the target domain Ω_in, i.e.
+        U = oversampling_problem.solve(v)
+    See multi.oversampling.OversamplingProblem.solve.
+
+    Given the |Operator| `A`, the return value of this method is the |VectorArray|
+    `B` with the property
+
+    .. math::
+        \Vert A - P_{span(B)} A \Vert \leq tol
+
+    with a failure probability smaller than `failure_tolerance`, where the norm denotes the
+    operator norm. The inner product of the range of `A` is given by `range_product` and
+    the inner product of the source of `A` is given by `source_product`.
+
+    Parameters
+    ----------
+    logger
+        The logger used by the main program.
+    oversampling_problem
+        The full oversampling problem associated with a (transfer) |Operator| A.
+    source_product
+        Inner product |Operator| of the source of A.
+    range_product
+        Inner product |Operator| of the range of A.
+    tol
+        Error tolerance for the algorithm.
+    failure_tolerance
+        Maximum failure probability.
+    num_testvecs
+        Number of test vectors.
+    lambda_min
+        The smallest eigenvalue of source_product.
+        If `None`, the smallest eigenvalue is computed using scipy.
+
+    Returns
+    -------
+    B
+        |VectorArray| which contains the spectral basis.
+    """
+    problem = oversampling_problem
+
+    assert source_product is None or isinstance(source_product, Operator)
+    assert range_product is None or isinstance(range_product, Operator)
+
+    if source_product is None:
+        lambda_min = 1
+    elif lambda_min is None:
+
+        def mv(v):
+            return source_product.apply(source_product.source.from_numpy(v)).to_numpy()
+
+        def mvinv(v):
+            return source_product.apply_inverse(
+                source_product.range.from_numpy(v)
+            ).to_numpy()
+
+        L = LinearOperator(
+            (source_product.source.dim, source_product.range.dim), matvec=mv
+        )
+        Linv = LinearOperator(
+            (source_product.range.dim, source_product.source.dim), matvec=mvinv
+        )
+        lambda_min = eigsh(
+            L, sigma=0, which="LM", return_eigenvectors=False, k=1, OPinv=Linv
+        )[0]
+
+    # NOTE problem.source is the full space, while the source product is of lower dimension
+    num_source_dofs = len(problem._bc_dofs_gamma_out)
+    testfail = failure_tolerance / min(num_source_dofs, problem.range.dim)
+    testlimit = (
+        np.sqrt(2.0 * lambda_min) * erfinv(testfail ** (1.0 / num_testvecs)) * tol
+    )
+    maxnorm = np.inf
+    # set of test vectors
+    R = problem.generate_random_boundary_data(num_testvecs, distribution="normal")
+    M = problem.solve(R)
+
+    logger.info(f"{lambda_min=}")
+    logger.info(f"{testlimit=}")
+
+    B = problem.range.empty()
+    while maxnorm > testlimit:
+        basis_length = len(B)
+        v = problem.generate_random_boundary_data(count=1, distribution="normal")
+        B.append(problem.solve(v))
+
+        gram_schmidt(
+            B,
+            range_product,
+            atol=0,
+            rtol=0,
+            offset=basis_length,
+            copy=False,
+        )
+        # requires B to be orthonormal wrt range_product
+        M -= B.lincomb(B.inner(M, range_product).T)
+
+        norm = M.norm(range_product)
+        if any(np.isnan(norm)):
+            breakpoint()
+        maxnorm = np.max(norm)
+
+    return B
