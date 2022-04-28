@@ -34,7 +34,7 @@ def parse_arguments(args):
 
 def main(args):
     args = parse_arguments(args)
-    domain = Domain(args["RVE"], _id=0, subdomains=True, edges=False)
+    domain = Domain(args["RVE"])
     points = {
         "bottom": ([domain.xmin, domain.ymin], [domain.xmax, domain.ymin]),
         "right": ([domain.xmax, domain.ymin], [domain.xmax, domain.ymax]),
