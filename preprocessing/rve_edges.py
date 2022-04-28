@@ -34,7 +34,7 @@ def parse_arguments(args):
 
 def main(args):
     args = parse_arguments(args)
-    domain = Domain(args["RVE"], id_=0, subdomains=True, edges=False)
+    domain = Domain(args["RVE"], _id=0, subdomains=True, edges=False)
     points = {
         "bottom": ([domain.xmin, domain.ymin], [domain.xmax, domain.ymin]),
         "right": ([domain.xmax, domain.ymin], [domain.xmax, domain.ymax]),
@@ -67,13 +67,13 @@ def create_edge_mesh(args, X, Y, edge):
     p0 = geom.add_point([X[0], X[1], 0.0], lcar=lcar)
     p1 = geom.add_point([Y[0], Y[1], 0.0], lcar=lcar)
 
-    l = geom.add_line(p0, p1)
+    line = geom.add_line(p0, p1)
     if args["--transfinite"]:
         N = int(args["--transfinite"])
-        geom.set_transfinite_lines([l], size=N)
+        geom.set_transfinite_lines([line], size=N)
 
     # add physical such that mesh only contains one cell type
-    geom.add_physical(l, label="line")
+    geom.add_physical(line, label="line")
 
     mesh = pygmsh.generate_mesh(geom)
     mesh.prune_z_0()
