@@ -286,6 +286,7 @@ def construct_spectral_basis(
     failure_tolerance=1e-15,
     num_testvecs=20,
     lambda_min=None,
+    train_vectors=None,
 ):
     r"""Adaptive randomized range approximation of `A`.
     This is an implementation of Algorithm 1 in [BS18]_.
@@ -328,6 +329,9 @@ def construct_spectral_basis(
     lambda_min
         The smallest eigenvalue of source_product.
         If `None`, the smallest eigenvalue is computed using scipy.
+    train_vectors
+        |VectorArray| containing a set of predefined training
+        vectors.
 
     Returns
     -------
@@ -338,6 +342,11 @@ def construct_spectral_basis(
 
     assert source_product is None or isinstance(source_product, Operator)
     assert range_product is None or isinstance(range_product, Operator)
+    assert (
+        train_vectors is None
+        or isinstance(train_vectors, VectorArray)
+        and train_vectors.space is problem.source
+    )
 
     if source_product is None:
         lambda_min = 1
@@ -378,7 +387,10 @@ def construct_spectral_basis(
     B = problem.range.empty()
     while maxnorm > testlimit:
         basis_length = len(B)
-        v = problem.generate_random_boundary_data(count=1, distribution="normal")
+        if train_vectors is not None and basis_length < len(train_vectors):
+            v = train_vectors[basis_length]
+        else:
+            v = problem.generate_random_boundary_data(count=1, distribution="normal")
         B.append(problem.solve(v))
 
         gram_schmidt(
