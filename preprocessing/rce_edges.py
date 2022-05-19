@@ -13,7 +13,7 @@ Options:
     --lcar=LCAR              Specify characteristic length.
     -o FILE, --output=FILE   Optional filepath such that edge meshes
                              are written as FILE_{edge}.xdmf. Otherwise
-                             FILE=Path(RVE).
+                             FILE=Path(RCE).
 """
 
 import sys
@@ -28,13 +28,13 @@ from multi import Domain
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     return args
 
 
 def main(args):
     args = parse_arguments(args)
-    domain = Domain(args["RVE"])
+    domain = Domain(args["RCE"])
     points = {
         "bottom": ([domain.xmin, domain.ymin], [domain.xmax, domain.ymin]),
         "right": ([domain.xmax, domain.ymin], [domain.xmax, domain.ymax]),
@@ -80,7 +80,7 @@ def create_edge_mesh(args, X, Y, edge):
     if args["--output"]:
         xdmf = args["--output"].parent / (args["--output"].stem + f"_{edge}.xdmf")
     else:
-        xdmf = args["RVE"].parent / (args["RVE"].stem + f"_{edge}.xdmf")
+        xdmf = args["RCE"].parent / (args["RCE"].stem + f"_{edge}.xdmf")
     meshio.write(xdmf, meshio.Mesh(points=mesh.points, cells=mesh.cells))
 
 

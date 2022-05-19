@@ -1,13 +1,13 @@
 """
 generate a fine grid discretization for a structure of interest (soi) by
-duplicating a given RVE grid corresponding to a given COARSE grid.
+duplicating a given RCE grid corresponding to a given COARSE grid.
 
 Usage:
-    soi.py [options] COARSE RVE
+    soi.py [options] COARSE RCE
 
 Arguments:
     COARSE         The coarse grid (incl. msh ext).
-    RVE            The RVE grid (incl. msh/xdmf ext).
+    RCE            The RCE grid (incl. msh/xdmf ext).
 
 Options:
     -h, --help                    Show this message.
@@ -35,7 +35,7 @@ from pymor.core.logger import getLogger
 def parse_arguments(args):
     args = docopt(__doc__, args)
     args["COARSE"] = Path(args["COARSE"])
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     args["--tdim"] = int(args["--tdim"])
     args["--gdim"] = int(args["--gdim"])
     args["--output"] = Path(args["--output"])
@@ -49,22 +49,18 @@ def main(args):
     logger.setLevel(args["--log"])
 
     to_be_merged = []
-    dofmap = DofMap(
-        args["COARSE"],
-        tdim=args["--tdim"],
-        gdim=args["--gdim"],
-    )
+    dofmap = DofMap(args["COARSE"], tdim=args["--tdim"], gdim=args["--gdim"],)
     for (cell_index, cell) in enumerate(dofmap.cells):
         logger.debug(f"cell_index: {cell_index}")
         points = numpy.around(dofmap.points[cell], decimals=6)
         x0, y0 = points[0]
         x, y = points[2]
 
-        # compute RVE unit length from mesh
-        mesh = meshio.read(args["RVE"])
+        # compute RCE unit length from mesh
+        mesh = meshio.read(args["RCE"])
 
         # msh2 requires 3D points and 32-bit integers
-        if args["RVE"].suffix == ".xdmf":
+        if args["RCE"].suffix == ".xdmf":
             # see meshio/gmsh/_gmsh22.py
             if mesh.points.shape[1] == 2:
                 mesh.points = numpy.column_stack(
@@ -82,12 +78,12 @@ def main(args):
                         key, numpy.array(value, dtype=c_int)
                     )
 
-        # coarse grid cell size needs to agree with RVE unit length (UL)
+        # coarse grid cell size needs to agree with RCE unit length (UL)
         UL = abs(numpy.amax(mesh.points[:, 0]) - numpy.amin(mesh.points[:, 0]))
         assert numpy.isclose(x - x0 - UL, 0.0)
         assert numpy.isclose(y - y0 - UL, 0.0)
 
-        # translate the reference RVE
+        # translate the reference RCE
         mesh.points += numpy.array([x0, y0, 0.0])
 
         # msh2 and msh4 format requires 3D points
@@ -102,10 +98,7 @@ def main(args):
         geom.add_raw_code(f"Merge '{msh}';")
     geom.add_raw_code("Coherence;")
     geom.add_raw_code("Coherence Mesh;")
-    merged_mesh = pygmsh.generate_mesh(
-        geom,
-        mesh_file_type="msh2",
-    )
+    merged_mesh = pygmsh.generate_mesh(geom, mesh_file_type="msh2",)
 
     has_subdomains = bool(merged_mesh.cell_data_dict)
     assert has_subdomains
