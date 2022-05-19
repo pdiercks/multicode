@@ -2,10 +2,10 @@
 surface plots of exemplary bilinear, quadratic and bubble shape functions
 
 Usage:
-    plot_basis.py [options] RVE DEG BASIS MODES...
+    plot_basis.py [options] RCE DEG BASIS MODES...
 
 Arguments:
-    RVE       The RVE grid (incl. ext).
+    RCE       The RCE grid (incl. ext).
     DEG       Degree of the FE space.
     BASIS     Filepath incl. extension.
     MODES     A list of integers specifying modes to plot (Note
@@ -35,7 +35,7 @@ POSTPROCESSING = Path(__file__).parent
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     args["DEG"] = int(args["DEG"])
     args["BASIS"] = Path(args["BASIS"])
     args["MODES"] = [int(m) for m in args["MODES"]]
@@ -48,7 +48,7 @@ def main(args):
     args = parse_arguments(args)
 
     mesh = Mesh()
-    with XDMFFile(args["RVE"].as_posix()) as f:
+    with XDMFFile(args["RCE"].as_posix()) as f:
         f.read(mesh)
 
     V = FunctionSpace(mesh, "CG", args["DEG"])

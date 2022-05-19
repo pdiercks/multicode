@@ -2,17 +2,17 @@
 plot condition number of gramian against number of modes for basis
 
 Usage:
-    gramian.py [options] RVE DEG BASES...
-    gramian.py [options] RVE DEG BASES... [-l LABEL]...
+    gramian.py [options] RCE DEG BASES...
+    gramian.py [options] RCE DEG BASES... [-l LABEL]...
 
 Arguments:
-    RVE       The XDMF file for the RVE domain (incl. ext).
+    RCE       The XDMF file for the RCE domain (incl. ext).
     DEG       Degree of FE space.
     BASES     The reduced bases (incl. .npy extension).
 
 Options:
     -h, --help               Show this message and exit.
-    --product=PROD           An inner product (see `discretize_rve`) [default: energy_0].
+    --product=PROD           An inner product (see `discretize_rce`) [default: energy_0].
     --material=MAT           Material parameters in case energy product is used.
     -o FILE, --output=FILE   Write PDF to path.
     -l, --label=LABEL        Add a label for each data set.
@@ -36,7 +36,7 @@ POSTPROCESSING = Path(__file__).parent
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     args["DEG"] = int(args["DEG"])
     args["BASES"] = [Path(d) for d in args["BASES"]]
     assert all([d.exists() for d in args["BASES"]])
@@ -52,9 +52,7 @@ def parse_arguments(args):
         assert len(args["--label"]) == len(args["BASES"])
         args["legend"] = True
     else:
-        args["--label"] = [
-            None,
-        ] * len(args["DATA"])
+        args["--label"] = [None,] * len(args["DATA"])
         args["legend"] = False
     return args
 
@@ -66,7 +64,7 @@ def main(args):
     with open(POSTPROCESSING / "bamcolors_hex.yml", "r") as instream:
         bamcd = yaml.safe_load(instream)
 
-    source, products = discretize_rve(args)
+    source, products = discretize_rce(args)
     bases = []
     labels = []
     for npz in args["BASES"]:
@@ -115,11 +113,11 @@ def main(args):
         ax.grid()
 
 
-def discretize_rve(args):
-    """discretize the rve and wrap as pyMOR model"""
-    rve_xdmf = args["RVE"]
+def discretize_rce(args):
+    """discretize the rce and wrap as pyMOR model"""
+    rce_xdmf = args["RCE"]
     if args["--material"]:
-        rve_domain = Domain(rve_xdmf, 0, subdomains=True)
+        rce_domain = Domain(rce_xdmf, 0, subdomains=True)
         with open(args["--material"], "r") as infile:
             try:
                 material = yaml.safe_load(infile)
@@ -129,12 +127,12 @@ def discretize_rve(args):
         E = material["Material parameters"]["E"]["value"]
         NU = material["Material parameters"]["NU"]["value"]
     else:
-        rve_domain = Domain(rve_xdmf, 0, subdomains=False)
+        rce_domain = Domain(rce_xdmf, 0, subdomains=False)
         E = 210e3
         NU = 0.3
 
-    V = df.VectorFunctionSpace(rve_domain.mesh, "CG", args["DEG"])
-    problem = LinearElasticityProblem(rve_domain, V, E=E, NU=NU)
+    V = df.VectorFunctionSpace(rce_domain.mesh, "CG", args["DEG"])
+    problem = LinearElasticityProblem(rce_domain, V, E=E, NU=NU)
     a = problem.get_lhs()
     A = df.assemble(a)
 

@@ -2,10 +2,10 @@
 plot given modes of the edge basis functions
 
 Usage:
-    plot_edge_basis.py [options] RVE DEG CHI MODES...
+    plot_edge_basis.py [options] RCE DEG CHI MODES...
 
 Arguments:
-    RVE          The rve grid used.
+    RCE          The rce grid used.
     DEG          The degree of FE space.
     CHI          TODO
     MODES        TODO
@@ -27,7 +27,7 @@ from multi import Domain
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     args["DEG"] = int(args["DEG"])
     args["CHI"] = Path(args["CHI"])
     args["MODES"] = [int(m) for m in args["MODES"]]
@@ -38,7 +38,7 @@ def parse_arguments(args):
 
 def main(args):
     args = parse_arguments(args)
-    domain = Domain(args["RVE"], 0, subdomains=True, edges=True)
+    domain = Domain(args["RCE"], 0, subdomains=True, edges=True)
     s = args["--set"]
     edge = domain.edges[int(s)]
     V = FunctionSpace(edge, "CG", args["DEG"])

@@ -2,13 +2,13 @@
 compute projection error for given basis wrt dns
 
 Usage:
-    projection_error_dns.py [options] FINE DNS COARSE RVE DEG MAT BASIS
+    projection_error_dns.py [options] FINE DNS COARSE RCE DEG MAT BASIS
 
 Arguments:
     FINE         The fine scale grid of the global problem.
     DNS          The direct numerical simulation (xdmf).
     COARSE       The coarse scale grid.
-    RVE          The rve grid.
+    RCE          The rce grid.
     DEG          Degree of FE space.
     MAT          Material (yml) data.
     BASIS        The reduced basis (npz).
@@ -41,7 +41,7 @@ def parse_args(args):
     args["FINE"] = Path(args["FINE"])
     args["DNS"] = Path(args["DNS"])
     args["COARSE"] = Path(args["COARSE"])
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     args["DEG"] = int(args["DEG"])
     args["MAT"] = Path(args["MAT"])
     args["BASIS"] = Path(args["BASIS"])
@@ -71,12 +71,12 @@ def get_snapshots(args, logger, dns, source):
         assert set(cells).issubset(active_cells)
         active_cells = np.array(list(set(active_cells).difference(cells)))
 
-    snaps = source.empty(reserve=len(dofmap.cells))
+    snaps = source.empty(reserce=len(dofmap.cells))
     logger.info("Gathering snapshot data ...")
     for cell_index, cell in enumerate(dofmap.cells[active_cells]):
         offset = np.around(dofmap.points[cell][0], decimals=5)
         omega = Domain(
-            args["RVE"], id_=cell_index, subdomains=True, translate=df.Point(offset)
+            args["RCE"], id_=cell_index, subdomains=True, translate=df.Point(offset)
         )
         V = df.VectorFunctionSpace(omega.mesh, "CG", args["DEG"])
         Idns = df.interpolate(dns, V)
@@ -108,16 +108,16 @@ def main(args):
     logger.setLevel(args["--log"])
     dns = read_dns(args, logger)
 
-    # rve problem to define vector space and product
-    rve_domain = Domain(args["RVE"], 99, subdomains=True)
-    V = df.VectorFunctionSpace(rve_domain.mesh, "CG", args["DEG"])
+    # rce problem to define vector space and product
+    rce_domain = Domain(args["RCE"], 99, subdomains=True)
+    V = df.VectorFunctionSpace(rce_domain.mesh, "CG", args["DEG"])
     with open(args["MAT"], "r") as f:
         mat = yaml.safe_load(f)
     E = mat["Material parameters"]["E"]["value"]
     NU = mat["Material parameters"]["NU"]["value"]
     plane_stress = mat["Constraints"]["plane_stress"]
     problem = LinearElasticityProblem(
-        rve_domain, V, E=E, NU=NU, plane_stress=plane_stress
+        rce_domain, V, E=E, NU=NU, plane_stress=plane_stress
     )
 
     energy = problem.get_product(name="energy", bcs=False)
