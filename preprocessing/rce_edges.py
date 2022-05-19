@@ -1,11 +1,11 @@
 """
-generate edge meshes for given RVE mesh
+generate edge meshes for given RCE mesh
 
 Usage:
-    rve_edges.py [options] RVE
+    rce_edges.py [options] RCE
 
 Arguments:
-    RVE       Filepath (incl. .xdmf extension).
+    RCE       Filepath (incl. .xdmf extension).
 
 Options:
     -h, --help               Show this message and exit.

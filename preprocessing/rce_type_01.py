@@ -1,8 +1,8 @@
 """
-generate mesh for a structured RVE with one inclusion
+generate mesh for a structured RCE with one inclusion
 
 Usage:
-    rve_type_01.py [options] X0 Y0 X Y R N
+    rce_type_01.py [options] X0 Y0 X Y R N
 
 Arguments:
     X0                  X-coordinate of lower left corner.
@@ -14,7 +14,7 @@ Arguments:
 
 Options:
     -h, --help                    Show this message.
-    -o FILE, --output=FILE        Set output path. [default: ./rve.xdmf]
+    -o FILE, --output=FILE        Set output path. [default: ./rce.xdmf]
 """
 
 import sys
@@ -36,7 +36,7 @@ def parse_arguments(args):
     return args
 
 
-def add_structured_rve(
+def add_structured_rce(
     geom,
     X0=0.0,
     Y0=0.0,
@@ -48,7 +48,7 @@ def add_structured_rve(
     boundaries=False,
     return_entities=False,
 ):
-    """add a RVE with structured mesh (transfinite) to the geometry object
+    """add a RCE with structured mesh (transfinite) to the geometry object
 
     Parameters
     ----------
@@ -107,9 +107,7 @@ def add_structured_rve(
             [X0, Y0 + b, 0.0],
             [X0, Y0 + b / 2, 0.0],
         ]
-        LCAR = [
-            lcar,
-        ] * len(XX)
+        LCAR = [lcar,] * len(XX)
         p = [geom.add_point(x, lcar=l) for x, l in zip(XX, LCAR)]
         lines = [geom.add_line(p[k], p[k + 1]) for k in range(len(p) - 1)]
         lines.append(geom.add_line(p[-1], p[0]))
@@ -212,9 +210,7 @@ def add_structured_rve(
     if return_entities:
         return {
             "matrix": [s0, s1, s2, s3, s4, s5, s6, s7],
-            "inclusion": [
-                circle.plane_surface,
-            ],
+            "inclusion": [circle.plane_surface,],
             "boundary": sl,
         }
 
@@ -227,7 +223,7 @@ def main(args):
     ext = os.path.splitext(os.path.basename(args["--output"]))[1]
 
     geom = pygmsh.built_in.Geometry()
-    add_structured_rve(
+    add_structured_rce(
         geom,
         X0=args["X0"],
         Y0=args["Y0"],

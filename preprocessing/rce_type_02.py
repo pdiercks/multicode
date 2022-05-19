@@ -1,15 +1,15 @@
 """
-generate mesh for rve type 02 (specific number and position of aggregates)
+generate mesh for rce type 02 (specific number and position of aggregates)
 
 Usage:
-    rve_type_02.py [options] NT
+    rce_type_02.py [options] NT
 
 Arguments:
-    NT           Number of vertices on each edge of the RVE.
+    NT           Number of vertices on each edge of the RCE.
 
 Options:
     -h, --help               Show this message and exit.
-    -o FILE, --output=FILE   Write mesh to FILE. [default: ./rve.xdmf]
+    -o FILE, --output=FILE   Write mesh to FILE. [default: ./rce.xdmf]
 """
 
 import sys

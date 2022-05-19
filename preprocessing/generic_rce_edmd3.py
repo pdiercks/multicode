@@ -174,17 +174,17 @@ def create_gmsh():
     opts.mesh_size_aggregates = 1.0
 
     g = edmd.GmshWriter(s, box, opts)
-    g.write_msh("rve.msh", "rve.geo")
+    g.write_msh("rce.msh", "rce.geo")
 
     import meshio
 
-    geometry = meshio.read("rve.msh")
+    geometry = meshio.read("rce.msh")
     # prune z:
     if opts.slice != 0:
         geometry.points = geometry.points[:, :2]
 
     meshio.write(
-        "rve.xdmf",
+        "rce.xdmf",
         meshio.Mesh(
             points=geometry.points, cells=geometry.cells, cell_data=geometry.cell_data
         ),
