@@ -64,7 +64,7 @@ class InnerProduct:
             matrix = df.assemble(self.get_form())
             vector = df.Function(self.V).vector()
             for bc in self.bcs:
-                # bc.apply does not preserve symmetry
+                # bc.apply does not preserce symmetry
                 bc.zero_columns(matrix, vector, 1.0)
             return matrix
 

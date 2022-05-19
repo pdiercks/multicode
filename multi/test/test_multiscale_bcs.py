@@ -10,7 +10,7 @@ from helpers import build_mesh
 
 def test():
     domain = RectangularDomain(
-        "data/rvedomain.xdmf", _id=1, subdomains=False, edges=True
+        "data/rcedomain.xdmf", _id=1, subdomains=False, edges=True
     )
     V = df.VectorFunctionSpace(domain.mesh, "CG", 1)
     problem = LinearElasticityProblem(domain, V, 210e3, 0.3)
@@ -59,11 +59,7 @@ def test():
     assert np.allclose(np.array(list(bcs.values())), values)
 
     boundary_data = df.Expression(("0.0", "x[0] * x[0]"), degree=2)
-    dofs_per_edge = np.array(
-        [
-            [2 * (pmax - 1), 5, 2, 3],
-        ]
-    )
+    dofs_per_edge = np.array([[2 * (pmax - 1), 5, 2, 3],])
     dofmap.distribute_dofs(2, dofs_per_edge, 0)
     bcs = compute_multiscale_bcs(
         problem,

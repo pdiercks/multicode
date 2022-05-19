@@ -26,7 +26,7 @@ def test():
 
 def test_with_edges():
     domain = RectangularDomain(
-        "data/rvedomain.xdmf", _id=1, subdomains=False, edges=True
+        "data/rcedomain.xdmf", _id=1, subdomains=False, edges=True
     )
     V = df.VectorFunctionSpace(domain.mesh, "CG", 1)
     problem = LinearElasticityProblem(domain, V, 210e3, 0.3)

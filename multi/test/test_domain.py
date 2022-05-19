@@ -50,7 +50,7 @@ def test_2d():
     assert np.isclose(other.xmax, 3.1)
 
     another = RectangularDomain(
-        "data/rvedomain.xdmf", _id=2, subdomains=True, edges=True
+        "data/rcedomain.xdmf", _id=2, subdomains=True, edges=True
     )
     assert len(another.edges) == 4
     assert all([isinstance(e, df.cpp.mesh.Mesh) for e in another.edges])

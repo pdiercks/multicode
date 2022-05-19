@@ -1,15 +1,15 @@
 """
-periodic homogenization of a given RVE type
+periodic homogenization of a given RCE type
 
 The example is taken from
 https://comet-fenics.readthedocs.io/en/latest/demo/periodic_homog_elas/periodic_homog_elas.html
 written by Jeremy Bleyer.
 
 Usage:
-    homogenization.py [options] RVE DEG MAT
+    homogenization.py [options] RCE DEG MAT
 
 Arguments:
-    RVE       The RVE mesh (incl. extension).
+    RCE       The RCE mesh (incl. extension).
     DEG       The degree of the FE space.
     MAT       Material metadata (.yml).
 
@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 
 def parse_arguments(args):
     args = docopt(__doc__, args)
-    args["RVE"] = Path(args["RVE"])
+    args["RCE"] = Path(args["RCE"])
     args["DEG"] = int(args["DEG"])
     args["MAT"] = Path(args["MAT"])
     return args
@@ -46,7 +46,7 @@ def homogenize(args):
     mesh = df.Mesh()
     mvc = df.MeshValueCollection("size_t", mesh)
 
-    with df.XDMFFile(args["RVE"].as_posix()) as f:
+    with df.XDMFFile(args["RCE"].as_posix()) as f:
         f.read(mesh)
         f.read(mvc, "gmsh:physical")
 
@@ -223,10 +223,10 @@ def homogenize(args):
     # print("Apparent Young modulus:", E_hom)
     # print("Apparent Poisson ratio:", nu_hom)
 
-    rve_type = args["RVE"].parent.stem
+    rce_type = args["RCE"].parent.stem
     # get value of key; return empty dict if None
     homogenized_stiffness = material.get("Homogenized stiffness", {})
-    homogenized_stiffness.update({rve_type: Chom.tolist()})
+    homogenized_stiffness.update({rce_type: Chom.tolist()})
     material.update({"Homogenized stiffness": homogenized_stiffness})
     with open(args["MAT"], "w") as outStream:
         yaml.safe_dump(material, outStream)
