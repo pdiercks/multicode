@@ -2,13 +2,13 @@
   basis_type: empirical
   degree: 2
   disc: 5
-  rve:
+  rce:
     a: 1.0
-    xdmf: data/rve_0.xdmf
+    xdmf: data/rce_0.xdmf
 1:
   basis_type: hierarchical
   degree: 2
   disc: 5
-  rve:
+  rce:
     a: 1.0
-    xdmf: data/rve_1.xdmf
+    xdmf: data/rce_1.xdmf

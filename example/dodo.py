@@ -29,14 +29,14 @@ def task_dirs():
     }
 
 
-def task_rve_grid():
-    """create RVE fine grid"""
-    script = preprocessing / "rve_type_01.py"
+def task_rce_grid():
+    """create RCE fine grid"""
+    script = preprocessing / "rce_type_01.py"
     with open(scenarios, "r") as instream:
         s = yaml.safe_load(instream)
 
     for i, scenario in s.items():
-        target = Path(scenario["rve"]["xdmf"])
+        target = Path(scenario["rce"]["xdmf"])
         N = int((scenario["disc"] + 1) / 2)
         cmd = f"python {script} 0 0 1 1 0.2 {N} --output={target}"
         yield {
@@ -48,9 +48,9 @@ def task_rve_grid():
         }
 
 
-def task_rve_edges():
-    """create meshes for the boundary of the RVE"""
-    script = preprocessing / "rve_edges.py"
+def task_rce_edges():
+    """create meshes for the boundary of the RCE"""
+    script = preprocessing / "rce_edges.py"
     edges = ["bottom", "right", "top", "left"]
 
     with open(scenarios, "r") as instream:
@@ -58,13 +58,13 @@ def task_rve_edges():
 
     for i, scenario in s.items():
         N = scenario["disc"]
-        rve = Path(scenario["rve"]["xdmf"])
-        # note target definition according to rve_edges.py
-        targets = [rve.parent / (rve.stem + f"_{e}.xdmf") for e in edges]
-        cmd = f"python {script} {rve} --transfinite={N}"
+        rce = Path(scenario["rce"]["xdmf"])
+        # note target definition according to rce_edges.py
+        targets = [rce.parent / (rce.stem + f"_{e}.xdmf") for e in edges]
+        cmd = f"python {script} {rce} --transfinite={N}"
         yield {
             "name": f"{i}",
-            "file_dep": [script, scenarios, rve],
+            "file_dep": [script, scenarios, rce],
             "actions": [CmdAction(cmd)],
             "targets": targets + [t.with_suffix(".h5") for t in targets],
             "clean": True,
@@ -72,7 +72,7 @@ def task_rve_edges():
 
 
 def task_coarse_grid():
-    """create coarse grid for this example which is a 3x3 block of RVEs"""
+    """create coarse grid for this example which is a 3x3 block of RCEs"""
     script = preprocessing / "rectangle.py"
 
     with open(scenarios, "r") as instream:
@@ -80,8 +80,8 @@ def task_coarse_grid():
 
     N = 3
     scenario = s[0]
-    # RVE with varying unit length is out of scope
-    x = scenario["rve"]["a"] * N
+    # RCE with varying unit length is out of scope
+    x = scenario["rce"]["a"] * N
     target = example / "data" / "coarse_block.msh"
     cmd = f"python {script} {x} {x} {N} {N} 1 --transfinite --quads"
     cmd += f" --output={target}"
@@ -104,13 +104,13 @@ def task_fine_grid():
 
     coarse_grid = example / "data" / "coarse_block.msh"
     for i, scenario in s.items():
-        rve = Path(scenario["rve"]["xdmf"])
+        rce = Path(scenario["rce"]["xdmf"])
         fine_grid = example / "data" / f"block_{i}.xdmf"
-        cmd = f"python {script} {coarse_grid} {rve} --tdim=2 --gdim=2 --prune_z_0"
+        cmd = f"python {script} {coarse_grid} {rce} --tdim=2 --gdim=2 --prune_z_0"
         cmd += f" --output={fine_grid}"
         yield {
             "name": f"{i}",
-            "file_dep": [script, coarse_grid, rve, scenarios],
+            "file_dep": [script, coarse_grid, rce, scenarios],
             "actions": [CmdAction(cmd)],
             "targets": [fine_grid, fine_grid.with_suffix(".h5")],
             "clean": True,
@@ -128,9 +128,9 @@ def task_generate_basis():
     edges = ["bottom", "right", "top", "left"]
     for i, scenario in s.items():
         block = example / "data" / f"block_{i}.xdmf"
-        rve = Path(scenario["rve"]["xdmf"])
-        a = scenario["rve"]["a"]
-        rve_edges = [rve.parent / (rve.stem + f"_{e}.xdmf") for e in edges]
+        rce = Path(scenario["rce"]["xdmf"])
+        a = scenario["rce"]["a"]
+        rce_edges = [rce.parent / (rce.stem + f"_{e}.xdmf") for e in edges]
         degree = scenario["degree"]
         basis = scenario["basis_type"]
         targets = [
@@ -138,7 +138,7 @@ def task_generate_basis():
             example / "results" / f"edge_basis_{i}.npz",
             example / "results" / f"testing_set_proj_err_{i}.txt",
         ]
-        cmd = f"python {script} {block} {rve} {a} {degree} {mat} -l 10"
+        cmd = f"python {script} {block} {rce} {a} {degree} {mat} -l 10"
         cmd += f" --training-set=delta --type={basis} --serendipity"
         cmd += f" --psi={targets[0]} --chi={targets[1]} --projerr={targets[2]}"
         cmd += f" --solver={solver} --test --check-interface=1e-8"
@@ -151,14 +151,14 @@ def task_generate_basis():
             "file_dep": [
                 scenarios,
                 block,
-                rve,
-                rve.with_suffix(".h5"),
-                *rve_edges,
+                rce,
+                rce.with_suffix(".h5"),
+                *rce_edges,
                 script,
                 mat,
                 solver,
             ],
-            "task_dep": ["rve_grid", "fine_grid", "coarse_grid", "rve_edges"],
+            "task_dep": ["rce_grid", "fine_grid", "coarse_grid", "rce_edges"],
             "clean": True,
         }
 
