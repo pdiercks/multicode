@@ -57,7 +57,7 @@ def extend_pymor(
 
     # set g(x_i) for i-th dof in rhs
     bc_dofs = list(bc.get_boundary_values().keys())
-    bc_vals = np.array([b[bc_dofs] for b in boundary_data])
+    bc_vals = R.dofs(bc_dofs)
     # FIXME currently, I have to use a workaround since
     # I don't know how to modify FenicsVectorArray in-place
     rhs_array = rhs.to_numpy()
