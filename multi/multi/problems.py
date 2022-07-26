@@ -274,6 +274,8 @@ class OversamplingProblem(object):
     ):
         self.logger = getLogger("multi.problems.OversamplingProblem")
         self.problem = problem
+        # FIXME actually only subdomain_problem.V is used / needed by OversamplingProblem
+        # TODO use range space (on Ω_in or Γ_in?) as input argument
         self.subdomain_problem = subdomain_problem
         self.source = FenicsVectorSpace(problem.V)
         self.range = FenicsVectorSpace(subdomain_problem.V)
