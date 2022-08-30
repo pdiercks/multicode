@@ -32,6 +32,9 @@ class LinearProblemBase(object):
         self.logger = getLogger("multi.problems.LinearProblemBase")
         self.domain = domain
         self.V = V
+        self.u = df.TrialFunction(V)
+        self.v = df.TestFunction(V)
+        self.gdim = V.element().geometric_dimension()
         self._bc_handler = BoundaryConditions(domain, V)
         if hasattr(domain, "edges"):
             if domain.edges:
