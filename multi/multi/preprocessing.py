@@ -6,9 +6,10 @@ import pathlib
 import tempfile
 import gmsh
 import meshio
+import numpy as np
 
 
-def to_floats(values):
+def to_array(values):
     floats = []
     try:
         for v in values:
@@ -16,32 +17,11 @@ def to_floats(values):
     except TypeError:
         floats = [float(values)]
 
-    return floats
+    return np.array(floats, dtype=float)
 
 
-def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
-    """TODO docstring"""
-    start = to_floats(start)
-    end = to_floats(end)
-
-    # # adjust the values such that start < end for all dimensions
-    # assert len(start) == len(end)
-    # for i in range(len(start)):
-    #     if start[i] > end[i]:
-    #         start[i], end[i] = end[i], start[i]
-
-    gmsh.initialize()
-    gmsh.model.add("line")
-
-    p0 = gmsh.model.geo.addPoint(*start, lc)
-    p1 = gmsh.model.geo.addPoint(*end, lc)
-    line = gmsh.model.geo.addLine(p0, p1)
-    gmsh.model.addPhysicalGroup(1, [line])
-
-    if num_cells is not None:
-        gmsh.model.geo.mesh.setTransfiniteCurve(line, num_cells+1)
-
-    gmsh.model.mesh.generate(1)
+def _generate_and_write_grid(dim, out_file):
+    gmsh.model.mesh.generate(dim)
 
     tf = tempfile.NamedTemporaryFile(suffix=".msh", delete=True)
     if out_file is not None:
@@ -51,9 +31,41 @@ def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
 
     gmsh.write(filepath)
     gmsh.finalize()
-
     grid = meshio.read(filepath)
     tf.close()
-
     return grid
 
+
+def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
+    """TODO docstring"""
+    start = to_array(start)
+    end = to_array(end)
+
+    gmsh.initialize()
+    gmsh.model.add("line")
+
+    p0 = gmsh.model.geo.addPoint(*start, lc)
+    p1 = gmsh.model.geo.addPoint(*end, lc)
+    line = gmsh.model.geo.addLine(p0, p1)
+
+    if num_cells is not None:
+        gmsh.model.geo.mesh.setTransfiniteCurve(line, num_cells+1)
+
+    gmsh.model.geo.synchronize()
+    gmsh.model.addPhysicalGroup(1, [line])
+
+    grid = _generate_and_write_grid(1, out_file)
+    return grid
+
+
+def create_rectangle_grid(start, end, lc=0.1, num_cells=None, out_file=None):
+    """TODO docstring"""
+    start = to_array(start)
+    end = to_array(end)
+    dist = np.abs(end - start)
+    # TODO generalize rectangle in 3d space, start & end are not enough?
+
+    gmsh.initialize()
+    gmsh.model.add("rectangle")
+
+    from IPython import embed;embed()
