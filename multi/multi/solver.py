@@ -1,4 +1,7 @@
 import dolfin as df
+from multi.product import InnerProduct
+from pymor.algorithms.gram_schmidt import gram_schmidt
+from pymor.bindings.fenics import FenicsVectorSpace
 
 
 # adapted from pymor.bindings.fenics.py
@@ -47,6 +50,33 @@ def build_nullspace2D(V, u):
     basis.orthonormalize()
 
     return basis
+
+
+def build_nullspace_va(func_space, product=None):
+    f = df.Function(func_space)
+    fvec = f.vector()
+
+    # Create list of vectors for null space
+    nullspace_basis = [fvec.copy() for i in range(3)]
+    # Build translational null space basis
+    func_space.sub(0).dofmap().set(nullspace_basis[0], 1.0)
+    func_space.sub(1).dofmap().set(nullspace_basis[1], 1.0)
+
+    # Build rotational null space basis
+    func_space.sub(0).set_x(nullspace_basis[2], -1.0, 1)
+    func_space.sub(1).set_x(nullspace_basis[2], 1.0, 0)
+
+    for x in nullspace_basis:
+        x.apply("insert")
+
+    source = FenicsVectorSpace(func_space)
+    basis = source.make_array(nullspace_basis)
+
+    inner_product = InnerProduct(func_space, product=product)
+    product = inner_product.assemble_operator()
+    gram_schmidt(basis, product, atol=0.0, rtol=0.0, copy=False)
+
+    return basis, product
 
 
 def get_cg_solver(null_space, operator):
