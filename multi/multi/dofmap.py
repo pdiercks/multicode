@@ -230,6 +230,9 @@ class DofMap:
         self.cell_type = subdomains_celltype
         self._cell = cell(subdomains_celltype)
 
+        cellpoints = self.points[self.cells[0]]
+        self.cell_size = np.around(np.abs(cellpoints[1] - cellpoints[0])[0], decimals=5)
+
     def distribute_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face=0):
         """set number of DoFs per entity and distribute dofs
 
@@ -433,7 +436,7 @@ class DofMap:
             Points of mesh within range.
         """
         points = self.points
-        cell_size = np.around(np.abs(points[1] - points[0])[0], decimals=5)
+        cell_size = self.cell_size
 
         start = to_floats(start)
         end = to_floats(end)
@@ -493,8 +496,7 @@ class DofMap:
         np.ndarray
             Points of mesh in given plane.
         """
-        cellpoints = self.points[self.cells[0]]
-        cell_size = np.around(np.abs(cellpoints[1] - cellpoints[0])[0], decimals=5)
+        cell_size = self.cell_size
 
         if dim in ["x", "X"]:
             dim = 0
