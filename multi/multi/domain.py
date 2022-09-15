@@ -187,3 +187,45 @@ class RectangularDomain(Domain):
         if self.edges:
             for edge in self.edges:
                 edge.translate(point)
+
+
+class StructuredGrid(object):
+    """class representing a structured (coarse scale) grid
+
+    Each coarse cell is associated with a fine scale grid which
+    can be set through `self.fine_grids`.
+    """
+
+    def __init__(self, points, cells):
+        # FIXME rather read mesh using meshio
+        self.points = points
+        self.cells = cells
+
+    def get_patch(self, cell_index, layer=1):
+        # TODO test for structured and unstructured mesh of different cell types
+        n = cell_index
+        for _ in range(layer):
+            p = self.cells[n]
+            p.shape = (p.size, -1)
+            contains_p = np.subtract(self.cells, p[:, np.newaxis])
+            neighbours = np.where(np.abs(contains_p) < 1e-6)[1]
+            n = np.unique(neighbours)
+
+        return n
+
+    @property
+    def fine_grids(self):
+        return self._fine_grids
+
+    @fine_grids.setter
+    def fine_grids(self, values):
+        """values as array of length (num_cells,) holding path to fine grid"""
+        self._fine_grids = values
+
+
+    def create_fine_grid(self, cells):
+        """creates a fine scale grid for given cells"""
+        # cells must be adjacent to each other
+        # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
+        # TODO 
+        pass
