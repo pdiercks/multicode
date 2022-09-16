@@ -33,13 +33,11 @@ def to_array(values):
 
 # this code is part of the FEniCSx tutorial
 # see https://jorgensd.github.io/dolfinx-tutorial/chapter3/subdomains.html#convert-msh-files-to-xdmf-using-meshio
-def create_mesh(mesh, cell_type, prune_z=False):
+def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
     cells = mesh.get_cells_type(cell_type)
-    cell_data = mesh.get_cell_data("gmsh:physical", cell_type)
+    cell_data = mesh.get_cell_data(name_to_read, cell_type)
     points = mesh.points[:,:2] if prune_z else mesh.points
-    # FIXME might change 'gmsh:physical' to something more meaningful?
-    # would need to change __init__ of multi.domain.Domain as well
-    out_mesh = meshio.Mesh(points=points, cells={cell_type: cells}, cell_data={"gmsh:physical":[cell_data]})
+    out_mesh = meshio.Mesh(points=points, cells={cell_type: cells}, cell_data={name_to_read:[cell_data]})
     return out_mesh
 
 
