@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 
+import gmsh
+import tempfile
+import meshio
 import dolfin as df
 import numpy as np
 
@@ -193,13 +196,14 @@ class StructuredGrid(object):
     """class representing a structured (coarse scale) grid
 
     Each coarse cell is associated with a fine scale grid which
-    can be set through `self.fine_grids`.
+    needs to be set through `self.fine_grids`.
     """
 
-    def __init__(self, points, cells):
+    def __init__(self, points, cells, tdim):
         # FIXME rather read mesh using meshio
         self.points = points
         self.cells = cells
+        self.tdim = tdim
 
     def get_patch(self, cell_index, layer=1):
         # TODO test for structured and unstructured mesh of different cell types
@@ -220,12 +224,48 @@ class StructuredGrid(object):
     @fine_grids.setter
     def fine_grids(self, values):
         """values as array of length (num_cells,) holding path to fine grid"""
+        # TODO only support .msh format for fine grids of this class
         self._fine_grids = values
 
 
-    def create_fine_grid(self, cells):
+    def create_fine_grid(self, cells, output):
         """creates a fine scale grid for given cells"""
-        # cells must be adjacent to each other
         # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
-        # TODO 
-        pass
+
+        # initialize
+        subdomains = []
+
+        active_cells = self.cells[cells]
+        fine_grids = self.fine_grids[cells]
+
+        for cell, grid_path in zip(active_cells, fine_grids):
+            points = np.around(self.points[cell], decimals=5)
+
+            mesh = meshio.read(grid_path)
+
+            # translation
+            mesh.points += points[0]
+
+            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tf:
+                subdomains.append(tf.name)
+                meshio.write(tf.name, mesh, file_format="gmsh")
+                print(tf.name)
+
+        # merge subdomains
+        gmsh.initialize()
+        gmsh.clear()
+        gmsh.model.add("fine_grid")
+
+        for msh_file in subdomains:
+            gmsh.merge(msh_file)
+        gmsh.model.geo.remove_all_duplicates()
+        gmsh.model.mesh.remove_duplicate_nodes()
+        gmsh.model.mesh.remove_duplicate_elements()
+
+        gmsh.model.mesh.generate(self.tdim)
+        gmsh.write(output)
+        gmsh.finalize()
+
+        # clean up
+        for msh_file in subdomains:
+            os.remove(msh_file)

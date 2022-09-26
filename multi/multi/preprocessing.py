@@ -1,5 +1,15 @@
 """preprocessing module to generate computational grids with Gmsh"""
 
+# Guidelines/Facts
+# .msh point data is always 3d
+# (prune_z is only required to create xdmf mesh as input to dolfin)
+# gmsh.write(msh_file) --> writes all cell types (vertex, line, triangle, ...)
+# meshio.write(msh_file, data, file_format="gmsh") --> requires physical group (KeyError otherwise)
+# if `file_format="gmsh"` is omitted, then meshio will think this is an Ansys mesh format ... (also KeyError)
+
+# mesh generation process: always use gmsh and gmsh.write --> .msh only
+# fenics: always use meshio.read, multi.preprocessing.create_mesh respectively
+
 # TODO replace scripts in /multicode/preprocessing by functions
 # TODO test if out_file with format .xdmf can be imported in dolfin
 

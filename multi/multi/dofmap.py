@@ -67,7 +67,7 @@ class Quadrilateral:
         self.faces = {}
 
         if gmsh_cell_type in ("quad8", "quad9"):
-            self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 1)}
+            self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 0)}
             if gmsh_cell_type in ("quad9"):
                 self.faces = {0: (0, 1, 2, 3)}
 
