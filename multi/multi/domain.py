@@ -237,6 +237,19 @@ class StructuredGrid(object):
         cells = np.unique(neighbours)
         return cells
 
+    # TODO idea
+    # define cell sets needed for basis construction
+    # using simple functions within_range and plane_at
+    # to get the points and then get_cells_by_points to get the cells
+
+    def within_range(self):
+        # TODO
+        pass
+
+    def plane_at(self):
+        # TODO
+        pass
+
     @property
     def fine_grids(self):
         return self._fine_grids
