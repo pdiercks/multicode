@@ -217,6 +217,26 @@ class StructuredGrid(object):
 
         return n
 
+    def get_cells_by_points(self, points):
+        """get all cells that contain the given point tags
+
+        Parameters
+        ----------
+        points : np.ndarray
+            The global tags of the points.
+
+        Returns
+        -------
+        cells : np.ndarray
+            The cell indices.
+        """
+        p = points.copy()
+        p.shape = (p.size, -1)
+        contains_p = np.subtract(self.cells, p[:, np.newaxis])
+        neighbours = np.where(np.abs(contains_p) < 1e-6)[1]
+        cells = np.unique(neighbours)
+        return cells
+
     @property
     def fine_grids(self):
         return self._fine_grids
@@ -226,7 +246,6 @@ class StructuredGrid(object):
         """values as array of length (num_cells,) holding path to fine grid"""
         # TODO only support .msh format for fine grids of this class
         self._fine_grids = values
-
 
     def create_fine_grid(self, cells, output):
         """creates a fine scale grid for given cells"""
