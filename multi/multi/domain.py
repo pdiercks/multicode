@@ -6,6 +6,8 @@ import tempfile
 import meshio
 import dolfin as df
 import numpy as np
+from fenics_helpers.boundary import to_floats
+from multi.dofmap import Quadrilateral
 
 
 class Domain(object):
@@ -197,13 +199,36 @@ class StructuredGrid(object):
 
     Each coarse cell is associated with a fine scale grid which
     needs to be set through `self.fine_grids`.
+
+    Parameters
+    ----------
+    points : np.ndarray
+        The physical coordinates of the nodes of the mesh.
+    cells : np.ndarray
+        The connectivity of the points.
+    tdim : int
+        The topological dimension of the grid.
+    cell_type : str, optional
+        Gmsh cell type. Supported are `quad`, `quad8` and `quad9`.
     """
 
-    def __init__(self, points, cells, tdim):
-        # FIXME rather read mesh using meshio
+    def __init__(self, points, cells, tdim, cell_type="quad"):
         self.points = points
         self.cells = cells
         self.tdim = tdim
+        self.gdim = points.shape[1]
+        x = points[cells[0]]
+        self.cell_size = np.around(np.abs(x[1]-x[0])[0], decimals=5)
+        self._cell = Quadrilateral(cell_type)
+
+    @property
+    def cell_sets(self):
+        return self._cell_sets
+
+    @cell_sets.setter
+    def cell_sets(self, pairs):
+        """set cell sets for given pairs of key and array of cell indices"""
+        self._cell_sets = pairs
 
     def get_patch(self, cell_index, layer=1):
         # TODO test for structured and unstructured mesh of different cell types
@@ -216,6 +241,20 @@ class StructuredGrid(object):
             n = np.unique(neighbours)
 
         return n
+
+    def get_point_tags(self, coord, tol=1e-6):
+        """get point tags for given coordinates"""
+        assert coord.shape[1] == self.gdim
+
+        tags = np.array([], int)
+        for x in coord:
+            p = np.abs(self.points - x)
+            v = np.where(np.all(p < tol, axis=1))[0]
+            if v.size < 1:
+                raise IndexError(f"The point {x} is not a vertex of the grid!")
+            tags = np.append(tags, v)
+
+        return tags
 
     def get_cells_by_points(self, points):
         """get all cells that contain the given point tags
@@ -237,18 +276,136 @@ class StructuredGrid(object):
         cells = np.unique(neighbours)
         return cells
 
-    # TODO idea
-    # define cell sets needed for basis construction
-    # using simple functions within_range and plane_at
-    # to get the points and then get_cells_by_points to get the cells
+    def within_range(self, start, end, tol=1e-6, vertices_only=False, edges_only=False):
+        """return all (vertex and edge mid) points within range defined by `start` and `end`.
+        Note that a structured grid is assumed for options 'vertices_only' and 'edges_only'.
 
-    def within_range(self):
-        # TODO
-        pass
+        Parameters
+        ----------
+        start : list of float
+            The min values of all dimensions within range.
+        end : list of float
+            The max values of all dimensions within range.
+        tol : float, optional
+            Tolerance with which points lie within range.
+        vertices_only : bool, optional
+            If True, return only vertex points.
+        edges_only : bool, optional
+            If True, return only edge mid points.
 
-    def plane_at(self):
-        # TODO
-        pass
+        Returns
+        -------
+        np.ndarray
+            Points of mesh within range.
+        """
+        points = self.points
+        cell_size = self.cell_size
+
+        start = to_floats(start)
+        end = to_floats(end)
+
+        assert len(start) == len(end)
+        for i in range(len(start)):
+            if start[i] > end[i]:
+                start[i], end[i] = end[i], start[i]
+
+        within_range = np.where(
+            np.logical_and(points[:, 0] + tol >= start[0], points[:, 0] - tol <= end[0])
+        )[0]
+        for i in range(1, self.gdim):
+            ind = np.where(
+                np.logical_and(
+                    points[:, i] + tol >= start[i], points[:, i] - tol <= end[i]
+                )
+            )[0]
+            within_range = np.intersect1d(within_range, ind)
+
+        if vertices_only:
+            p = points[within_range]
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.all(mask == 0, axis=1)]
+
+        if edges_only:
+            p = points[within_range]
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.invert(np.all(mask == 0, axis=1))]
+
+        return points[within_range]
+
+    def get_points_by_cells(self, cells, gmsh_nodes=None):
+        """returns point coordinates for given cells
+
+        Parameters
+        ----------
+        cells : list of int
+            The cells for which points should be returned.
+        gmsh_nodes : list, np.ndarray, optional
+            Restrict return value to a subset of all nodes.
+            Gmsh node ordering is used.
+
+        Returns
+        -------
+        p : np.ndarray
+            The point coordinates.
+
+        """
+        n_nodes = self.cells.shape[1]
+        if gmsh_nodes is None:
+            gmsh_nodes = np.arange(n_nodes)
+        else:
+            if isinstance(gmsh_nodes, list):
+                gmsh_nodes = np.array(gmsh_nodes)
+            assert not gmsh_nodes.size > n_nodes
+
+        # return unique nodes keeping ordering
+        nodes = self.cells[np.ix_(cells, gmsh_nodes)].flatten()
+        _, idx = np.unique(nodes, return_index=True)
+
+        return self.points[nodes[np.sort(idx)]]
+
+    def plane_at(
+        self, coordinate, dim=0, tol=1e-9, vertices_only=False, edges_only=False
+    ):
+        """return all (vertex and edge mid) points in plane where dim equals coordinate
+        Note that a structured grid is assumed for options 'vertices_only' and 'edges_only'.
+
+        Parameters
+        ----------
+        coordinate : float
+            The coordinate.
+        dim : int, str, optional
+            The spatial dimension.
+        tol : float, optional
+            Tolerance with which points match coordinate.
+        vertices_only : bool, optional
+            If True, return only vertex points.
+        edges_only : bool, optional
+            If True, return only edge mid points.
+
+        Returns
+        -------
+        np.ndarray
+            Points of mesh in given plane.
+        """
+        cell_size = self.cell_size
+
+        if dim in ["x", "X"]:
+            dim = 0
+        if dim in ["y", "Y"]:
+            dim = 1
+        if dim in ["z", "Z"]:
+            dim = 2
+
+        assert dim in [0, 1, 2]
+        p = self.points[np.where(np.abs(self.points[:, dim] - coordinate) < tol)[0]]
+
+        if vertices_only:
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.all(mask == 0, axis=1)]
+        if edges_only:
+            mask = np.mod(np.around(p, decimals=5), cell_size)
+            return p[np.invert(np.all(mask == 0, axis=1))]
+        return p
 
     @property
     def fine_grids(self):
