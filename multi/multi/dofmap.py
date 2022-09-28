@@ -57,6 +57,7 @@ class Quadrilateral:
             raise AttributeError(
                 "Cell type {} is not supported.".format(gmsh_cell_type)
             )
+        self.cell_type = gmsh_cell_type
         self.verts = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
         self.edges = {}
         self.faces = {}
