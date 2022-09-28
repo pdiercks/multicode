@@ -1,9 +1,4 @@
-import logging
-from pathlib import Path
 import numpy as np
-import meshio
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import reverse_cuthill_mckee
 from fenics_helpers.boundary import to_floats
 import warnings
 
@@ -67,7 +62,7 @@ class Quadrilateral:
         self.faces = {}
 
         if gmsh_cell_type in ("quad8", "quad9"):
-            self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 1)}
+            self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 0)}
             if gmsh_cell_type in ("quad9"):
                 self.faces = {0: (0, 1, 2, 3)}
 
@@ -77,12 +72,16 @@ class Quadrilateral:
             2: self.faces,
         }
 
-    def get_entities(self):
+    def get_entities(self, dim=None):
+        """return entities of given dimension `dim`"""
         if not hasattr(self, "_entities"):
             raise AttributeError("Entities are not set for cell {}".format(type(self)))
+        if dim is not None:
+            return self._entities[dim]
         return self._entities
 
     def set_entities(self, gmsh_cell):
+        """set entities for current cell `gmsh_cell`"""
         nv = len(self.verts)
         ne = len(self.edges.keys())
         nf = len(self.faces.keys())
@@ -144,91 +143,18 @@ class DofMap:
 
     Parameters
     ----------
-    mshfile
-        Filepath (incl. ext) or instance of `meshio._mesh.Mesh`.
-    tdim : int
-        Topological dimension of the mesh.
-    gdim : int
-        Geometrical dimension of the mesh.
-    prune_z_0 : bool, optional
-        If True, prune zero z component.
-    cell : optional
-        Reference cell type.
-    rcm : bool, optional
-        Reorder points using the Reverse Cuthill McKee algorithm.
-
+    points : np.ndarray
+        The physical coordinates of the nodes of the mesh.
+    cells : np.ndarray
+        The connectivity of the points.
+    cell_type : str, optional
+        Gmsh cell type. Supported are `quad`, `quad8` and `quad9`.
     """
 
-    def __init__(
-        self, mshfile, tdim, gdim, prune_z_0=True, cell=Quadrilateral, rcm=False
-    ):
-        if not meshio.__version__ == "4.3.1":
-            raise NotImplementedError
-        logger = logging.getLogger("DofMap")
-
-        if isinstance(mshfile, (str, Path)):
-            logger.info("Reading Gmsh mesh into meshio from path {}".format(mshfile))
-            mesh = meshio.read(mshfile)
-        elif isinstance(mshfile, meshio._mesh.Mesh):
-            mesh = mshfile
-        else:
-            raise TypeError
-
-        if prune_z_0:
-            mesh.prune_z_0()
-
-        # set active coordinate components
-        points_pruned = mesh.points[:, :gdim]
-
-        cell_types = {  # meshio cell types per topological dimension
-            3: ["tetra", "hexahedron", "tetra10", "hexahedron20"],
-            2: ["triangle", "quad", "triangle6", "quad8", "quad9"],
-            1: ["line", "line3"],
-            0: ["vertex"],
-        }
-
-        # Extract relevant cell blocks depending on supported cell types
-        subdomains_celltypes = list(
-            set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim]])
-        )
-        assert len(subdomains_celltypes) <= 1
-
-        subdomains_celltype = (
-            subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
-        )
-        if subdomains_celltype not in GMSH_QUADRILATERALS:
-            raise NotImplementedError(
-                "Currently only cell types {} are supported.".format(
-                    GMSH_QUADRILATERALS
-                )
-            )
-
-        if subdomains_celltype is not None:
-            subdomains_cells = mesh.get_cells_type(subdomains_celltype)
-        else:
-            subdomains_cells = []
-
-        # might fail in some cases if prune=True
-        assert np.allclose(
-            np.unique(subdomains_cells.flatten()), np.arange(mesh.points.shape[0])
-        )
-
-        if rcm:
-            V = adjacency_graph(subdomains_cells, cell_type=subdomains_celltype)
-            perm = reverse_cuthill_mckee(csr_matrix(V))
-            self.points = points_pruned[perm, :]
-
-            vertex_map = np.argsort(perm)
-            self.cells = np.zeros_like(subdomains_cells)
-            for (i, j) in np.ndindex(subdomains_cells.shape):
-                self.cells[i, j] = vertex_map[subdomains_cells[i, j]]
-        else:
-            self.points = points_pruned
-            self.cells = subdomains_cells
-        self.tdim = tdim
-        self.gdim = gdim
-        self.cell_type = subdomains_celltype
-        self._cell = cell(subdomains_celltype)
+    def __init__(self, points, cells, cell_type="quad8"):
+        self.points = points
+        self.cells = cells
+        self._cell = Quadrilateral(cell_type)
 
         cellpoints = self.points[self.cells[0]]
         self.cell_size = np.around(np.abs(cellpoints[1] - cellpoints[0])[0], decimals=5)
