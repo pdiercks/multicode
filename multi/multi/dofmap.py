@@ -5,42 +5,38 @@ import warnings
 GMSH_QUADRILATERALS = ("quad", "quad8", "quad9")
 
 
-def adjacency_graph(cells, cell_type="quad"):
-    N = np.unique(cells).size  # number of points
-    r = np.zeros((N, N), dtype=int)
+# TODO refactor into ElementDofLayout (better name is CellDofLayout?)
+# argument to DofMap should be instance of StructuredGrid which works with dolfinx.mesh
+# only need to define here the number of dofs per entity and the local ordering
+# maybe it is best to follow the order of the cell (arg to ElementDofLayout)
+class CellDofLayout(object):
+    def __init__(self, ufl_cell):
+        self.ufl_cell = ufl_cell
+        self.tdim = ufl_cell.topological_dimension()
 
-    if cell_type == "quad8":
-        local_adj = {
-            0: (4, 7),
-            1: (4, 5),
-            2: (5, 6),
-            3: (6, 7),
-            4: (0, 1),
-            5: (1, 2),
-            6: (2, 3),
-            7: (0, 3),
-        }
-    elif cell_type == "quad":
-        local_adj = {
-            0: (1, 3),
-            1: (2, 0),
-            2: (3, 1),
-            3: (0, 2),
-        }
-    elif cell_type == "line3":
-        local_adj = {
-            0: (2,),
-            1: (2,),
-            2: (1, 0),
-        }
-    else:
-        raise NotImplementedError
+    @property
+    def entity_dofs(self):
+        return self.__entity_dofs
 
-    for cell in cells:
-        for vertex, neighbours in local_adj.items():
-            for n in neighbours:
-                r[cell[vertex], cell[n]] = 1
-    return r
+    @entity_dofs.setter
+    def entity_dofs(self, ndofs_per_ent):
+        """set number of dofs per entity
+
+        Parameters
+        ----------
+        ndofs_per_ent : tuple of int
+            Number of dofs per entity.
+        """
+        cell = self.ufl_cell
+        nverts = cell.num_vertices()
+        nedges = cell.num_edges()
+
+        self.__entity_dofs = {}  # key=entity_dim, value=dict
+        # value_dict: key=entity_tag, value=list of int (local dofs)
+        # TODO check local dof layout for quadrilateral for vector space in dolfinx
+        for ndofs, dim in enumerate(ndofs_per_ent):
+            # TODO fill __entity_dofs
+            # see Quadrilateral ndofs_per_ent[1] might be a list/array of int ...
 
 
 class Quadrilateral:

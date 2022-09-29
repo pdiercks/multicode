@@ -104,8 +104,12 @@ class BasesLoader(object):
                 self._bases_config[cell_index] = []
                 self._bases_config[cell_index].append((path, "phi"))
 
-                self.grid._cell.set_entities(cell)
-                edges = self.grid._cell.get_entities(dim=1)
+                self.grid._cell.set_entities(
+                    cell
+                )  # FIXME not needed if dolfinx.mesh is used
+                edges = self.grid._cell.get_entities(
+                    dim=1
+                )  # TODO implement grid.get_cell_entities(dim) using mesh.topology.connectivity
                 for local_ent, ent in enumerate(edges):
                     edge = int_to_edge_str[local_ent]
                     if ent not in marked_edges.keys():

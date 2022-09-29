@@ -294,6 +294,7 @@ class Quadrilateral:
             ]
 
 
+# TODO args: mesh, cell_markers, facet_markers
 class StructuredGrid(object):
     """class representing a structured (coarse scale) grid
 
