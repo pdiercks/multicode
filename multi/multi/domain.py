@@ -1,197 +1,297 @@
 import os
-from pathlib import Path
+
+# from pathlib import Path
 
 import gmsh
 import tempfile
 import meshio
-import dolfin as df
+
+# import dolfin as df
 import numpy as np
-from fenics_helpers.boundary import to_floats
-from multi.dofmap import Quadrilateral
+
+# from fenics_helpers.boundary import to_floats
+from multi.common import to_floats
+
+# from multi.dofmap import Quadrilateral
+
+GMSH_QUADRILATERALS = ("quad", "quad8", "quad9")
+
+# class Domain(object):
+#     """Class to represent a computational domain
+
+#     Parameters
+#     ----------
+#     mesh : str, dolfin.cpp.mesh.Mesh
+#         The discretization of the subdomain given as XMDF file (incl. ext) to load or
+#         instance of dolfin.cpp.mesh.Mesh.
+#     _id : int
+#         The identification number of the domain.
+#     subdomains : optional
+#         Set to True if domain has subdomains represented by a df.MeshFunction stored in
+#         the XDMF file given as `mesh` or provide df.MeshFunction directly.
+
+#     """
+
+#     def __init__(self, mesh, _id=1, subdomains=None):
+#         if isinstance(mesh, df.cpp.mesh.Mesh):
+#             self.mesh = mesh
+#             self.subdomains = subdomains
+#         else:
+#             self.xdmf_file = Path(mesh)
+#             self.mesh = df.Mesh()
+#             mvc = df.MeshValueCollection("size_t", self.mesh, dim=None)
+#             # note that mvc.dim() will be overwritten with
+#             # self.mesh.topology().dim() by f.read(mvc, ...) below
+
+#             with df.XDMFFile(self.xdmf_file.as_posix()) as f:
+#                 f.read(self.mesh)
+#                 if subdomains:
+#                     f.read(mvc, "gmsh:physical")
+
+#             if subdomains:
+#                 self.subdomains = df.MeshFunction("size_t", self.mesh, mvc)
+#             else:
+#                 self.subdomains = subdomains
+#         self._id = int(_id)
+#         self.gdim = self.mesh.geometric_dimension()
+#         self.tdim = self.mesh.topology().dim()
+
+#     def translate(self, point):
+#         """translate the domain in space
+
+#         Parameters
+#         ----------
+#         point : dolfin.Point
+#             The point by which to translate.
+
+#         Note: if `self.edges` evaluates to True, edge
+#         meshes are translated as well.
+#         """
+#         self.mesh.translate(point)
+
+#     @property
+#     def xmin(self):
+#         return self.mesh.coordinates()[:, 0].min()
+
+#     @property
+#     def xmax(self):
+#         return self.mesh.coordinates()[:, 0].max()
+
+#     @property
+#     def ymin(self):
+#         try:
+#             v = self.mesh.coordinates()[:, 1].min()
+#         except IndexError:
+#             v = 0.0
+#         return v
+
+#     @property
+#     def ymax(self):
+#         try:
+#             v = self.mesh.coordinates()[:, 1].max()
+#         except IndexError:
+#             v = 0.0
+#         return v
+
+#     @property
+#     def zmin(self):
+#         try:
+#             v = self.mesh.coordinates()[:, 2].min()
+#         except IndexError:
+#             v = 0.0
+#         return v
+
+#     @property
+#     def zmax(self):
+#         try:
+#             v = self.mesh.coordinates()[:, 2].max()
+#         except IndexError:
+#             v = 0.0
+#         return v
 
 
-class Domain(object):
-    """Class to represent a computational domain
+# class RectangularDomain(Domain):
+#     """
+#     Parameters
+#     ----------
+#     mesh : str, dolfin.cpp.mesh.Mesh
+#         The discretization of the subdomain given as XMDF file (incl. ext) to load or
+#         instance of dolfin.cpp.mesh.Mesh.
+#     _id : int
+#         The identification number of the domain.
+#     subdomains : optional
+#         Set to True if domain has subdomains represented by a df.MeshFunction stored in
+#         the XDMF file given as `mesh` or provide df.MeshFunction directly.
+#     edges : bool, optional
+#         If True read mesh for each edge (boundary) of the mesh.
+#     """
 
-    Parameters
-    ----------
-    mesh : str, dolfin.cpp.mesh.Mesh
-        The discretization of the subdomain given as XMDF file (incl. ext) to load or
-        instance of dolfin.cpp.mesh.Mesh.
-    _id : int
-        The identification number of the domain.
-    subdomains : optional
-        Set to True if domain has subdomains represented by a df.MeshFunction stored in
-        the XDMF file given as `mesh` or provide df.MeshFunction directly.
+#     def __init__(self, mesh, _id=1, subdomains=None, edges=False):
+#         super().__init__(mesh, _id, subdomains)
+#         if edges:
+#             self._read_edges()
+#         else:
+#             self.edges = False
 
+#     def _read_edges(self):
+#         """reads meshes assuming `mesh` was a xdmf file and edge meshes
+#         are present in the same directory"""
+#         path = os.path.dirname(os.path.abspath(self.xdmf_file))
+#         base = os.path.splitext(os.path.basename(self.xdmf_file))[0]
+#         ext = os.path.splitext(os.path.basename(self.xdmf_file))[1]
+
+#         def read(xdmf):
+#             mesh = df.Mesh()
+#             with df.XDMFFile(xdmf) as f:
+#                 f.read(mesh)
+#             return mesh
+
+#         edge_meshes = []
+#         boundary = ["bottom", "right", "top", "left"]
+#         for b in boundary:
+#             edge = path + "/" + base + f"_{b}" + ext
+#             mesh = read(edge)
+#             edge_meshes.append(mesh)
+#         self.edges = tuple(edge_meshes)
+
+#     def get_nodes(self, n=4):
+#         """get nodes of the rectangular domain
+
+#         Parameters
+#         ----------
+#         n : int, optional
+#             Number of nodes.
+
+#         """
+
+#         def midpoint(a, b):
+#             return a + (b - a) / 2
+
+#         nodes = np.array(
+#             [
+#                 [self.xmin, self.ymin],
+#                 [self.xmax, self.ymin],
+#                 [self.xmax, self.ymax],
+#                 [self.xmin, self.ymax],
+#                 [midpoint(self.xmin, self.xmax), self.ymin],
+#                 [self.xmax, midpoint(self.ymin, self.ymax)],
+#                 [midpoint(self.xmin, self.xmax), self.ymax],
+#                 [self.xmin, midpoint(self.ymin, self.ymax)],
+#                 [midpoint(self.xmin, self.xmax), midpoint(self.ymin, self.ymax)],
+#             ]
+#         )
+#         return nodes[:n]
+
+#     def translate(self, point):
+#         """translate the domain in space
+
+#         Parameters
+#         ----------
+#         point : dolfin.Point
+#             The point by which to translate.
+
+#         Note: if `self.edges` evaluates to True, edge
+#         meshes are translated as well.
+#         """
+#         self.mesh.translate(point)
+#         # update edges if True
+#         if self.edges:
+#             for edge in self.edges:
+#                 edge.translate(point)
+
+
+class Quadrilateral:
+    """
+    v3--e2--v2
+    |       |
+    e3  f0  e1
+    |       |
+    v0--e0--v1
     """
 
-    def __init__(self, mesh, _id=1, subdomains=None):
-        if isinstance(mesh, df.cpp.mesh.Mesh):
-            self.mesh = mesh
-            self.subdomains = subdomains
-        else:
-            self.xdmf_file = Path(mesh)
-            self.mesh = df.Mesh()
-            mvc = df.MeshValueCollection("size_t", self.mesh, dim=None)
-            # note that mvc.dim() will be overwritten with
-            # self.mesh.topology().dim() by f.read(mvc, ...) below
+    def __init__(self, gmsh_cell_type):
+        if gmsh_cell_type not in GMSH_QUADRILATERALS:
+            raise AttributeError(
+                "Cell type {} is not supported.".format(gmsh_cell_type)
+            )
+        self.cell_type = gmsh_cell_type
+        self.verts = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+        self.edges = {}
+        self.faces = {}
 
-            with df.XDMFFile(self.xdmf_file.as_posix()) as f:
-                f.read(self.mesh)
-                if subdomains:
-                    f.read(mvc, "gmsh:physical")
+        if gmsh_cell_type in ("quad8", "quad9"):
+            self.edges = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 0)}
+            if gmsh_cell_type in ("quad9"):
+                self.faces = {0: (0, 1, 2, 3)}
 
-            if subdomains:
-                self.subdomains = df.MeshFunction("size_t", self.mesh, mvc)
-            else:
-                self.subdomains = subdomains
-        self._id = int(_id)
-        self.gdim = self.mesh.geometric_dimension()
-        self.tdim = self.mesh.topology().dim()
+        self.topology = {
+            0: {0: (0,), 1: (1,), 2: (2,), 3: (3,)},
+            1: self.edges,
+            2: self.faces,
+        }
 
-    def translate(self, point):
-        """translate the domain in space
+    def get_entities(self, dim=None):
+        """return entities of given dimension `dim`"""
+        if not hasattr(self, "_entities"):
+            raise AttributeError("Entities are not set for cell {}".format(type(self)))
+        if dim is not None:
+            return self._entities[dim]
+        return self._entities
+
+    def set_entities(self, gmsh_cell):
+        """set entities for current cell `gmsh_cell`"""
+        nv = len(self.verts)
+        ne = len(self.edges.keys())
+        nf = len(self.faces.keys())
+        self._entities = {
+            0: gmsh_cell[:nv],
+            1: gmsh_cell[nv : nv + ne],
+            2: gmsh_cell[nv + ne : nv + ne + nf],
+        }
+
+    def get_entity_dofs(self):
+        if not hasattr(self, "_entity_dofs"):
+            raise AttributeError(
+                "Entity dofs are not set for cell {}".format(type(self))
+            )
+        return self._entity_dofs
+
+    def set_entity_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face):
+        """set local dof indices for each entity of the cell
 
         Parameters
         ----------
-        point : dolfin.Point
-            The point by which to translate.
-
-        Note: if `self.edges` evaluates to True, edge
-        meshes are translated as well.
-        """
-        self.mesh.translate(point)
-
-    @property
-    def xmin(self):
-        return self.mesh.coordinates()[:, 0].min()
-
-    @property
-    def xmax(self):
-        return self.mesh.coordinates()[:, 0].max()
-
-    @property
-    def ymin(self):
-        try:
-            v = self.mesh.coordinates()[:, 1].min()
-        except IndexError:
-            v = 0.0
-        return v
-
-    @property
-    def ymax(self):
-        try:
-            v = self.mesh.coordinates()[:, 1].max()
-        except IndexError:
-            v = 0.0
-        return v
-
-    @property
-    def zmin(self):
-        try:
-            v = self.mesh.coordinates()[:, 2].min()
-        except IndexError:
-            v = 0.0
-        return v
-
-    @property
-    def zmax(self):
-        try:
-            v = self.mesh.coordinates()[:, 2].max()
-        except IndexError:
-            v = 0.0
-        return v
-
-
-class RectangularDomain(Domain):
-    """
-    Parameters
-    ----------
-    mesh : str, dolfin.cpp.mesh.Mesh
-        The discretization of the subdomain given as XMDF file (incl. ext) to load or
-        instance of dolfin.cpp.mesh.Mesh.
-    _id : int
-        The identification number of the domain.
-    subdomains : optional
-        Set to True if domain has subdomains represented by a df.MeshFunction stored in
-        the XDMF file given as `mesh` or provide df.MeshFunction directly.
-    edges : bool, optional
-        If True read mesh for each edge (boundary) of the mesh.
-    """
-
-    def __init__(self, mesh, _id=1, subdomains=None, edges=False):
-        super().__init__(mesh, _id, subdomains)
-        if edges:
-            self._read_edges()
-        else:
-            self.edges = False
-
-    def _read_edges(self):
-        """reads meshes assuming `mesh` was a xdmf file and edge meshes
-        are present in the same directory"""
-        path = os.path.dirname(os.path.abspath(self.xdmf_file))
-        base = os.path.splitext(os.path.basename(self.xdmf_file))[0]
-        ext = os.path.splitext(os.path.basename(self.xdmf_file))[1]
-
-        def read(xdmf):
-            mesh = df.Mesh()
-            with df.XDMFFile(xdmf) as f:
-                f.read(mesh)
-            return mesh
-
-        edge_meshes = []
-        boundary = ["bottom", "right", "top", "left"]
-        for b in boundary:
-            edge = path + "/" + base + f"_{b}" + ext
-            mesh = read(edge)
-            edge_meshes.append(mesh)
-        self.edges = tuple(edge_meshes)
-
-    def get_nodes(self, n=4):
-        """get nodes of the rectangular domain
-
-        Parameters
-        ----------
-        n : int, optional
-            Number of nodes.
-
+        dofs_per_vert : int
+            Number of DoFs per vertex.
+        dofs_per_edge : int, np.ndarray
+            Number of DoFs per edge. Either an integer value or a numpy array
+            of shape ``(4, )``.
+        dofs_per_face : int
+            Number of DoFs per face.
         """
 
-        def midpoint(a, b):
-            return a + (b - a) / 2
-
-        nodes = np.array(
-            [
-                [self.xmin, self.ymin],
-                [self.xmax, self.ymin],
-                [self.xmax, self.ymax],
-                [self.xmin, self.ymax],
-                [midpoint(self.xmin, self.xmax), self.ymin],
-                [self.xmax, midpoint(self.ymin, self.ymax)],
-                [midpoint(self.xmin, self.xmax), self.ymax],
-                [self.xmin, midpoint(self.ymin, self.ymax)],
-                [midpoint(self.xmin, self.xmax), midpoint(self.ymin, self.ymax)],
+        counter = 0
+        self._entity_dofs = {0: {}, 1: {}, 2: {}}
+        for v in range(len(self.verts)):
+            self._entity_dofs[0][v] = [
+                dofs_per_vert * v + i for i in range(dofs_per_vert)
             ]
-        )
-        return nodes[:n]
-
-    def translate(self, point):
-        """translate the domain in space
-
-        Parameters
-        ----------
-        point : dolfin.Point
-            The point by which to translate.
-
-        Note: if `self.edges` evaluates to True, edge
-        meshes are translated as well.
-        """
-        self.mesh.translate(point)
-        # update edges if True
-        if self.edges:
-            for edge in self.edges:
-                edge.translate(point)
+        counter += len(self.verts) * dofs_per_vert
+        if isinstance(dofs_per_edge, (int, np.integer)):
+            for e in range(len(self.edges)):
+                self._entity_dofs[1][e] = [
+                    counter + dofs_per_edge * e + i for i in range(dofs_per_edge)
+                ]
+        else:
+            for e in range(len(self.edges)):
+                self._entity_dofs[1][e] = [
+                    counter + dof for dof in range(dofs_per_edge[e])
+                ]
+                counter += dofs_per_edge[e]
+        for f in range(len(self.faces)):
+            self._entity_dofs[2][f] = [
+                counter + dofs_per_face * f + i for i in range(dofs_per_face)
+            ]
 
 
 class StructuredGrid(object):
@@ -218,7 +318,7 @@ class StructuredGrid(object):
         self.tdim = tdim
         self.gdim = points.shape[1]
         x = points[cells[0]]
-        self.cell_size = np.around(np.abs(x[1]-x[0])[0], decimals=5)
+        self.cell_size = np.around(np.abs(x[1] - x[0])[0], decimals=5)
         self._cell = Quadrilateral(cell_type)
 
     @property
