@@ -16,6 +16,39 @@ from multi.common import to_floats
 
 GMSH_QUADRILATERALS = ("quad", "quad8", "quad9")
 
+
+class Domain(object):
+    """Class to represent a computational domain
+
+    Parameters
+    ----------
+    mesh : dolfinx.mesh.Mesh
+        The partition of the domain.
+    cell_markers : TODO
+    facet_markers : TODO
+    index : optional, int
+        The identification number of the domain.
+    """
+
+    def __init__(self, mesh, cell_markers=None, facet_markers=None, index=None):
+        self.mesh = mesh
+        self._x = mesh.geometry.x
+        self.cell_markers = cell_markers
+        self.facet_markers = facet_markers
+        self.index = index
+
+    def translate(self, dx):
+        dx = np.array(dx)
+        self._x += dx
+
+    # TODO parallel?
+    def xmin(self):
+        return np.amin(self._x, axis=0)
+
+    # TODO parallel?
+    def xmax(self):
+        return np.amax(self._x, axis=0)
+
 # class Domain(object):
 #     """Class to represent a computational domain
 
