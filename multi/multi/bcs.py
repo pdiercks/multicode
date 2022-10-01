@@ -1,5 +1,7 @@
 from dolfinx.fem import dirichletbc, locate_dofs_topological, locate_dofs_geometrical
+import ufl
 import numpy as np
+
 # from multi.product import InnerProduct
 # from multi.shapes import NumpyLine
 # from pymor.bindings.fenics import FenicsVectorSpace
@@ -76,62 +78,38 @@ class BoundaryConditions:
         Computational domain of the problem.
     space : dolfinx.fem.FunctionSpace
         Finite element space defined on the domain.
+    facet_tags : optional, dolfinx.mesh.meshtags
+        A MeshTags object identifying the boundaries.
 
     """
 
-    def __init__(self, domain, space):
+    def __init__(self, domain, space, facet_tags=None):
         self.domain = domain
         self.V = space
-
-        # self._bc_expressions = []
 
         # list of dirichlet boundary conditions
         self._bcs = []
 
-        # TODO
-        # for neumann boundary conditions
-        # mesh = space.mesh()
-        # self._v = df.TestFunction(space)
-        # self._neumann_bcs = []
-        # self._boundary_markers = df.MeshFunction(
-        #     "size_t", mesh, mesh.topology().dim() - 1, 0
-        # )
-        # self._ds_marker = 0
-        # self._ds = df.Measure("ds", domain=mesh, subdomain_data=self._boundary_markers)
-        # number of components of the (vector) field
-        # self._ncomp = self._V.ufl_element().value_size()
+        # handle facets and measure for neumann bcs
+        self._neumann_bcs = []
+        self._facet_tags = facet_tags
+        self._ds = ufl.Measure("ds", domain=domain, subdomain_data=self._facet_tags)
+        self._v = ufl.TestFunction(space)
 
-    # def _value_to_expression(self, value, degree):
-    #     if isinstance(value, (list, tuple)):
-    #         assert all([isinstance(v, str) for v in value])
-    #         # transform list of strings to expression
-    #         return df.Expression(value, t=0.0, degree=degree)
-
-    #     if isinstance(value, str):
-    #         return df.Expression(value, t=0.0, degree=degree)
-
-    #     # in all other cases, we try to use `value` directly as expression
-    #     return value
-
-    # def set_zero(self, boundary, sub=None, method="topological"):
-    #     """
-    #     Adds the dirichlet BC u[sub] = 0. If `sub` is None, it will constrain
-    #     the whole vector [ux uy uz] = [0 0 0]
-    #     """
-    #     if self._ncomp == 1:
-    #         self.add_dirichlet(boundary, "0", 0, None, method)
-    #     else:
-    #         self.add_dirichlet(boundary, ["0"] * self._ncomp, 0, sub, method)
-
-    def add_dirichlet(self, value, boundary, sub=None, method="topological", entity_dim=None):
+    def add_dirichlet_bc(
+        self, value, boundary, sub=None, method="topological", entity_dim=None
+    ):
         """add a Dirichlet BC
 
         Parameters
         ----------
         value : Function, Constant or np.ndarray
             The dirichlet data.
-        boundary : callable or entities
+        boundary : callable or np.ndarray or int
             The part of the boundary whose dofs should be constrained.
+            This can be a callable defining the boundary geometrically or
+            an array of entity tags or an integer marking the boundary if
+            `facet_tags` is not None.
         sub : optional, int
             If `sub` is not None the subspace `V.sub(sub)` will be constrained.
         method : optional, str
@@ -140,93 +118,66 @@ class BoundaryConditions:
         entity_dim : optional, int
             The entity dimension in case `method=topological`.
         """
-        V = self.V.sub(sub) if sub else self.V
+
+        assert method in ("topological", "geometrical")
+        V = self.V.sub(sub) if sub is not None else self.V
 
         if method == "topological":
-            assert type(boundary) is np.ndarray
+            if isinstance(boundary, int):
+                try:
+                    facets = self._facet_tags.find(boundary)
+                except AttributeError as atterr:
+                    raise atterr("There are no facet tags defined!")
+            else:
+                facets = boundary
             assert entity_dim is not None
 
-            dofs = locate_dofs_topological(V, entity_dim, boundary)
+            dofs = locate_dofs_topological(V, entity_dim, facets)
         else:
             dofs = locate_dofs_geometrical(V, boundary)
 
         bc = dirichletbc(value, dofs, V)
         self._bcs.append(bc)
 
-    # def add_dirichlet(self, boundary, value, degree=0, sub=None, method="topological"):
-    #     """Adds a dirchlet BC. `value` may be a string, a collection of strings or
-    #     something that behaves like a dolfin.Expression. (e.g. dolfin.Constant).
-    #     If this `value` contains a `t`, it will be treated as a time dependent
-    #     expression and modified to tx when `update(tx)` is called.
+    def add_neumann_bc(self, marker, values):
+        """adds a Neumann BC.
 
-    #     Parameters
-    #     ----------
-    #     boundary
-    #         The id of the boundary or the boundary itself to apply
-    #         the dirichlet data to.
-    #     value
-    #         The dirichlet data.
+        Parameters
+        ----------
+        marker : int
+        values : some ufl type
+            The neumann data, e.g. traction vector.
 
-    #     """
-    #     expression = self._value_to_expression(value, degree)
+        """
+        self._neumann_bcs.append([values, marker])
 
-    #     if hasattr(expression, "t"):
-    #         self._bc_expressions.append(expression)
+    @property
+    def has_neumann(self):
+        return len(self._neumann_bcs) > 0
 
-    #     space = self._V if sub is None else self._V.sub(sub)
-    #     if isinstance(boundary, int):
-    #         bc = df.DirichletBC(space, expression, self._domain.boundaries, boundary)
-    #     else:
-    #         bc = df.DirichletBC(space, expression, boundary, method)
-    #     self._bcs.append(bc)
+    @property
+    def has_dirichlet(self):
+        return len(self._bcs) > 0
 
-    # def add_neumann(self, boundary, value, degree=0):
-    #     """Adds a neumann BC. `value` may be a string, a collection of strings or
-    #     something that behaves like a dolfin.Expression. (e.g. dolfin.Constant).
-    #     If this `value` contains a `t`, it will be treated as a time dependent
-    #     expression and modified to tx when `update(tx)` is called.
-
-    #     Parameters
-    #     ----------
-    #     value
-    #         The neumann data, traction vector.
-    #     boundary
-    #         The boundary to apply the neumann data to.
-
-    #     """
-    #     expression = self._value_to_expression(value, degree)
-
-    #     if hasattr(expression, "t"):
-    #         self._bc_expressions.append(expression)
-
-    #     self._ds_marker += 1
-    #     boundary.mark(self._boundary_markers, self._ds_marker)
-    #     self._neumann_bcs.append([expression, self._ds_marker])
-
-    # def has_neumann(self):
-    #     return len(self._neumann_bcs) > 0
-
-    # def update(self, t):
-    #     for bc_expression in self._bc_expressions:
-    #         bc_expression.t = t
-
+    @property
     def bcs(self):
         """returns list of dirichlet bcs"""
         return self._bcs
 
-    # def clear(self, dirichlet=True, neumann=True):
-    #     """clear list of boundary conditions"""
-    #     if dirichlet:
-    #         self._bcs.clear()
-    #     if neumann:
-    #         self._neumann_bcs.clear()
+    def clear(self, dirichlet=True, neumann=True):
+        """clear list of boundary conditions"""
+        if dirichlet:
+            self._bcs.clear()
+        if neumann:
+            self._neumann_bcs.clear()
 
-    # def neumann_bcs(self):
-    #     """returns ufl form of (sum of) neumann bcs"""
-    #     r = 0
-    #     for expression, marker in self._neumann_bcs:
-    #         r += df.dot(expression, self._v) * self._ds(marker)
-    #     return r
+    @property
+    def neumann_bcs(self):
+        """returns ufl form of (sum of) neumann bcs"""
+        r = 0
+        for expression, marker in self._neumann_bcs:
+            r += ufl.inner(expression, self._v) * self._ds(marker)
+        return r
 
 
 # def compute_multiscale_bcs(
