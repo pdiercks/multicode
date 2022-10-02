@@ -53,6 +53,8 @@ def plane_at(coordinate, dim):
     if dim in ["z", "Z"]:
         dim = 2
 
+    assert dim in (0, 1, 2)
+
     def boundary(x):
         return np.isclose(x[dim], coordinate)
 
@@ -64,6 +66,7 @@ def within_range(start, end, tol=1e-6):
     end = to_floats(end)
 
     # adjust the values such that start < end for all dimensions
+    assert len(start) == 3
     assert len(start) == len(end)
     for i in range(len(start)):
         if start[i] > end[i]:
@@ -75,6 +78,19 @@ def within_range(start, end, tol=1e-6):
 
         xy = np.logical_and(in_range(0), in_range(1))
         return np.logical_and(xy, in_range(2))
+
+    return boundary
+
+
+def point_at(coord):
+    p = to_floats(coord)
+    assert len(p) == 3
+
+    def boundary(x):
+        return np.logical_and(
+            np.logical_and(np.isclose(x[0], p[0]), np.isclose(x[1], p[1])),
+            np.isclose(x[2], p[2]),
+        )
 
     return boundary
 
