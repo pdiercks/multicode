@@ -1,4 +1,4 @@
-from dolfinx.fem import dirichletbc, locate_dofs_topological, locate_dofs_geometrical
+from dolfinx.fem import dirichletbc, locate_dofs_topological, locate_dofs_geometrical, function
 import ufl
 import numpy as np
 
@@ -136,7 +136,12 @@ class BoundaryConditions:
         else:
             dofs = locate_dofs_geometrical(V, boundary)
 
-        bc = dirichletbc(value, dofs, V)
+        # FIXME passing V if value is a Function raises TypeError
+        # why is this case not covered by the 4th constructor of dirichletbc?
+        if isinstance(value, function.Function):
+            bc = dirichletbc(value, dofs)
+        else:
+            bc = dirichletbc(value, dofs, V)
         self._bcs.append(bc)
 
     def add_neumann_bc(self, marker, values):

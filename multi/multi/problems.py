@@ -1,7 +1,7 @@
 import dolfinx
 import ufl
 # import numpy as np
-# from multi.bcs import BoundaryConditions
+from multi.bcs import BoundaryConditions
 # from multi.dofmap import DofMap
 # from multi.materials import LinearElasticMaterial
 # from multi.misc import make_mapping
@@ -37,8 +37,7 @@ class LinearProblem(object):
         self.V = V
         self.u = ufl.TrialFunction(V)
         self.v = ufl.TestFunction(V)
-        # TODO
-        # self._bc_handler = BoundaryConditions(domain, V)
+        self._bc_handler = BoundaryConditions(domain.mesh, V)
         # if hasattr(domain, "edges"):
         #     if domain.edges:
         #         self._init_edge_spaces()
@@ -59,24 +58,20 @@ class LinearProblem(object):
     #     self.V_to_L = V_to_L
     #     self.edge_spaces = Lambda
 
-    # TODO
-    # def add_dirichlet_bc(
-    #     self, boundary, value, degree=0, sub=None, method="topological"
-    # ):
-    #     self._bc_handler.add_dirichlet(boundary, value, degree, sub, method)
+    def add_dirichlet_bc(
+        self, value, boundary, sub=None, method="topological", entity_dim=None
+    ):
+        self._bc_handler.add_dirichlet_bc(value, boundary, sub=sub, method=method, entity_dim=entity_dim)
 
-    # TODO
-    # def add_neumann_bc(self, boundary, value, degree=0):
-    #     self._bc_handler.add_neumann(boundary, value, degree)
+    def add_neumann_bc(self, marker, values):
+        self._bc_handler.add_neumann_bc(marker, values)
 
-    # TODO
-    # def clear_bcs(self, dirichlet=True, neumann=True):
-    #     """remove all dirichlet and neumann bcs"""
-    #     self._bc_handler.clear(dirichlet=dirichlet, neumann=neumann)
+    def clear_bcs(self, dirichlet=True, neumann=True):
+        """remove all dirichlet and neumann bcs"""
+        self._bc_handler.clear(dirichlet=dirichlet, neumann=neumann)
 
-    def dirichlet_bcs(self):
-        # TODO implement BoundaryConditions
-        pass
+    def get_dirichlet_bcs(self):
+        return self._bc_handler.bcs
 
     # TODO
     # def discretize_product(self, product, bcs=False, product_name=None):
@@ -115,7 +110,7 @@ class LinearProblem(object):
         """performs single solve"""
         a = self.get_form_lhs()
         L = self.get_form_rhs()
-        bcs = self.dirichlet_bcs()
+        bcs = self.get_dirichlet_bcs()
         if len(bcs) < 1:
             self.logger.warning("No dirichlet bcs defined for this problem...")
 

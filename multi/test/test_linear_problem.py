@@ -21,22 +21,6 @@ class PoissonProblem(LinearProblem):
         f = dolfinx.fem.Constant(self.domain.mesh, ScalarType(-6))
         return f * self.v * self.dx
 
-    def add_dirichlet_bc(self, uD):
-        self._bcs = []
-        domain = self.domain.mesh
-        uD.interpolate(lambda x: 1 + x[0]**2 + 2 * x[1]**2)
-        # Create facet to cell connectivity required to determine boundary facets
-        tdim = domain.topology.dim
-        fdim = tdim - 1
-        domain.topology.create_connectivity(fdim, tdim)
-        boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-        boundary_dofs = dolfinx.fem.locate_dofs_topological(self.V, fdim, boundary_facets)
-        bc = dolfinx.fem.dirichletbc(uD, boundary_dofs)
-        self._bcs.append(bc)
-
-    def dirichlet_bcs(self):
-        return self._bcs
-
 
 def test_poisson():
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral)
@@ -47,7 +31,13 @@ def test_poisson():
 
     # dirichlet data
     uD = dolfinx.fem.Function(V)
-    problem.add_dirichlet_bc(uD)
+    uD.interpolate(lambda x: 1 + x[0]**2 + 2 * x[1]**2)
+    # Create facet to cell connectivity required to determine boundary facets
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    domain.topology.create_connectivity(fdim, tdim)
+    boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+    problem.add_dirichlet_bc(uD, boundary_facets, entity_dim=fdim)
 
     options = {"ksp_type": "preonly", "pc_type": "lu"}
     uh = problem.solve(petsc_options=options)
