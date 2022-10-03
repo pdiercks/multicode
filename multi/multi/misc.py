@@ -1,30 +1,53 @@
 """miscellaneous helpers"""
 
-import dolfin as df
+import dolfinx
 import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorArray
 
 
-def make_mapping(sub_space, super_space):
-    """get map from sub to super space
+# FIXME workaround until dolfinx supports interpolation on different meshes
+def make_mapping(V, points):
+    domain = V.mesh
+    bb_tree = dolfinx.geometry.BoundingBoxTree(domain, domain.topology.dim)
 
-    Parameters
-    ----------
-    sub_space
-        A dolfin.FunctionSpace
-    super_space
-        A dolfin.FunctionSpace
+    u = dolfinx.fem.Function(V)
+    ndofs = V.dofmap.index_map.size_global * V.dofmap.bs
+    u.x.array[:] = np.arange(ndofs, dtype=np.intc)
 
-    Returns
-    -------
-    The dofs of super_space located at entities in sub_space.
+    cells = []
+    cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, points.T)
+    colliding_cells = dolfinx.geometry.compute_colliding_cells(
+        domain, cell_candidates, points.T
+    )
+    for i, point in enumerate(points.T):
+        if len(colliding_cells.links(i)) > 0:
+            cells.append(colliding_cells.links(i)[0])
+    dofs = (u.eval(points.T, cells) + 0.5).astype(np.intc)
+    return dofs.reshape(
+        dofs.size,
+    )
 
-    Note: This only works for conforming meshes.
-    """
-    f = df.Function(super_space)
-    f.vector().set_local(super_space.dofmap().dofs())
-    If = df.interpolate(f, sub_space)
-    return (If.vector().get_local() + 0.5).astype(int)
+
+# def make_mapping(sub_space, super_space):
+#     """get map from sub to super space
+
+#     Parameters
+#     ----------
+#     sub_space
+#         A dolfin.FunctionSpace
+#     super_space
+#         A dolfin.FunctionSpace
+
+#     Returns
+#     -------
+#     The dofs of super_space located at entities in sub_space.
+
+#     Note: This only works for conforming meshes.
+#     """
+#     f = df.Function(super_space)
+#     f.vector().set_local(super_space.dofmap().dofs())
+#     If = df.interpolate(f, sub_space)
+#     return (If.vector().get_local() + 0.5).astype(int)
 
 
 def select_modes(basis, modes, max_modes):
@@ -79,25 +102,26 @@ def set_values(U, dofs, values):
         return space.from_numpy(array)
 
 
-def restrict_to(domain, function):
-    """restrict given function or list of functions to domain"""
-    if isinstance(function, list):
-        # assuming all functions are elements of V
-        V = function[0].function_space()
-        element = V.ufl_element()
-        Vsub = df.FunctionSpace(domain.mesh, element)
-        assert Vsub.dim() < V.dim()
-        interp = []
-        for f in function:
-            If = df.interpolate(f, Vsub)
-            interp.append(If)
-        return interp
-    else:
-        V = function.function_space()
-        element = V.ufl_element()
-        Vsub = df.FunctionSpace(domain.mesh, element)
-        assert Vsub.dim() < V.dim()
-        return df.interpolate(function, Vsub)
+# TODO
+# def restrict_to(domain, function):
+#     """restrict given function or list of functions to domain"""
+#     if isinstance(function, list):
+#         # assuming all functions are elements of V
+#         V = function[0].function_space()
+#         element = V.ufl_element()
+#         Vsub = df.FunctionSpace(domain.mesh, element)
+#         assert Vsub.dim() < V.dim()
+#         interp = []
+#         for f in function:
+#             If = df.interpolate(f, Vsub)
+#             interp.append(If)
+#         return interp
+#     else:
+#         V = function.function_space()
+#         element = V.ufl_element()
+#         Vsub = df.FunctionSpace(domain.mesh, element)
+#         assert Vsub.dim() < V.dim()
+#         return df.interpolate(function, Vsub)
 
 
 def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
