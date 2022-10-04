@@ -14,6 +14,8 @@ def make_mapping(V, points):
     ndofs = V.dofmap.index_map.size_global * V.dofmap.bs
     u.x.array[:] = np.arange(ndofs, dtype=np.intc)
 
+    # TODO parallel: point_on_proc
+
     cells = []
     cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, points.T)
     colliding_cells = dolfinx.geometry.compute_colliding_cells(
