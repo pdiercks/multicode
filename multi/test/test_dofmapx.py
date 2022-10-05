@@ -220,6 +220,7 @@ def test():
     # and n_vertex_dofs = 2
     # However, V.dofmap.cell_dofs(i) always returns an array of length 4 instead of 8,
     # because internally V.dofmap.bs is somehow (somewhere) used
+    # TODO check dolfinx.fem.assemble_vector??
 
     # TODO
     # I could test this by assembling a matrix or vector
