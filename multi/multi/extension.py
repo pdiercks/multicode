@@ -2,6 +2,16 @@ import numpy as np
 import dolfin as df
 from pymor.bindings.fenics import FenicsMatrixOperator
 
+# NOTE consider this to set values to FenicsxVectorArray
+# (a) via DirichletBC
+# from petsc4py import PETSc
+# dolfinx.fem.petsc.set_bc(U.vectors[0].real_part.impl, [bc])
+# U.vectors[0].real_part.impl.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
+# (b) via .array instance of the petsc.vector
+# U.vectors[1].real_part.impl.array[:] = np.arange(source.dim)
+# (c) via petsc.vector.setArray()
+# U.vectors[2].real_part.impl.setArray(np.linspace(0, 1, num=source.dim))
+
 
 def extend_pymor(
     problem,
@@ -60,6 +70,7 @@ def extend_pymor(
     bc_vals = R.dofs(bc_dofs)
     # FIXME currently, I have to use a workaround since
     # I don't know how to modify FenicsVectorArray in-place
+    # TODO use `set_bc` and find out how to get `rhs.impl`
     rhs_array = rhs.to_numpy()
     assert bc_vals.shape == (len(rhs), len(bc_dofs))
     rhs_array[:, bc_dofs] = bc_vals
