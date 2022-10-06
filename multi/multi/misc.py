@@ -1,55 +1,8 @@
 """miscellaneous helpers"""
 
-import dolfinx
+# import dolfinx
 import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorArray
-
-
-# FIXME workaround until dolfinx supports interpolation on different meshes
-def make_mapping(V, points):
-    domain = V.mesh
-    bb_tree = dolfinx.geometry.BoundingBoxTree(domain, domain.topology.dim)
-
-    u = dolfinx.fem.Function(V)
-    ndofs = V.dofmap.index_map.size_global * V.dofmap.bs
-    u.x.array[:] = np.arange(ndofs, dtype=np.intc)
-
-    # TODO parallel: point_on_proc
-
-    cells = []
-    cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, points.T)
-    colliding_cells = dolfinx.geometry.compute_colliding_cells(
-        domain, cell_candidates, points.T
-    )
-    for i, point in enumerate(points.T):
-        if len(colliding_cells.links(i)) > 0:
-            cells.append(colliding_cells.links(i)[0])
-    dofs = (u.eval(points.T, cells) + 0.5).astype(np.intc)
-    return dofs.reshape(
-        dofs.size,
-    )
-
-
-# def make_mapping(sub_space, super_space):
-#     """get map from sub to super space
-
-#     Parameters
-#     ----------
-#     sub_space
-#         A dolfin.FunctionSpace
-#     super_space
-#         A dolfin.FunctionSpace
-
-#     Returns
-#     -------
-#     The dofs of super_space located at entities in sub_space.
-
-#     Note: This only works for conforming meshes.
-#     """
-#     f = df.Function(super_space)
-#     f.vector().set_local(super_space.dofmap().dofs())
-#     If = df.interpolate(f, sub_space)
-#     return (If.vector().get_local() + 0.5).astype(int)
 
 
 def select_modes(basis, modes, max_modes):
