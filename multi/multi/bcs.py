@@ -1,11 +1,12 @@
-from dolfinx.fem import dirichletbc, locate_dofs_topological, locate_dofs_geometrical, function
+from dolfinx.mesh import exterior_facet_indices
+from dolfinx.fem import (
+    dirichletbc,
+    locate_dofs_topological,
+    locate_dofs_geometrical,
+    function,
+)
 import ufl
 import numpy as np
-
-# from multi.product import InnerProduct
-# from multi.shapes import NumpyLine
-# from pymor.bindings.fenics import FenicsVectorSpace
-
 
 """boundary conditions in fenicsx
 
@@ -66,9 +67,24 @@ bcx = dirichletbc(ScalarType(0), boundary_dofs_x, V.sub(0))
     dofs: np.ndarray
     V: FunctionSpace; optional if value is Function
 """
+
+
+def get_boundary_dofs(V):
+    """get dof indices associated with the boundary of V.mesh"""
+    domain = V.mesh
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    domain.topology.create_connectivity(fdim, tdim)
+
+    boundary_facets = exterior_facet_indices(domain.topology)
+    dofs = locate_dofs_topological(V, fdim, boundary_facets)
+    u = function.Function(V)
+    u.x.set(0.0)
+    bc = dirichletbc(u, dofs)
+    return bc.dof_indices()[0]
+
+
 # adapted version of MechanicsBCs by Thomas Titscher
-
-
 class BoundaryConditions:
     """Handles dirichlet and neumann boundary conditions
 
