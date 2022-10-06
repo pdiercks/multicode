@@ -13,6 +13,8 @@ from pymor.bindings.fenics import FenicsMatrixOperator
 # U.vectors[2].real_part.impl.setArray(np.linspace(0, 1, num=source.dim))
 
 
+# FIXME extension == solve problem
+# therefore, this should be a method of the problem?
 def extend_pymor(
     problem,
     boundary_data,
@@ -63,6 +65,11 @@ def extend_pymor(
 
     # form rhs for each problem
     # subtract g(x_i) times the i-th column of A from the rhs
+    # FIXME basically the same as apply_lifting --> instead of R use dirichletbc and apply_lifting?
+    # this way do not need copy of A but just the compiled form
+    # NOTE I was creating the boundary data by means of DirichletBC anyways (test)
+    # NOTE [empirical_basis] create function g in RCE space and fill manually ...
+    # could then create BC with function g
     rhs = -B.apply(R)
 
     # set g(x_i) for i-th dof in rhs
