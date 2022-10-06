@@ -94,12 +94,12 @@ class BoundaryConditions:
         Computational domain of the problem.
     space : dolfinx.fem.FunctionSpace
         Finite element space defined on the domain.
-    facet_tags : optional, dolfinx.mesh.meshtags
-        A MeshTags object identifying the boundaries.
+    facet_markers : optional, dolfinx.mesh.MeshTags
+        The mesh tags defining boundaries.
 
     """
 
-    def __init__(self, domain, space, facet_tags=None):
+    def __init__(self, domain, space, facet_markers=None):
         self.domain = domain
         self.V = space
 
@@ -108,8 +108,8 @@ class BoundaryConditions:
 
         # handle facets and measure for neumann bcs
         self._neumann_bcs = []
-        self._facet_tags = facet_tags
-        self._ds = ufl.Measure("ds", domain=domain, subdomain_data=self._facet_tags)
+        self._facet_markers = facet_markers
+        self._ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_markers)
         self._v = ufl.TestFunction(space)
 
     def add_dirichlet_bc(
@@ -170,6 +170,9 @@ class BoundaryConditions:
             The neumann data, e.g. traction vector.
 
         """
+        if isinstance(marker, int):
+            assert marker in self._facet_markers.values
+
         self._neumann_bcs.append([values, marker])
 
     @property
