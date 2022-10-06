@@ -3,31 +3,7 @@ import numpy as np
 from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
 from multi.bcs import BoundaryConditions
-
-
-def interpolate(u, points):
-    """evaluate u at points"""
-    V = u.function_space
-    domain = V.mesh
-    bb_tree = dolfinx.geometry.BoundingBoxTree(domain, domain.topology.dim)
-
-    cells = []
-    points_on_proc = []
-
-    if not points.shape[1] == 3:
-        points = points.T
-    cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, points)
-    colliding_cells = dolfinx.geometry.compute_colliding_cells(
-        domain, cell_candidates, points
-    )
-    for i, point in enumerate(points):
-        if len(colliding_cells.links(i)) > 0:
-            points_on_proc.append(point)
-            cells.append(colliding_cells.links(i)[0])
-
-    points_on_proc = np.array(points_on_proc, dtype=np.float64)
-    u_values = u.eval(points_on_proc, cells)
-    return u_values
+from multi.interpolation import interpolate
 
 
 def test_FunctionSpace():
@@ -38,7 +14,7 @@ def test_FunctionSpace():
     W = dolfinx.fem.FunctionSpace(coarse, ("CG", 1))
 
     w = dolfinx.fem.Function(W)
-    w.interpolate(lambda x: x[0] * 12.)
+    w.interpolate(lambda x: x[0] * 12.0)
 
     # get points of the fine grid and evaluate w at points
     points = V.tabulate_dof_coordinates()
@@ -46,7 +22,7 @@ def test_FunctionSpace():
 
     # compare against u in V
     u = dolfinx.fem.Function(V)
-    u.interpolate(lambda x: x[0] * 12.)
+    u.interpolate(lambda x: x[0] * 12.0)
 
     assert np.allclose(u.x.array, values.reshape(u.x.array.shape))
 
@@ -61,7 +37,6 @@ def test_VectorFunctionSpace():
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[0]]))
 
-
     # get points of the fine grid and evaluate w at points
     points = V.tabulate_dof_coordinates()
     values = interpolate(w, points)
@@ -74,15 +49,18 @@ def test_VectorFunctionSpace():
 
 
 def test_VectorFunctionSpace_square():
-    coarse = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 3, 3, dolfinx.mesh.CellType.quadrilateral)
-    fine = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle)
+    coarse = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 3, 3, dolfinx.mesh.CellType.quadrilateral
+    )
+    fine = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle
+    )
 
     V = dolfinx.fem.VectorFunctionSpace(fine, ("CG", 2), dim=2)
     W = dolfinx.fem.VectorFunctionSpace(coarse, ("CG", 1), dim=2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
-
 
     # get points of the fine grid and evaluate w at points
     points = V.tabulate_dof_coordinates()
@@ -96,8 +74,12 @@ def test_VectorFunctionSpace_square():
 
 
 def test_VectorFunctionSpace_square_Boundary():
-    coarse = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 3, 3, dolfinx.mesh.CellType.quadrilateral)
-    fine = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle)
+    coarse = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 3, 3, dolfinx.mesh.CellType.quadrilateral
+    )
+    fine = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle
+    )
 
     V = dolfinx.fem.VectorFunctionSpace(fine, ("CG", 2), dim=2)
     W = dolfinx.fem.VectorFunctionSpace(coarse, ("CG", 1), dim=2)
@@ -138,7 +120,7 @@ def test_VectorFunctionSpace_square_Boundary():
     u.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
 
     bc_handler.clear()
-    zero = np.array([0., 0.], dtype=ScalarType)
+    zero = np.array([0.0, 0.0], dtype=ScalarType)
     bc_handler.add_dirichlet_bc(
         zero, boundary_facets, method="topological", entity_dim=fdim
     )
