@@ -8,8 +8,8 @@ from multi.problems import LinearProblem
 
 
 class PoissonProblem(LinearProblem):
-    def __init__(self, domain, V):
-        super().__init__(domain, V)
+    def __init__(self, domain, V, solver_options):
+        super().__init__(domain, V, solver_options)
         self.dx = ufl.dx
 
     def get_form_lhs(self):
@@ -23,15 +23,18 @@ class PoissonProblem(LinearProblem):
 
 
 def test_poisson():
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral)
+    domain = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
+    )
     Ω = Domain(domain)
     V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
 
-    problem = PoissonProblem(Ω, V)
+    options = {"solver": "preonly", "preconditioner": "lu", "keep_solver": True}
+    problem = PoissonProblem(Ω, V, solver_options=options)
 
     # dirichlet data
     uD = dolfinx.fem.Function(V)
-    uD.interpolate(lambda x: 1 + x[0]**2 + 2 * x[1]**2)
+    uD.interpolate(lambda x: 1 + x[0] ** 2 + 2 * x[1] ** 2)
     # Create facet to cell connectivity required to determine boundary facets
     tdim = domain.topology.dim
     fdim = tdim - 1
@@ -39,10 +42,9 @@ def test_poisson():
     boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
     problem.add_dirichlet_bc(uD, boundary_facets, entity_dim=fdim)
 
-    options = {"ksp_type": "preonly", "pc_type": "lu"}
-    uh = problem.solve(petsc_options=options)
+    uh = problem.solve()
 
-    error_max = np.max(np.abs(uD.x.array-uh.x.array))
+    error_max = np.max(np.abs(uD.x.array - uh.x.array))
     assert error_max < 1e-12
 
 

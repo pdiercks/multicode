@@ -1,27 +1,45 @@
 import dolfinx
 import ufl
-# import numpy as np
+import numpy as np
+from petsc4py import PETSc
 from multi.bcs import BoundaryConditions
+
 # from multi.dofmap import DofMap
-# from multi.materials import LinearElasticMaterial
+from multi.materials import LinearElasticMaterial
+
 # from multi.misc import make_mapping
-# from multi.product import InnerProduct
+from multi.product import InnerProduct
+
 # from multi.projection import orthogonal_part
 # from multi.solver import create_solver, build_nullspace2D
 
 # from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.core.logger import getLogger
+
 # from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
 # from pymor.vectorarrays.numpy import NumpyVectorSpace
 # from pymor.operators.numpy import NumpyMatrixOperator
 # from scipy.sparse import csc_matrix
 
 
+def _solver_options(
+    solver=PETSc.KSP.Type.PREONLY, preconditioner=PETSc.PC.Type.LU, keep_solver=True
+):
+    return {
+        "solver": solver,
+        "preconditioner": preconditioner,
+        "keep_solver": keep_solver,
+    }
+
+
+# FIXME design? should this be a pure fenicsx solver or operator based using pymor?
+# FIXME maybe the class only handles the discretization
+# solve method is not provided
 class LinearProblem(object):
 
     """Docstring for LinearProblem."""
 
-    def __init__(self, domain, V):
+    def __init__(self, domain, V, solver_options=None):
         """TODO: to be defined.
 
         Parameters
@@ -30,6 +48,8 @@ class LinearProblem(object):
             The computational domain.
         V : dolfinx.fem.FunctionSpace
             The FE space.
+        solver_options : optional
+            The solver options.
 
         """
         self.logger = getLogger("multi.problems.LinearProblem")
@@ -37,7 +57,9 @@ class LinearProblem(object):
         self.V = V
         self.u = ufl.TrialFunction(V)
         self.v = ufl.TestFunction(V)
-        self._bc_handler = BoundaryConditions(domain.mesh, V)
+        # FIXME currently user cannot set facet_tags
+        self._bc_handler = BoundaryConditions(domain.mesh, V, domain.facet_markers)
+        self._solver_options = solver_options or _solver_options()
         # if hasattr(domain, "edges"):
         #     if domain.edges:
         #         self._init_edge_spaces()
@@ -61,7 +83,9 @@ class LinearProblem(object):
     def add_dirichlet_bc(
         self, value, boundary, sub=None, method="topological", entity_dim=None
     ):
-        self._bc_handler.add_dirichlet_bc(value, boundary, sub=sub, method=method, entity_dim=entity_dim)
+        self._bc_handler.add_dirichlet_bc(
+            value, boundary, sub=sub, method=method, entity_dim=entity_dim
+        )
 
     def add_neumann_bc(self, marker, values):
         self._bc_handler.add_neumann_bc(marker, values)
@@ -73,32 +97,31 @@ class LinearProblem(object):
     def get_dirichlet_bcs(self):
         return self._bc_handler.bcs
 
-    # TODO
-    # def discretize_product(self, product, bcs=False, product_name=None):
-    #     """discretize inner product
+    def discretize_product(self, product, bcs=False, product_name=None):
+        """discretize inner product
 
-    #     Parameters
-    #     ----------
-    #     product : str or ufl.form.Form
-    #         Either a string (see multi.product.InnerProduct) or
-    #         a ufl form defining the inner product.
-    #     bcs : bool, optional
-    #         If True, apply BCs to inner product matrix.
+        Parameters
+        ----------
+        product : str or ufl.form.Form
+            Either a string (see multi.product.InnerProduct) or
+            a ufl form defining the inner product.
+        bcs : bool, optional
+            If True, apply BCs to inner product matrix.
 
-    #     Returns
-    #     -------
-    #     product : dolfin.Matrix or None
-    #         Returns a dolfin.Matrix or None in case of euclidean
-    #         inner product.
-    #     """
-    #     if bcs:
-    #         bcs = self._bc_handler.bcs()
-    #         if not len(bcs) > 0:
-    #             raise Warning("Forgot to apply BCs?")
-    #     else:
-    #         bcs = ()
-    #     product = InnerProduct(self.V, product, bcs=bcs, name=product_name)
-    #     return product.assemble()  # returns Matrix or None
+        Returns
+        -------
+        product : dolfin.Matrix or None
+            Returns a dolfin.Matrix or None in case of euclidean
+            inner product.
+        """
+        if bcs:
+            bcs = self.get_dirichlet_bcs()
+            if not len(bcs) > 0:
+                raise Warning("Forgot to apply BCs?")
+        else:
+            bcs = ()
+        product = InnerProduct(self.V, product, bcs=bcs, name=product_name)
+        return product.assemble_matrix()  # returns Matrix or None
 
     def get_form_lhs(self):
         pass
@@ -106,105 +129,170 @@ class LinearProblem(object):
     def get_form_rhs(self):
         pass
 
-    def solve(self, u=None, petsc_options=None):
-        """performs single solve"""
+    def _setup_solver(self):
+        """create matrix and vector objects, and setup solver"""
         a = self.get_form_lhs()
         L = self.get_form_rhs()
+        self._A = dolfinx.fem.form(a)
+        self._b = dolfinx.fem.form(L)
+        self._matrix = dolfinx.fem.petsc.create_matrix(self._A)
+        self._vector = dolfinx.fem.petsc.create_vector(self._b)
+
+        options = self._solver_options
+        method = options.get("solver")
+        preconditioner = options.get("preconditioner")
+        solver = PETSc.KSP().create(self.V.mesh.comm)
+        solver.setOperators(self._matrix)
+        solver.setType(method)
+        solver.getPC().setType(preconditioner)
+
+        return solver
+
+    def assemble_matrix(self):
+        """assemble matrix and apply boundary conditions"""
         bcs = self.get_dirichlet_bcs()
         if len(bcs) < 1:
             self.logger.warning("No dirichlet bcs defined for this problem...")
 
-        p = dolfinx.fem.petsc.LinearProblem(a, L, bcs=bcs, u=u, petsc_options=petsc_options)
+        self._matrix.zeroEntries()
+        dolfinx.fem.petsc.assemble_matrix(self._matrix, self._A, bcs=bcs)
+        self._matrix.assemble()
 
-        self.logger.info("Solving linear problem")
-        if u is not None:
-            p.solve()
+        return self._matrix
+
+    def assemble_vector(self):
+        """assemble vector and apply boundary conditions"""
+        bcs = self.get_dirichlet_bcs()
+        if len(bcs) < 1:
+            self.logger.warning("No dirichlet bcs defined for this problem...")
+
+        self._vector.zeroEntries()
+        dolfinx.fem.petsc.assemble_vector(self._vector, self._b)
+        self._vector.ghostUpdate(
+            addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE
+        )
+
+        # Compute b - J(u_D-u_(i-1))
+        dolfinx.fem.petsc.apply_lifting(self._vector, [self._A], [bcs])
+        # Set dx|_bc = u_{i-1}-u_D
+        dolfinx.fem.petsc.set_bc(self._vector, bcs, scale=1.0)
+        self._vector.ghostUpdate(
+            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+        )
+
+        return self._vector
+
+    def solve(self, u=None):
+        """performs single solve"""
+        try:
+            solver = self._solver
+        except AttributeError:
+            self.logger.info("Setting up the solver ...")
+            solver = self._setup_solver()
+
+        _ = self.assemble_matrix()
+        rhs = self.assemble_vector()
+        self.logger.info("Solving linear variational problem ...")
+
+        if u is None:
+            u = dolfinx.fem.Function(self.V)
+
+        solver.solve(rhs, u.vector)
+
+        if self._solver_options["keep_solver"]:
+            self._solver = solver
+
+        return u
+
+
+class LinearElasticityProblem(LinearProblem):
+    """class representing a linear elastic problem
+
+    Parameters
+    ----------
+    domain : multi.domain.Domain
+        The computational domain.
+    V : dolfin.FunctionSpace
+        The finite element space.
+    E : float or tuple of float
+        Young's modulus of the linear elastic materials.
+    NU : float or tuple of float
+        Poisson ratio of the linear elastic materials.
+    plane_stress : bool, optional
+        2d constraint.
+    solver_options : optional
+        The solver options.
+
+    """
+
+    def __init__(
+        self, domain, V, E=210e3, NU=0.3, plane_stress=False, solver_options=None
+    ):
+        super().__init__(domain, V, solver_options)
+        assert all(
+            [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
+        )
+        if isinstance(E, float) and isinstance(NU, float):
+            E = (E,)
+            NU = (NU,)
+            assert domain.cell_markers is None
+            self.dx = ufl.dx
         else:
-            return p.solve()
+            if not domain.subdomains and len(E) > 1:
+                raise KeyError("You need to define mesh tags for multiple materials")
+            # FIXME double check method of domain.subdomains (meshtags)
+            assert all(
+                [
+                    len(E) == len(NU),
+                    len(E) == np.unique(domain.cell_markers.values).size,
+                ]
+            )
+            # FIXME double check if gmsh cell data starts at 1
+            assert np.amin(domain.cell_markers.values) > 0
+            mesh = domain.mesh
+            subdomains = domain.cell_markers
+            self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
+        self.gdim = int(V.element.value_shape)
+        assert self.gdim in (1, 2, 3)
+        self.materials = [
+            LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
+            for e, nu in zip(E, NU)
+        ]
 
+    def get_form_lhs(self):
+        """get bilinear form a(u, v) of the problem"""
+        u = self.u
+        v = self.v
+        if len(self.materials) > 1:
+            return sum(
+                [
+                    ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i + 1)
+                    for (i, mat) in enumerate(self.materials)
+                ]
+            )
+        else:
+            mat = self.materials[0]
+            return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx
 
-# class LinearElasticityProblem(LinearProblemBase):
-#     """class representing a linear elastic problem
+    def get_form_rhs(self, body_forces=None):
+        """get linear form f(v) of the problem"""
+        domain = self.V.mesh
+        v = self.v
+        zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
+        rhs = ufl.inner(zero, v) * ufl.dx
+        if body_forces is not None:
+            if len(self.materials) > 1:
+                assert isinstance(body_forces, (list, tuple))
+                assert len(body_forces) == len(self.materials)
+                for i in range(len(self.materials)):
+                    rhs += ufl.inner(body_forces[i], v) * self.dx(i + 1)
+            else:
+                rhs += ufl.dot(body_forces, v) * self.dx
 
-#     Parameters
-#     ----------
-#     domain : multi.domain.Domain
-#         The computational domain.
-#     V : dolfin.FunctionSpace
-#         The finite element space.
-#     E : float or tuple of float
-#         Young's modulus of the linear elastic materials.
-#     NU : float or tuple of float
-#         Poisson ratio of the linear elastic materials.
-#     plane_stress : bool, optional
-#         2d constraint.
+        if self._bc_handler.has_neumann:
+            rhs += self._bc_handler.neumann_bcs
 
-#     """
-
-#     def __init__(self, domain, V, E=210e3, NU=0.3, plane_stress=False):
-#         super().__init__(domain, V)
-#         assert all(
-#             [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
-#         )
-#         if isinstance(E, float) and isinstance(NU, float):
-#             E = (E,)
-#             NU = (NU,)
-#             assert not domain.subdomains
-#             self.dx = df.dx
-#         else:
-#             if not domain.subdomains and len(E) > 1:
-#                 raise KeyError(
-#                     "You need to define a df.MeshFunction for multiple materials"
-#                 )
-#             assert all(
-#                 [len(E) == len(NU), len(E) == np.unique(domain.subdomains.array()).size]
-#             )
-#             # pygmsh version 6.1.1 convention
-#             assert np.amin(domain.subdomains.array()) > 0
-#             mesh = domain.mesh
-#             subdomains = domain.subdomains
-#             self.dx = df.Measure("dx", domain=mesh, subdomain_data=subdomains)
-#         self.u = df.TrialFunction(V)
-#         self.v = df.TestFunction(V)
-#         self.gdim = V.element().geometric_dimension()
-#         self.materials = [
-#             LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
-#             for e, nu in zip(E, NU)
-#         ]
-
-#     def get_form_lhs(self):
-#         """get bilinear form a(u, v) of the problem"""
-#         u = self.u
-#         v = self.v
-#         if len(self.materials) > 1:
-#             return sum(
-#                 [
-#                     df.inner(mat.sigma(u), mat.eps(v)) * self.dx(i + 1)
-#                     for (i, mat) in enumerate(self.materials)
-#                 ]
-#             )
-#         else:
-#             mat = self.materials[0]
-#             return df.inner(mat.sigma(u), mat.eps(v)) * self.dx
-
-#     def get_form_rhs(self, body_forces=None):
-#         """get linear form f(v) of the problem"""
-#         v = self.v
-#         zero = (0.0,) * self.gdim
-#         rhs = df.dot(df.Constant(zero), v) * df.dx
-#         if body_forces is not None:
-#             if len(self.materials) > 1:
-#                 assert isinstance(body_forces, (list, tuple))
-#                 assert len(body_forces) == len(self.materials)
-#                 for i in range(len(self.materials)):
-#                     rhs += df.dot(body_forces[i], v) * self.dx(i + 1)
-#             else:
-#                 rhs += df.dot(body_forces, v) * self.dx
-
-#         if self._bc_handler.has_neumann():
-#             rhs += self._bc_handler.neumann_bcs()
-
-#         return rhs
+        return rhs
 
 
 # class OversamplingProblem(object):
