@@ -1,6 +1,4 @@
-import numpy as np
-import dolfin as df
-from pymor.bindings.fenics import FenicsMatrixOperator
+import dolfinx
 
 # NOTE consider this to set values to FenicsxVectorArray
 # (a) via DirichletBC
@@ -12,133 +10,118 @@ from pymor.bindings.fenics import FenicsMatrixOperator
 # (c) via petsc.vector.setArray()
 # U.vectors[2].real_part.impl.setArray(np.linspace(0, 1, num=source.dim))
 
+# Design
+# apply_lifting: pymor vs. fenicsx?
 
-# FIXME extension == solve problem
-# therefore, this should be a method of the problem?
-def extend_pymor(
-    problem,
-    boundary_data,
-    solver_options={"inverse": {"solver": "mumps"}},
-):
-    """extend boundary data into domain associated with the given problem
+# fenicsx:
+#     lhs = dolfinx.form(ufl_form_lhs)
+#     rhs = dolfinx.form(ufl_form_rhs)
+#     matrix = dolfinx.fem.petsc.create_matrix(lhs)
+#     vector = dolfinx.fem.petsc.create_vector(rhs)
 
-    Parameters
-    ----------
-    problem
-        The variational problem.
-    boundary_data
-        A list of dolfin vectors (elements of problem.V),
-        a numpy array or a VectorArray.
-    solver_options : dict, optional
-        Options in pymor format.
+#     # assembly
+#     matrix.zeroEntries()
+#     dolfinx.fem.petsc.assemble_matrix(matrix, lhs, bcs=bcs)
+#     matrix.assemble()
 
-    Returns
-    -------
-    U : VectorArray
-        The extended vectors.
-    """
+#     vector.zeroEntries()
+#     dolfnix.fem.petsc.assemble_vector(vector, rhs)
+#     vector.ghostUpdate(
+#         addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE
+#     )
 
-    # assemble lhs
-    A = df.PETScMatrix()
-    lhs_form = problem.get_form_lhs()
-    df.assemble(lhs_form, tensor=A)
+#     # Compute b - J(u_D-u_(i-1))
+#     dolfinx.fem.petsc.apply_lifting(vector, [lhs], [bcs])
+#     # Set dx|_bc = u_{i-1}-u_D
+#     dolfinx.fem.petsc.set_bc(vector, bcs, scale=1.0)
+#     self._vector.ghostUpdate(
+#         addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+#     )
+# --> only need to provide an array of list of bc that represent function to extend
+# --> solve linear problem by looping over array of bcs
+# pros: only assemble matrix once provided bc is associated with whole boundary
+# contra: not vectorized
 
-    # rhs
-    V = problem.V
-    B = FenicsMatrixOperator(A.copy(), V, V, solver_options=solver_options, name="B")
+# pymor version
+# assemble matrix without bc --> compute rhs (apply lifting)
+# assemble matrix with bc
+# loop over bc to set_bc for rhs (same loop over array of bcs as in the fenicsx version)
 
-    # prepare operator
-    dummy = df.Function(V)
-    bc = df.DirichletBC(V, dummy, df.DomainBoundary())
-    bc.zero_columns(A, dummy.vector(), 1.0)
-    # see FenicsMatrixOperator._real_apply_inverse_one_vector
-    A = FenicsMatrixOperator(A, V, V, solver_options=solver_options, name="A")
+"""pure fenicsx version
 
-    # wrap boundary_data as FenicsVectorArray
-    space = B.range
-    if isinstance(boundary_data, np.ndarray):
-        R = space.from_numpy(boundary_data)
-    elif isinstance(boundary_data, list):
-        R = space.make_array(boundary_data)
-    else:
-        R = space.from_numpy(boundary_data.to_numpy())
+domain = ...
+V = ...
+problem = LinearProblem(domain, V, solver_options)
 
-    # form rhs for each problem
-    # subtract g(x_i) times the i-th column of A from the rhs
-    # FIXME basically the same as apply_lifting --> instead of R use dirichletbc and apply_lifting?
-    # this way do not need copy of A but just the compiled form
-    # NOTE I was creating the boundary data by means of DirichletBC anyways (test)
-    # NOTE [empirical_basis] create function g in RCE space and fill manually ...
-    # could then create BC with function g
-    rhs = -B.apply(R)
+solver = problem.setup_solver()
 
-    # set g(x_i) for i-th dof in rhs
-    bc_dofs = list(bc.get_boundary_values().keys())
-    bc_vals = R.dofs(bc_dofs)
-    # FIXME currently, I have to use a workaround since
-    # I don't know how to modify FenicsVectorArray in-place
-    # TODO use `set_bc` and find out how to get `rhs.impl`
-    rhs_array = rhs.to_numpy()
-    assert bc_vals.shape == (len(rhs), len(bc_dofs))
-    rhs_array[:, bc_dofs] = bc_vals
-    rhs = space.from_numpy(rhs_array)
+# assemble matrix once before the loop; can use dummy bc with all boundary dofs
+zero_fun = dolfinx.fem.Function(problem.V)
+zero_fun.vector.zeroEntries()
+boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+problem.add_dirichlet_bc(zero_fun, boundary_facets, method='topological', entity_dim=1)
+matrix = problem.assemble_matrix()
+problem.clear_bcs()
 
-    U = A.apply_inverse(rhs)
-    return U
+# define all extensions that should be computed
+boundary_data = [[bc00, bc01], [bc1], [bc2]]
+
+extensions = []
+for bcs in boundary_data:
+    problem.clear_bcs()
+    for bc in bcs:
+        problem.add_dirichlet_bc(bc)
+    rhs_vector = problem.assemble_vector()
+    f = dolfinx.fem.Function(V)
+    solver.solve(rhs_vector, f.vector)
+    extensions.append(f.vector)
+
+VA = source.make_array(extensions)
+
+"""
 
 
-def extend(
-    problem,
-    boundary_data,
-    solver_options={"solver": "mumps"},
-):
-    """extend boundary data into domain associated with the given problem
+def extend(problem, boundary_data):
+    """extend the `boundary_data` into the domain of the `problem`
 
     Parameters
     ----------
-    problem
-        The variational problem.
-    boundary_data
-        A list of dolfin functions (elements of problem.V).
-
-    Returns
-    -------
-    A list of dolfin vectors.
+    problem : multi.LinearProblem
+        The linear problem.
+    boundary_data : list of list of dolfinx.fem.dirichletbc
+        The boundary data to be extended.
     """
+    problem.clear_bcs()
 
-    # assemble lhs
-    A = df.PETScMatrix()
-    lhs_form = problem.get_form_lhs()
-    df.assemble(lhs_form, tensor=A)
-
-    # rhs
-    B = A.copy()
-
-    # prepare operator
     V = problem.V
-    dummy = df.Function(V)
-    bc = df.DirichletBC(V, dummy, df.DomainBoundary())
-    bc.zero_columns(A, dummy.vector(), 1.0)
+    domain = V.mesh
+    tdim = domain.topology.dim
+    fdim = tdim - 1
 
-    # solver
-    method = solver_options.get("solver")
-    preconditioner = solver_options.get("preconditioner")
-    if method == "lu" or method in df.lu_solver_methods():
-        method = "default" if method == "lu" else method
-        solver = df.LUSolver(A, method)
-    else:
-        solver = df.KrylovSolver(A, method, preconditioner)
+    solver = problem.setup_solver()
 
-    # Vectors for solution x, boundary data g, rhs b
-    b = df.Function(V)
+    # assemble matrix once before the loop
+    zero_fun = dolfinx.fem.Function(V)
+    zero_fun.vector.zeroEntries()
+    boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+    problem.add_dirichlet_bc(
+            zero_fun, boundary_facets, method='topological', entity_dim=fdim
+            )
+    problem.assemble_matrix()
+    problem.clear_bcs()
 
-    extended = []
-    for g in boundary_data:
-        x = df.Function(V)
-        bc = df.DirichletBC(V, g, df.DomainBoundary())
-        b.vector().zero()
-        bc.zero_columns(B.copy(), b.vector(), 1.0)
-        solver.solve(x.vector(), b.vector())
-        extended.append(x.vector())
+    # define all extensions that should be computed
+    assert all([isinstance(bc, dolfinx.fem.DirichletBCMetaClass) for bcs in boundary_data for bc in bcs])
 
-    return extended
+    extensions = []
+    for bcs in boundary_data:
+        problem.clear_bcs()
+        for bc in bcs:
+            problem.add_dirichlet_bc(bc)
+        rhs = problem.assemble_vector()
+        f = dolfinx.fem.Function(V)
+        fvec = f.vector
+        solver.solve(rhs, fvec)
+        extensions.append(fvec.copy())
+
+    return extensions
