@@ -81,10 +81,10 @@ class LinearProblem(object):
     #     self.edge_spaces = Lambda
 
     def add_dirichlet_bc(
-        self, value, boundary, sub=None, method="topological", entity_dim=None
+        self, value, boundary=None, sub=None, method="topological", entity_dim=None
     ):
         self._bc_handler.add_dirichlet_bc(
-            value, boundary, sub=sub, method=method, entity_dim=entity_dim
+            value, boundary=boundary, sub=sub, method=method, entity_dim=entity_dim
         )
 
     def add_neumann_bc(self, marker, values):
@@ -129,7 +129,7 @@ class LinearProblem(object):
     def get_form_rhs(self):
         pass
 
-    def _setup_solver(self):
+    def setup_solver(self):
         """create matrix and vector objects, and setup solver"""
         a = self.get_form_lhs()
         L = self.get_form_rhs()
@@ -188,7 +188,7 @@ class LinearProblem(object):
             solver = self._solver
         except AttributeError:
             self.logger.info("Setting up the solver ...")
-            solver = self._setup_solver()
+            solver = self.setup_solver()
 
         _ = self.assemble_matrix()
         rhs = self.assemble_vector()
