@@ -3,7 +3,8 @@ from dolfinx.fem import (
     dirichletbc,
     locate_dofs_topological,
     locate_dofs_geometrical,
-    function,
+    Function,
+    DirichletBCMetaClass
 )
 import ufl
 import numpy as np
@@ -68,22 +69,6 @@ bcx = dirichletbc(ScalarType(0), boundary_dofs_x, V.sub(0))
     V: FunctionSpace; optional if value is Function
 """
 
-
-def get_boundary_dofs(V):
-    """get dof indices associated with the boundary of V.mesh"""
-    domain = V.mesh
-    tdim = domain.topology.dim
-    fdim = tdim - 1
-    domain.topology.create_connectivity(fdim, tdim)
-
-    boundary_facets = exterior_facet_indices(domain.topology)
-    dofs = locate_dofs_topological(V, fdim, boundary_facets)
-    u = function.Function(V)
-    u.x.set(0.0)
-    bc = dirichletbc(u, dofs)
-    return bc.dof_indices()[0]
-
-
 # adapted version of MechanicsBCs by Thomas Titscher
 class BoundaryConditions:
     """Handles dirichlet and neumann boundary conditions
@@ -103,6 +88,11 @@ class BoundaryConditions:
         self.domain = domain
         self.V = space
 
+        # create connectivity
+        tdim = domain.topology.dim
+        fdim = tdim - 1
+        domain.topology.create_connectivity(fdim, tdim)
+
         # list of dirichlet boundary conditions
         self._bcs = []
 
@@ -113,15 +103,15 @@ class BoundaryConditions:
         self._v = ufl.TestFunction(space)
 
     def add_dirichlet_bc(
-        self, value, boundary, sub=None, method="topological", entity_dim=None
+        self, value, boundary=None, sub=None, method="topological", entity_dim=None
     ):
         """add a Dirichlet BC
 
         Parameters
         ----------
-        value : Function, Constant or np.ndarray
-            The dirichlet data.
-        boundary : callable or np.ndarray or int
+        value : Function, Constant or np.ndarray or DirichletBCMetaClass
+            The Dirichlet function or boundary condition.
+        boundary : optional, callable or np.ndarray or int
             The part of the boundary whose dofs should be constrained.
             This can be a callable defining the boundary geometrically or
             an array of entity tags or an integer marking the boundary if
@@ -134,31 +124,34 @@ class BoundaryConditions:
         entity_dim : optional, int
             The entity dimension in case `method=topological`.
         """
+        if boundary is None:
+            assert isinstance(value, DirichletBCMetaClass)
+            self._bcs.append(value)
+        else:
+            assert method in ("topological", "geometrical")
+            V = self.V.sub(sub) if sub is not None else self.V
 
-        assert method in ("topological", "geometrical")
-        V = self.V.sub(sub) if sub is not None else self.V
+            if method == "topological":
+                if isinstance(boundary, int):
+                    try:
+                        facets = self._facet_tags.find(boundary)
+                    except AttributeError as atterr:
+                        raise atterr("There are no facet tags defined!")
+                else:
+                    facets = boundary
+                assert entity_dim is not None
 
-        if method == "topological":
-            if isinstance(boundary, int):
-                try:
-                    facets = self._facet_tags.find(boundary)
-                except AttributeError as atterr:
-                    raise atterr("There are no facet tags defined!")
+                dofs = locate_dofs_topological(V, entity_dim, facets)
             else:
-                facets = boundary
-            assert entity_dim is not None
+                dofs = locate_dofs_geometrical(V, boundary)
 
-            dofs = locate_dofs_topological(V, entity_dim, facets)
-        else:
-            dofs = locate_dofs_geometrical(V, boundary)
-
-        # FIXME passing V if value is a Function raises TypeError
-        # why is this case not covered by the 4th constructor of dirichletbc?
-        if isinstance(value, function.Function):
-            bc = dirichletbc(value, dofs)
-        else:
-            bc = dirichletbc(value, dofs, V)
-        self._bcs.append(bc)
+            # FIXME passing V if value is a Function raises TypeError
+            # why is this case not covered by the 4th constructor of dirichletbc?
+            if isinstance(value, Function):
+                bc = dirichletbc(value, dofs)
+            else:
+                bc = dirichletbc(value, dofs, V)
+            self._bcs.append(bc)
 
     def add_neumann_bc(self, marker, values):
         """adds a Neumann BC.
