@@ -1,30 +1,12 @@
 """preprocessing module to generate computational grids with Gmsh"""
 
-# Guidelines/Facts
-# .msh point data is always 3d
-# (prune_z is only required to create xdmf mesh as input to dolfin)
-# gmsh.write(msh_file) --> writes all cell types (vertex, line, triangle, ...)
-# meshio.write(msh_file, data, file_format="gmsh") --> requires physical group (KeyError otherwise)
-# if `file_format="gmsh"` is omitted, then meshio will think this is an Ansys mesh format ... (also KeyError)
+# Usage
+#######
+# Use Gmsh python API to generate a grid and write to .msh.
+# the mesh and optional cell markers can be read with dolfinx.io.gmshio in serial.
+# For parallel input of meshes, first convert .msh to .xdmf using meshio
+# and read the mesh with dolfinx.io.XDMFFile.
 
-# mesh generation process: always use gmsh and gmsh.write --> .msh only
-# fenics: always use meshio.read, multi.preprocessing.create_mesh respectively
-
-# TODO replace scripts in /multicode/preprocessing by functions
-# TODO test if out_file with format .xdmf can be imported in dolfin
-
-# TODO convenience function write_xdmf() using `create_mesh` as in the fenicsx-tutorial
-# see https://jorgensd.github.io/dolfinx-tutorial/chapter3/subdomains.html#convert-msh-files-to-xdmf-using-meshio
-# ... TODO need to prune z coordinate for xdmf input
-# ... TODO extract cell_data if writing to .xdmf
-
-# TODO [dolfinx] use dolfinx.io.gmshio.model_to_mesh()
-# ... or dolfinx.io.gmshio.read_from_msh()
-# ... or convert msh to xdmf using meshio and read with dolfinx.io.XDMFFile
-# it seems that the latter approach is favorable for parallel IO of the mesh?
-
-import pathlib
-import tempfile
 import gmsh
 import meshio
 import numpy as np
@@ -44,37 +26,20 @@ def to_array(values):
 # this code is part of the FEniCSx tutorial
 # see https://jorgensd.github.io/dolfinx-tutorial/chapter3/subdomains.html#convert-msh-files-to-xdmf-using-meshio
 def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
+    """create a new instance of meshio.Mesh from meshio.Mesh object"""
     cells = mesh.get_cells_type(cell_type)
     cell_data = mesh.get_cell_data(name_to_read, cell_type)
-    points = mesh.points[:,:2] if prune_z else mesh.points
-    out_mesh = meshio.Mesh(points=points, cells={cell_type: cells}, cell_data={name_to_read:[cell_data]})
+    points = mesh.points[:, :2] if prune_z else mesh.points
+    out_mesh = meshio.Mesh(
+            points=points, cells={cell_type: cells}, cell_data={name_to_read:[cell_data]}
+            )
     return out_mesh
 
 
-def _write(filepath, mesh, cell_type, prune_z=False):
-    p = pathlib.Path(filepath)
-    suffix = p.suffix
-
-    if suffix == ".msh":
-        meshio.write(p.as_posix(), mesh, file_format="gmsh")
-    elif suffix == ".xdmf":
-        m = create_mesh(mesh, cell_type, prune_z=prune_z)
-        breakpoint()
-        meshio.write(p.as_posix(), m, file_format="xdmf")
-    else:
-        raise NotImplementedError
-
-
-def _generate_and_read_grid(dim):
+def _generate_and_write_grid(dim, filepath):
     gmsh.model.mesh.generate(dim)
-
-    tf = tempfile.NamedTemporaryFile(suffix=".msh", delete=True)
-    filepath = tf.name
     gmsh.write(filepath)
     gmsh.finalize()
-    grid = meshio.read(filepath)
-    tf.close()
-    return grid
 
 
 def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
@@ -95,11 +60,8 @@ def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
     gmsh.model.geo.synchronize()
     gmsh.model.addPhysicalGroup(1, [line])
 
-    grid = _generate_and_read_grid(1)
-    if out_file is not None:
-        _write(out_file, grid, "line", prune_z=True)
-
-    return grid
+    filepath = out_file or "./line.msh"
+    _generate_and_write_grid(1, filepath)
 
 
 def create_rectangle_grid(
@@ -130,7 +92,6 @@ def create_rectangle_grid(
     curve_loop = gmsh.model.geo.addCurveLoop([l0, l1, l2, l3])
     surface = gmsh.model.geo.addPlaneSurface([curve_loop])
 
-    cell_type = "triangle"
     if num_cells is not None:
         try:
             nx, ny = num_cells
@@ -146,16 +107,12 @@ def create_rectangle_grid(
         if recombine:
             # setRecombine(dim, tag, angle=45.0)
             gmsh.model.geo.mesh.setRecombine(2, surface)
-            cell_type = "quad"
 
     gmsh.model.geo.synchronize()
     gmsh.model.addPhysicalGroup(2, [surface])
 
-    grid = _generate_and_read_grid(2)
-    if out_file is not None:
-        _write(out_file, grid, cell_type, prune_z=True)
-
-    return grid
+    filepath = out_file or "./rectangle.msh"
+    _generate_and_write_grid(2, filepath)
 
 
 def create_rce_grid_01(xmin, xmax, ymin, ymax, z=0.0, radius=0.2, lc=0.1, num_cells_per_edge=None, out_file=None):
@@ -273,8 +230,5 @@ def create_rce_grid_01(xmin, xmax, ymin, ymax, z=0.0, radius=0.2, lc=0.1, num_ce
     gmsh.model.add_physical_group(2, matrix, name="matrix")
     gmsh.model.add_physical_group(2, [circle_surface], name="inclusion")
 
-    grid = _generate_and_read_grid(2)
-    if out_file is not None:
-        _write(out_file, grid, "triangle", prune_z=True)
-
-    return grid
+    filepath = out_file or "./rce_type_01.msh"
+    _generate_and_write_grid(2, filepath)
