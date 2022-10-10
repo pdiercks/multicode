@@ -38,19 +38,11 @@ class NumpyLine:
             The shape functions.
         """
         assert function_space.ufl_element().family() in ("Lagrange", "CG")
-        if function_space.num_sub_spaces() > 0:
-            coordinates = function_space.sub(0).collapse().tabulate_dof_coordinates()
-        else:
-            coordinates = function_space.tabulate_dof_coordinates()
+        coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         coordinates = coordinates[:, sub]
         if self.nn == 2:
-            X = np.column_stack(
-                (
-                    np.ones(coordinates.size),
-                    coordinates,
-                )
-            )
+            X = np.column_stack((np.ones(coordinates.size), coordinates))
         elif self.nn == 3:
             X = np.column_stack(
                 (np.ones(coordinates.size), coordinates, coordinates ** 2)
@@ -146,11 +138,8 @@ class NumpyQuad:
             The standard shape functions.
 
         """
-        assert function_space.ufl_element().family() in ("Lagrange", "CG")
-        if function_space.num_sub_spaces() > 0:
-            coordinates = function_space.sub(0).collapse().tabulate_dof_coordinates()
-        else:
-            coordinates = function_space.tabulate_dof_coordinates()
+        assert function_space.ufl_element().family() in ("Lagrange", "Q", "CG")
+        coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         X = get_P_matrix(coordinates, self.nn)
         Id = np.eye(self.nn)
