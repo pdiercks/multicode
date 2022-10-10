@@ -27,3 +27,20 @@ def interpolate(u, points):
     points_on_proc = np.array(points_on_proc, dtype=np.float64)
     u_values = u.eval(points_on_proc, cells)
     return u_values
+
+
+def make_mapping(subspace, superspace):
+    """compute dof mapping from subspace to superspace
+
+    Returns
+    -------
+    dofs : np.ndarray
+        The dofs of `superspace` corresponding to dofs of `subspace`.
+    """
+    u = dolfinx.fem.Function(superspace)
+    ndofs = superspace.dofmap.index_map.size_global * superspace.dofmap.bs
+    u.vector.array[:] = np.arange(ndofs, dtype=np.intc)
+
+    x_dofs = subspace.tabulate_dof_coordinates()
+    dofs = (interpolate(u, x_dofs.T) + 0.5).astype(np.intc).flatten()
+    return dofs
