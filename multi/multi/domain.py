@@ -1,15 +1,9 @@
 import os
-
-# from pathlib import Path
-
 import gmsh
 import tempfile
 import meshio
-
-# import dolfin as df
 import numpy as np
-
-# from fenics_helpers.boundary import to_floats
+import dolfinx
 from multi.common import to_floats
 
 
@@ -118,28 +112,30 @@ class RectangularDomain(Domain):
 
 
 # TODO args: mesh, cell_markers, facet_markers
-class StructuredGrid(object):
-    """class representing a structured (coarse scale) grid
+class StructuredQuadGrid(object):
+    """class representing a structured (coarse scale) quadrilateral grid
 
-    Each coarse cell is associated with a fine scale grid which
+    Each coarse quadrilateral cell is associated with a fine scale grid which
     needs to be set through `self.fine_grids`.
 
     Parameters
     ----------
-    points : np.ndarray
-        The physical coordinates of the nodes of the mesh.
-    cells : np.ndarray
-        The connectivity of the points.
-    tdim : int
-        The topological dimension of the grid.
-    cell_type : str, optional
-        Gmsh cell type. Supported are `quad`, `quad8` and `quad9`.
+    mesh : dolfinx.mesh.Mesh
+        The partition of the domain.
+    cell_markers : TODO
+    facet_markers : TODO
     """
 
-    def __init__(self, domain, cell_markers=None, facet_markers=None):
-        self.domain = domain
+    def __init__(self, mesh, cell_markers=None, facet_markers=None):
+        self.mesh = mesh
         self.cell_markers = cell_markers
         self.facet_markers = facet_markers
+
+        # bounding box tree
+        self.bb_tree = dolfinx.geometry.BoundingBoxTree(mesh, mesh.topology.dim)
+
+        self.mesh.topology.create_connectivity(2, 0)
+        self.mesh.topology.create_connectivity(0, 2)
 
     @property
     def cell_sets(self):
@@ -150,32 +146,48 @@ class StructuredGrid(object):
         """set cell sets for given pairs of key and array of cell indices"""
         self._cell_sets = pairs
 
-    def get_patch(self, cell_index, layer=1):
-        # TODO test for structured and unstructured mesh of different cell types
-        n = cell_index
-        for _ in range(layer):
-            p = self.cells[n]
-            p.shape = (p.size, -1)
-            contains_p = np.subtract(self.cells, p[:, np.newaxis])
-            neighbours = np.where(np.abs(contains_p) < 1e-6)[1]
-            n = np.unique(neighbours)
+    def get_patch(self, cell_index):
+        """return all cells neighbouring cell with index `cell_index`"""
+        conn_20 = self.mesh.topology.connectivity(2, 0)
+        point_tags = conn_20.links(cell_index)
+        conn_02 = self.mesh.topology.connectivity(0, 2)
+        cells = list()
+        for tag in point_tags:
+            cells.append(conn_02.links(tag))
+        return np.unique(np.hstack(cells))
 
-        return n
+    def get_cells_points(self, x):
+        """return all cells containing points given by coordinates `x`"""
+        cells = []
+        points_on_proc = []
+        # Find cells whose bounding-box collide with the the points
+        bb_tree = self.bb_tree
+        cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, x.T)
+        # Choose one of the cells that contains the point
+        colliding_cells = dolfinx.geometry.compute_colliding_cells(self.mesh, cell_candidates, x.T)
+        for i, point in enumerate(x.T):
+            if len(colliding_cells.links(i))>0:
+                points_on_proc.append(point)
+                cells.append(colliding_cells.links(i)[0])
+        return cells
 
-    def get_point_tags(self):
-        pass
+    def get_cells_point_tags(self, tags):
+        """return all cells containing points given by the point tags `tags`"""
+        conn_20 = self.mesh.topology.connectivity(2, 0)
+        cells = list()
+        for tag in tags.flatten():
+            c = conn_20.links(tag)
+            cells.append(c)
+        return np.unique(cells)
 
-    def get_cells_by_points(self, points):
-        pass
+    # def plane_at(self):
+    #     pass
 
-    def plane_at(self):
-        pass
+    # def within_range(self):
+    #     pass
 
-    def within_range(self):
-        pass
-
-    def get_points_by_cells(self):
-        pass
+    # def get_points_by_cells(self):
+    #     pass
 
     @property
     def fine_grids(self):
@@ -208,7 +220,6 @@ class StructuredGrid(object):
             with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tf:
                 subdomains.append(tf.name)
                 meshio.write(tf.name, mesh, file_format="gmsh")
-                print(tf.name)
 
         # merge subdomains
         gmsh.initialize()

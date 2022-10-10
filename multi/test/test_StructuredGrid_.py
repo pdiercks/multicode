@@ -1,13 +1,23 @@
-import pathlib
 import dolfinx
-from dolfinx.io import gmshio
+import numpy as np
 from mpi4py import MPI
+from multi.domain import StructuredQuadGrid
 
-test = pathlib.Path(__file__).parent
-msh_file = test / "data" / "block.msh"
-mesh, cell_markers, facet_markers = gmshio.read_from_msh(
-    msh_file.as_posix(), MPI.COMM_WORLD, gdim=2
-)
+
+def test():
+    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 10, 10, dolfinx.mesh.CellType.quadrilateral)
+    grid = StructuredQuadGrid(domain)
+    patch_sizes = []
+    for i in range(100):
+        cell_patch = grid.get_patch(i)
+        patch_sizes.append(cell_patch.size)
+    assert np.amin(patch_sizes) == 4
+    assert np.amax(patch_sizes) == 9
+    num_inner = 100 - 4 - 4 * 8
+    expected = num_inner * 9 + 4 * 4 + 4 * 8 * 6
+    assert np.sum(patch_sizes) == expected
+
+    breakpoint()
 
 """
 1. create mesh with Gmsh and load with gmshio OR use dolfinx to create mesh
@@ -26,11 +36,11 @@ Parallel:
     --> restrict to serial implementation for now ...
 """
 
-geom_dm = mesh.geometry.dofmap
-points = mesh.geometry.x
-num_cells = geom_dm.offsets.size - 1
-num_nodes = geom_dm.num_nodes
-cells = geom_dm.array.reshape(num_cells, num_nodes)
+# geom_dm = mesh.geometry.dofmap
+# points = mesh.geometry.x
+# num_cells = geom_dm.offsets.size - 1
+# num_nodes = geom_dm.num_nodes
+# cells = geom_dm.array.reshape(num_cells, num_nodes)
 
 """topology
 
@@ -101,8 +111,5 @@ Options:
 
 """
 
-V = dolfinx.fem.FunctionSpace(mesh, ("CG", 1))
-
-from IPython import embed
-
-embed()  # noqa: E402, E702
+if __name__ == "__main__":
+    test()
