@@ -10,6 +10,12 @@ class CellDofLayout(object):
 
     quadrilateral reference cell topology
 
+    FIXME
+    currently DofMap relies on domain.topology to distribute the dofs
+    therefore, the `dofs_per_edge` need to be given in the local ordering
+    compliant with domain.topology
+    Ideally, this local ordering of the dofs should follow the basix element dof layout.
+
     v2--e3--v3
     |       |
     e1  f0  e2
@@ -18,6 +24,15 @@ class CellDofLayout(object):
 
     see basix.geometry(basix.CellType.quadrilateral)
     and basix.topology(basix.CellType.quadrilateral)
+
+    BUT for now the following ordering of vertices and edges is assumed:
+
+    v1--e2--v3
+    |       |
+    e0  f0  e3
+    |       |
+    v0--e1--v2
+
     """
 
     def __init__(self, cell_type):
@@ -51,6 +66,11 @@ class CellDofLayout(object):
                 counter += ndofs[entity]
 
 
+# FIXME
+# currently DofMap relies on domain.topology to distribute the dofs
+# therefore, the `dofs_per_edge` need to be given in the local ordering
+# compliant with domain.topology
+# Ideally, this local ordering of the dofs should follow the basix element dof layout
 class DofMap:
     """class representing a DofMap of a function space where each entity
     (vertex, edge, face in 2d) is associated with the given number of DoFs,
@@ -67,13 +87,11 @@ class DofMap:
         self._layout = CellDofLayout(cell_type)
 
         # create connectivities
-        domain.topology.create_connectivity(2, 0)
-        domain.topology.create_connectivity(2, 1)
-        domain.topology.create_connectivity(2, 2)
-        self.conn = [
-            domain.topology.connectivity(2, dim)
-            for dim in range(len(self._layout.num_entities))
-        ]
+        self.conn = []
+        for dim in range(len(self._layout.num_entities)):
+            domain.topology.create_connectivity(2, dim)
+            self.conn.append(domain.topology.connectivity(2, dim))
+        self.num_cells = self.conn[2].num_nodes
 
     def distribute_dofs(self, dofs_per_vert, dofs_per_edge, dofs_per_face=0):
         """set number of DoFs per entity and distribute dofs
@@ -96,75 +114,36 @@ class DofMap:
         self._dm = {dim: {} for dim in dimension}
         DoF = 0
 
-        num_cells = self.conn[2].num_nodes
+        num_cells = self.num_cells
 
         if isinstance(dofs_per_edge, (int, np.integer)):
-            self._layout.set_entity_dofs((dofs_per_vert, dofs_per_edge, dofs_per_face))
-            entity_dofs = self._layout.get_entity_dofs()
-
-            for cell_index in range(num_cells):
-                for dim, conn in enumerate(self.conn):
-                    entities = conn.links(cell_index)
-                    for local_ent, ent in enumerate(entities):
-                        if ent not in self._dm[dim].keys():
-                            self._dm[dim][ent] = []
-                            dofs = entity_dofs[dim][local_ent]
-                            for dof in dofs:
-                                self._dm[dim][ent].append(DoF)
-                                DoF += 1
-
-            # for ci, cell in enumerate(self.cells):
-            #     self._cell.set_entities(cell) # needed to get cell connectivity, global entity tags
-            #     for dim in dimension:
-            #         entities = self._cell.get_entities()[dim]
-            #         for local_ent, ent in enumerate(entities):
-            #             if ent not in self._dm[dim].keys():
-            #                 self._dm[dim][ent] = []
-            #                 dofs = entity_dofs[dim][local_ent]
-            #                 for dof in dofs:
-            #                     x_dofs.append(self.points[ent])  # store dof coordinates
-            #                     self._dm[dim][ent].append(DoF)
-            #                     DoF += 1
+            dofs_per_edge = np.ones((num_cells, 4), dtype=np.intc) * dofs_per_edge
         else:
-            raise NotImplementedError
-            # TODO implement case where dofs_per_edge is np.ndarray
+            assert dofs_per_edge.shape == (num_cells, 4)
 
-            # assert dofs_per_edge.shape == (len(self.cells), 4)
-            # for ci, cell in enumerate(self.cells):
-            #     self._cell.set_entity_dofs(
-            #         dofs_per_vert, dofs_per_edge[ci], dofs_per_face
-            #     )
-            #     entity_dofs = self._cell.get_entity_dofs()
-            #     self._cell.set_entities(cell)
-            #     for dim in dimension:
-            #         entities = self._cell.get_entities()[dim]
-            #         for local_ent, ent in enumerate(entities):
-            #             if ent not in self._dm[dim].keys():
-            #                 self._dm[dim][ent] = []
-            #                 dofs = entity_dofs[dim][local_ent]
-            #                 for dof in dofs:
-            #                     x_dofs.append(self.points[ent])  # store dof coordinates
-            #                     self._dm[dim][ent].append(DoF)
-            #                     DoF += 1
-        self.n_dofs = DoF
+        for cell_index in range(num_cells):
+            self._layout.set_entity_dofs((dofs_per_vert, dofs_per_edge[cell_index], dofs_per_face))
+            entity_dofs = self._layout.get_entity_dofs()
+            for dim, conn in enumerate(self.conn):
+                entities = conn.links(cell_index)
+                for local_ent, ent in enumerate(entities):
+                    if ent not in self._dm[dim].keys():
+                        self._dm[dim][ent] = []
+                        dofs = entity_dofs[dim][local_ent]
+                        for dof in dofs:
+                            self._dm[dim][ent].append(DoF)
+                            DoF += 1
+
+        self._n_dofs = DoF
         self.dofs_per_vert = dofs_per_vert
         self.dofs_per_edge = dofs_per_edge
         self.dofs_per_face = dofs_per_face
 
-    # FIXME where is this actually needed?
-    # could build V = dolfinx.FunctionSpace(domain, ("CG", 2)) since
-    # the VectorFunctionSpace also returns each dof coordinate only once
-    # def tabulate_dof_coordinates(self):
-    #     """return dof coordinates"""
-    #     if not hasattr(self, "_x_dofs"):
-    #         raise AttributeError("You need to distribute DoFs first")
-    #     return self._x_dofs
-
     def num_dofs(self):
         """return total number of dofs"""
-        if not hasattr(self, "n_dofs"):
+        if not hasattr(self, "_n_dofs"):
             raise AttributeError("You need to distribute DoFs first")
-        return self.n_dofs
+        return self._n_dofs
 
     def cell_dofs(self, cell_index):
         """returns dofs for given cell
@@ -177,12 +156,28 @@ class DofMap:
         if not hasattr(self, "_dm"):
             raise AttributeError("You need to distribute DoFs first")
 
+        num_cells = self.num_cells
+        assert cell_index in np.arange(num_cells)
+
         cell_dofs = []
         for dim, conn in enumerate(self.conn):
             entities = conn.links(cell_index)
             for ent in entities:
                 cell_dofs += self._dm[dim][ent]
         return cell_dofs
+
+    def entity_dofs(self, dim, entity):
+        """return all dofs for entity `entity` of dimension `dim`"""
+        return self._dm[dim][entity]
+
+    # FIXME where is this actually needed?
+    # could build V = dolfinx.FunctionSpace(domain, ("CG", 2)) since
+    # the VectorFunctionSpace also returns each dof coordinate only once
+    # def tabulate_dof_coordinates(self):
+    #     """return dof coordinates"""
+    #     if not hasattr(self, "_x_dofs"):
+    #         raise AttributeError("You need to distribute DoFs first")
+    #     return self._x_dofs
 
     # def locate_cells(self, X, tol=1e-9):
     #     """return cell indices for cells containing at least one
@@ -226,50 +221,51 @@ class DofMap:
 
     #     return list(cell_indices)
 
-    def locate_dofs(self, X, sub=None, s_=np.s_[:], tol=1e-9):
-        """returns dofs at coordinates X
+    # FIXME self._x_dofs required
+    # def locate_dofs(self, X, sub=None, s_=np.s_[:], tol=1e-9):
+    #     """returns dofs at coordinates X
 
-        Parameters
-        ----------
-        X : list, np.ndarray
-            A list of points, where each point is given as list of len(gdim).
-        sub : int, optional
-            Index of component.
-            Note, that this is intended for the case that X contains only vertex
-            OR only edge coordinates of the grid!
-        s_ : slice, optional
-            Return slice of the dofs at each point.
-        tol : float, optional
-            Tolerance used to find coordinate.
+    #     Parameters
+    #     ----------
+    #     X : list, np.ndarray
+    #         A list of points, where each point is given as list of len(gdim).
+    #     sub : int, optional
+    #         Index of component.
+    #         Note, that this is intended for the case that X contains only vertex
+    #         OR only edge coordinates of the grid!
+    #     s_ : slice, optional
+    #         Return slice of the dofs at each point.
+    #     tol : float, optional
+    #         Tolerance used to find coordinate.
 
-        Returns
-        -------
-        dofs : np.ndarray
-            DoFs at given coordinates.
-        """
-        if isinstance(X, list):
-            X = np.array(X).reshape(len(X), self.gdim)
-        elif isinstance(X, np.ndarray):
-            if X.ndim == 1:
-                X = X[np.newaxis, :]
-            elif X.ndim > 2:
-                raise NotImplementedError
+    #     Returns
+    #     -------
+    #     dofs : np.ndarray
+    #         DoFs at given coordinates.
+    #     """
+    #     if isinstance(X, list):
+    #         X = np.array(X).reshape(len(X), self.gdim)
+    #     elif isinstance(X, np.ndarray):
+    #         if X.ndim == 1:
+    #             X = X[np.newaxis, :]
+    #         elif X.ndim > 2:
+    #             raise NotImplementedError
 
-        dofs = np.array([], int)
-        for x in X:
-            p = np.abs(self._x_dofs - x)
-            v = np.where(np.all(p < tol, axis=1))[0]
-            if v.size < 1:
-                raise IndexError(f"The point {x} is not a vertex of the grid!")
-            dofs = np.append(dofs, v[s_])
+    #     dofs = np.array([], int)
+    #     for x in X:
+    #         p = np.abs(self._x_dofs - x)
+    #         v = np.where(np.all(p < tol, axis=1))[0]
+    #         if v.size < 1:
+    #             raise IndexError(f"The point {x} is not a vertex of the grid!")
+    #         dofs = np.append(dofs, v[s_])
 
-        if sub is not None:
-            # FIXME user has to know that things might go wrong if
-            # X contains vertex AND edge coordinates ...
-            dim = self.gdim
-            return dofs[sub::dim]
-        else:
-            return dofs
+    #     if sub is not None:
+    #         # FIXME user has to know that things might go wrong if
+    #         # X contains vertex AND edge coordinates ...
+    #         dim = self.gdim
+    #         return dofs[sub::dim]
+    #     else:
+    #         return dofs
 
     # def within_range(self, start, end, tol=1e-6, vertices_only=False, edges_only=False):
     #     """return all (vertex and edge mid) points within range defined by `start` and `end`.
