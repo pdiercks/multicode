@@ -65,64 +65,30 @@ bcx = dirichletbc(ScalarType(0), boundary_dofs_x, V.sub(0))
 
 
 class BoundaryDataFactory(object):
-    def __init__(self, domain, V, facet_markers=None):
+    def __init__(self, domain, V):
         self.domain = domain
         self.V = V
-        self.facet_markers = facet_markers
-        self.u = dolfinx.fem.Function(V)
 
         self.tdim = domain.topology.dim
         self.fdim = self.tdim - 1
         domain.topology.create_connectivity(self.fdim, self.tdim)
         self.boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
 
-    def set_dof_values(self, values, boundary_dofs):
-        self.u.vector.zeroEntries()
-        self.u.vector[boundary_dofs] = values
+    def create_function(self, values, boundary_dofs):
+        u = dolfinx.fem.Function(self.V)
+        u.vector.zeroEntries()
+        u.vector.setValues(boundary_dofs, values, addv=PETSc.InsertMode.INSERT)
+        u.vector.assemblyBegin()
+        u.vector.assemblyEnd()
+        return u
 
-    def set_values_via_bc(
-        self, value, boundary=None, sub=None, method="topological", entity_dim=None
-    ):
-        if boundary is None:
-            assert isinstance(value, dolfinx.fem.DirichletBCMetaClass)
-            bc = value
-            V = self.V
-        else:
-            assert method in ("topological", "geometrical")
-            V = self.V.sub(sub) if sub is not None else self.V
-
-            if method == "topological":
-                if isinstance(boundary, int):
-                    try:
-                        facets = self.facet_markers.find(boundary)
-                    except AttributeError as atterr:
-                        raise atterr("There are no facet tags defined!")
-                else:
-                    facets = boundary
-                assert entity_dim is not None
-
-                dofs = dolfinx.fem.locate_dofs_topological(V, entity_dim, facets)
-            else:
-                dofs = dolfinx.fem.locate_dofs_geometrical(V, boundary)
-
-            if isinstance(value, dolfinx.fem.Function):
-                bc = dolfinx.fem.dirichletbc(value, dofs)
-            else:
-                bc = dolfinx.fem.dirichletbc(value, dofs, V)
-
-        self.u.vector.zeroEntries()
-        dolfinx.fem.petsc.set_bc(self.u.vector, [bc], scale=1.0)
-        self.u.vector.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
-        )
-
-    def create_bc(self):
+    def create_bc(self, function):
         V = self.V
         fdim = self.fdim
         boundary_facets = self.boundary_facets
 
         dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
-        bc = dolfinx.fem.dirichletbc(self.u, dofs)
+        bc = dolfinx.fem.dirichletbc(function, dofs)
         return bc
 
 

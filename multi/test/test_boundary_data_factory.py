@@ -26,25 +26,28 @@ def test():
     def bottom(x):
         return np.isclose(x[1], -1.0)
 
-    from IPython import embed
-
-    embed()
+    bottom_dofs = dolfinx.fem.locate_dofs_geometrical(V, bottom)
 
     data_factory = BoundaryDataFactory(rectangle, V)
-    # FIXME find out how to create dirichletbc with values being a numpy array
-    data_factory.set_values_via_bc(mode, boundary=bottom, method="geometrical")
-    bc = data_factory.create_bc()
+    f = data_factory.create_function(mode, bottom_dofs)
+    bc_0 = data_factory.create_bc(f)
+    g = data_factory.create_function(np.ones(bottom_dofs.size, dtype=np.float64), bottom_dofs)
+    bc_1 = data_factory.create_bc(g)
 
     u = dolfinx.fem.Function(V)
     uvec = u.vector
     uvec.zeroEntries()
-    dolfinx.fem.petsc.set_bc(uvec, [bc], scale=1.0)
+    dolfinx.fem.petsc.set_bc(uvec, [bc_0], scale=1.0)
     uvec.ghostUpdate(
         addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
     )
-
-    bottom_dofs = dolfinx.fem.locate_dofs_geometrical(V, bottom)
     assert np.allclose(uvec[bottom_dofs], mode)
+    uvec.zeroEntries()
+    dolfinx.fem.petsc.set_bc(uvec, [bc_1], scale=1.0)
+    uvec.ghostUpdate(
+        addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+    )
+    assert np.allclose(uvec[bottom_dofs], np.ones(bottom_dofs.size))
 
 
 if __name__ == "__main__":
