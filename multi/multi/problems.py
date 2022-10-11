@@ -7,7 +7,7 @@ from multi.bcs import BoundaryConditions
 # from multi.dofmap import DofMap
 from multi.materials import LinearElasticMaterial
 
-# from multi.misc import make_mapping
+from multi.interpolation import make_mapping
 from multi.product import InnerProduct
 
 # from multi.projection import orthogonal_part
@@ -32,9 +32,6 @@ def _solver_options(
     }
 
 
-# FIXME design? should this be a pure fenicsx solver or operator based using pymor?
-# FIXME maybe the class only handles the discretization
-# solve method is not provided
 class LinearProblem(object):
 
     """Docstring for LinearProblem."""
@@ -57,28 +54,26 @@ class LinearProblem(object):
         self.V = V
         self.u = ufl.TrialFunction(V)
         self.v = ufl.TestFunction(V)
-        # FIXME currently user cannot set facet_tags
         self._bc_handler = BoundaryConditions(domain.mesh, V, domain.facet_markers)
         self._solver_options = solver_options or _solver_options()
-        # if hasattr(domain, "edges"):
-        #     if domain.edges:
-        #         self._init_edge_spaces()
+        if hasattr(domain, "edges"):
+            if domain.edges is not None:
+                self._init_edge_spaces()
 
-    # TODO
-    # def _init_edge_spaces(self):
-    #     edge_meshes = self.domain.edges
-    #     V = self.V
-    #     ufl_element = V.ufl_element()
+    def _init_edge_spaces(self):
+        edge_meshes = self.domain.edges
+        V = self.V
+        ufl_element = V.ufl_element()
 
-    #     V_to_L = []
-    #     Lambda = []
-    #     for i, edge in enumerate(edge_meshes):
-    #         edge_element = ufl_element.reconstruct(cell=edge.ufl_cell())
-    #         L = df.FunctionSpace(edge, edge_element)
-    #         V_to_L.append(make_mapping(L, V))
-    #         Lambda.append(L)
-    #     self.V_to_L = V_to_L
-    #     self.edge_spaces = Lambda
+        V_to_L = {}
+        Lambda = {}
+        for key, facet_mesh in edge_meshes.items():
+            facet_element = ufl_element.reconstruct(cell=facet_mesh.ufl_cell())
+            L = dolfinx.fem.FunctionSpace(facet_mesh, facet_element)
+            Lambda[key] = L
+            V_to_L[key] = make_mapping(L, V)
+        self.V_to_L = V_to_L
+        self.edge_spaces = Lambda
 
     def add_dirichlet_bc(
         self, value, boundary=None, sub=None, method="topological", entity_dim=None
@@ -238,9 +233,8 @@ class LinearElasticityProblem(LinearProblem):
             assert domain.cell_markers is None
             self.dx = ufl.dx
         else:
-            if not domain.subdomains and len(E) > 1:
+            if len(E) > 1 and domain.cell_markers is None:
                 raise KeyError("You need to define mesh tags for multiple materials")
-            # FIXME double check method of domain.subdomains (meshtags)
             assert all(
                 [
                     len(E) == len(NU),
