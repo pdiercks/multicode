@@ -135,6 +135,7 @@ class StructuredQuadGrid(object):
         self.mesh.topology.create_connectivity(2, 0)
         self.mesh.topology.create_connectivity(2, 1)
         self.mesh.topology.create_connectivity(0, 2)
+        self.num_cells = self.mesh.topology.connectivity(2, 0).num_nodes
 
     @property
     def cell_sets(self):
