@@ -4,7 +4,6 @@ import tempfile
 import meshio
 import numpy as np
 import dolfinx
-from multi.common import to_floats
 
 
 class Domain(object):
@@ -111,7 +110,6 @@ class RectangularDomain(Domain):
                 xg += dx
 
 
-# TODO args: mesh, cell_markers, facet_markers
 class StructuredQuadGrid(object):
     """class representing a structured (coarse scale) quadrilateral grid
 
@@ -135,6 +133,7 @@ class StructuredQuadGrid(object):
         self.bb_tree = dolfinx.geometry.BoundingBoxTree(mesh, mesh.topology.dim)
 
         self.mesh.topology.create_connectivity(2, 0)
+        self.mesh.topology.create_connectivity(2, 1)
         self.mesh.topology.create_connectivity(0, 2)
 
     @property
@@ -148,8 +147,7 @@ class StructuredQuadGrid(object):
 
     def get_patch(self, cell_index):
         """return all cells neighbouring cell with index `cell_index`"""
-        conn_20 = self.mesh.topology.connectivity(2, 0)
-        point_tags = conn_20.links(cell_index)
+        point_tags = self.get_cell_entities(cell_index, 0)
         conn_02 = self.mesh.topology.connectivity(0, 2)
         cells = list()
         for tag in point_tags:
@@ -158,36 +156,31 @@ class StructuredQuadGrid(object):
 
     def get_cells_points(self, x):
         """return all cells containing points given by coordinates `x`"""
-        cells = []
-        points_on_proc = []
+        try:
+            x = x.reshape(int(x.size/3), 3)
+        except ValueError as err:
+            raise err("x.shape = (num_points, 3) is required!")
+
         # Find cells whose bounding-box collide with the the points
         bb_tree = self.bb_tree
-        cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, x.T)
-        # Choose one of the cells that contains the point
-        colliding_cells = dolfinx.geometry.compute_colliding_cells(self.mesh, cell_candidates, x.T)
-        for i, point in enumerate(x.T):
-            if len(colliding_cells.links(i))>0:
-                points_on_proc.append(point)
-                cells.append(colliding_cells.links(i)[0])
-        return cells
+        cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, x)
+        assert cell_candidates.num_nodes < 2
+        return cell_candidates.links(0)
 
     def get_cells_point_tags(self, tags):
         """return all cells containing points given by the point tags `tags`"""
-        conn_20 = self.mesh.topology.connectivity(2, 0)
+        conn_02 = self.mesh.topology.connectivity(0, 2)
         cells = list()
         for tag in tags.flatten():
-            c = conn_20.links(tag)
+            c = conn_02.links(tag)
             cells.append(c)
         return np.unique(cells)
 
-    # def plane_at(self):
-    #     pass
-
-    # def within_range(self):
-    #     pass
-
-    # def get_points_by_cells(self):
-    #     pass
+    def get_cell_entities(self, cell_index, dim):
+        """get entities of dimension `dim` for cell with index `cell_index`"""
+        assert dim in (0, 1)
+        conn = self.mesh.topology.connectivity(2, dim)
+        return conn.links(cell_index)
 
     @property
     def fine_grids(self):
