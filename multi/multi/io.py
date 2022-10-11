@@ -61,7 +61,6 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
 class BasesLoader(object):
     def __init__(self, directory, coarse_grid):
         assert directory.is_dir()
-        assert coarse_grid._cell.cell_type in ("quad8", "quad9")
         assert hasattr(coarse_grid, "cell_sets")
         self.dir = directory
         self.grid = coarse_grid
@@ -89,7 +88,7 @@ class BasesLoader(object):
 
         marked_edges = {}
         self._bases_config = {}
-        int_to_edge_str = ["b", "r", "t", "l"]
+        int_to_edge_str = ["l", "b", "t", "r"]
 
         cells = self.grid.cells
         cell_sets = self.grid.cell_sets
@@ -101,12 +100,11 @@ class BasesLoader(object):
                 self._bases_config[cell_index] = []
                 self._bases_config[cell_index].append((path, "phi"))
 
-                self.grid._cell.set_entities(
-                    cell
-                )  # FIXME not needed if dolfinx.mesh is used
-                edges = self.grid._cell.get_entities(
-                    dim=1
-                )  # TODO implement grid.get_cell_entities(dim) using mesh.topology.connectivity
+                # TODO double check that local ordering of edges
+                # and `int_to_edge_str` matches ...
+                # local ordering of edges (mesh.topology) should be
+                # ["l", "b", "t", "r"]
+                edges = self.grid.get_cell_entities(cell_index, 1)
                 for local_ent, ent in enumerate(edges):
                     edge = int_to_edge_str[local_ent]
                     if ent not in marked_edges.keys():
