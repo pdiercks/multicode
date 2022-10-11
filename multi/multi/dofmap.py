@@ -1,3 +1,4 @@
+import dolfinx
 import numpy as np
 import basix
 
@@ -122,7 +123,9 @@ class DofMap:
             assert dofs_per_edge.shape == (num_cells, 4)
 
         for cell_index in range(num_cells):
-            self._layout.set_entity_dofs((dofs_per_vert, dofs_per_edge[cell_index], dofs_per_face))
+            self._layout.set_entity_dofs(
+                (dofs_per_vert, dofs_per_edge[cell_index], dofs_per_face)
+            )
             entity_dofs = self._layout.get_entity_dofs()
             for dim, conn in enumerate(self.conn):
                 entities = conn.links(cell_index)
@@ -138,6 +141,19 @@ class DofMap:
         self.dofs_per_vert = dofs_per_vert
         self.dofs_per_edge = dofs_per_edge
         self.dofs_per_face = dofs_per_face
+
+    def get_entities(self, dim, marker):
+        """dolfinx.mesh.locate_entities"""
+        return dolfinx.mesh.locate_entities(self.domain, dim, marker)
+
+    def get_entities_boundary(self, dim, marker):
+        """dolfinx.mesh.locate_entities_boundary"""
+        assert dim < self.domain.topology.dim
+        return dolfinx.mesh.locate_entities_boundary(self.domain, dim, marker)
+
+    def get_entity_coordinates(self, dim, entities):
+        """return coordinates of `entities` of dimension `dim`"""
+        return dolfinx.mesh.compute_midpoints(self.domain, dim, entities)
 
     def num_dofs(self):
         """return total number of dofs"""
