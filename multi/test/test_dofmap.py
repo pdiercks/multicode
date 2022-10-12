@@ -1,17 +1,21 @@
 """test dofmap"""
 
+import tempfile
 import dolfinx
+from dolfinx.io import gmshio
 import numpy as np
 from mpi4py import MPI
 from multi.dofmap import DofMap
+from multi.preprocessing import create_rectangle_grid
 
 
 def test():
     """test dofmap with type(dofs_per_edge)==int"""
     n = 8
-    domain = dolfinx.mesh.create_unit_square(
-        MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
-    )
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), recombine=True, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+
     n_vertex_dofs = 2
     n_edge_dofs = 0
     n_face_dofs = 0
@@ -70,9 +74,10 @@ def test():
 
 def test_array_uniform():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
-    domain = dolfinx.mesh.create_unit_square(
-        MPI.COMM_WORLD, 2, 1, dolfinx.mesh.CellType.quadrilateral
-    )
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(2, 1), recombine=True, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+
     # 6 vertices
     # 7 edges
     n_vertex_dofs = 2
@@ -104,6 +109,15 @@ def test_array_uniform():
         A[np.ix_(cell_dofs, cell_dofs)] += a
     assert np.isclose(np.sum(A), 800)
 
+    def left(x):
+        return np.isclose(x[0], 0.0)
+
+    ents = dofmap.get_entities(1, left)
+    assert ents.size == 1
+    dofs = dofmap.entity_dofs(1, ents[0])
+    assert len(dofs) == 3
+    assert np.allclose(np.array([11, 12, 13]), dofs)
+
     def bottom(x):
         return np.isclose(x[1], 0.0)
 
@@ -111,24 +125,21 @@ def test_array_uniform():
     assert ents.size == 2
     dofs = dofmap.entity_dofs(1, ents[0])
     assert len(dofs) == 3
-    assert np.allclose(np.array([11, 12, 13]), dofs)
+    assert np.allclose(np.array([8, 9, 10]), dofs)
 
 
 def test_array():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
-    domain = dolfinx.mesh.create_unit_square(
-        MPI.COMM_WORLD, 2, 1, dolfinx.mesh.CellType.quadrilateral
-    )
-    """local cell topology of the domain
-
-    v1----e2----v3
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(2, 1), recombine=True, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    """
+    v2----e3----v3
     |           |
-    e0          e3
+    e1          e2
     |           |
-    v0----e1----v2
+    v0----e0----v1
 
-    NOTE that this is different from the layout of the reference cell
-    (basix.topology(quadrilateral) & basix.geometry(quadrilateral)
     """
     # 6 vertices
     # 7 edges
@@ -148,7 +159,7 @@ def test_array():
     N = dofmap.num_dofs()
     # num dofs minus dofs on the middle edge that are not distributed twice
     expected_N = (
-        n_vertex_dofs * num_vertices + np.sum(dofs_per_edge) - dofs_per_edge[1][0]
+        n_vertex_dofs * num_vertices + np.sum(dofs_per_edge) - dofs_per_edge[1][1]
     )
     assert N == expected_N
 
@@ -178,14 +189,14 @@ def test_array():
     dofs = []
     for edge in edges:
         dofs += dofmap.entity_dofs(1, edge)
-    assert len(dofs) == 17
-    distributed_until_top_0 = 8 + 5 + 12
-    distributed_until_top_1 = distributed_until_top_0 + 10 + 11 + 4 + 10
+    assert len(dofs) == np.sum(dofs_per_edge[:, 3])
+    distributed_until_top_0 = 8 + np.sum(dofs_per_edge[0, :3])
+    distributed_until_top_1 = 8 + np.sum(dofs_per_edge[0, :]) + 4 + np.sum(dofs_per_edge[1, :3]) - dofs_per_edge[1, 1]
     assert np.allclose(
         np.hstack(
             (
-                np.arange(10) + distributed_until_top_0,
-                np.arange(7) + distributed_until_top_1,
+                np.arange(dofs_per_edge[0, 3]) + distributed_until_top_0,
+                np.arange(dofs_per_edge[1, 3]) + distributed_until_top_1,
             )
         ),
         dofs,

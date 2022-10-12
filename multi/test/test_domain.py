@@ -1,18 +1,25 @@
 """test domain module"""
 
 import numpy as np
+import tempfile
 import dolfinx
+from dolfinx.io import gmshio
 from mpi4py import MPI
 from multi.domain import Domain, RceDomain
+from multi.preprocessing import create_line_grid, create_rectangle_grid
 
 
 def get_unit_square_mesh(nx=8, ny=8):
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, nx, ny, dolfinx.mesh.CellType.quadrilateral)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(nx, ny), recombine=True, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     return domain
 
 
 def get_unit_interval_mesh():
-    domain = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_line_grid([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     return domain
 
 
