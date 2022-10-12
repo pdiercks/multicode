@@ -39,23 +39,56 @@ class Domain(object):
         return np.amax(self._x, axis=0)
 
 
-class RectangularDomain(Domain):
+class RceDomain(Domain):
     """
     Parameters
     ----------
     mesh : dolfinx.mesh.Mesh
-        The partition of a rectangular domain.
+        The partition of the representative coarse grid element.
     cell_markers : optional
     facet_markers : optional
     index : optional, int
         The identification number of the domain.
-    edges : optional, dict
-        Partitions of the four edges of the rectangular domain.
-        Keys: ['bottom', 'right', 'top', 'left'], Values: dolfinx.mesh.Mesh.
+    edges : optional, bool
+        If True, create meshes for the edges of the domain
+        using `dolfinx.mesh.create_submesh`.
+        The submesh and associated mappings are stored in a
+        dictionary (self.edges).
     """
 
-    def __init__(self, mesh, cell_markers=None, facet_markers=None, index=None, edges=None):
+    def __init__(self, mesh, cell_markers=None, facet_markers=None, index=None, edges=False):
         super().__init__(mesh, cell_markers, facet_markers, index)
+        if edges:
+            self._create_edge_meshes()
+        else:
+            self.edges = False
+
+    def _create_edge_meshes(self):
+        parent = self.mesh
+        tdim = parent.topology.dim
+        fdim = tdim - 1
+        parent.topology.create_connectivity(fdim, tdim)
+        
+        xmin, ymin, zmin = self.xmin
+        xmax, ymax, zmax = self.xmax
+
+        def bottom(x):
+            return np.isclose(x[1], ymin)
+
+        def right(x):
+            return np.isclose(x[0], xmax)
+
+        def top(x):
+            return np.isclose(x[1], ymax)
+
+        def left(x):
+            return np.isclose(x[0], xmin)
+
+        edges = {}
+        markers = {"bottom": bottom, "right": right, "top": top, "left": left}
+        for key, marker in markers.items():
+            facets = dolfinx.mesh.locate_entities_boundary(parent, fdim, marker)
+            edges[key] = dolfinx.mesh.create_submesh(parent, fdim, facets)
         self.edges = edges
 
     def get_nodes(self, n=4):
@@ -103,10 +136,11 @@ class RectangularDomain(Domain):
         """
         dx = np.array(dx)
         self._x += dx
-        # update edges if True
+        # update child meshes as well
         if self.edges:
             for edge in self.edges.values():
-                xg = edge.geometry.x
+                domain = edge[0]
+                xg = domain.geometry.x
                 xg += dx
 
 

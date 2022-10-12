@@ -57,7 +57,7 @@ class LinearProblem(object):
         self._bc_handler = BoundaryConditions(domain.mesh, V, domain.facet_markers)
         self._solver_options = solver_options or _solver_options()
         if hasattr(domain, "edges"):
-            if domain.edges is not None:
+            if domain.edges:
                 self._init_edge_spaces()
 
     def _init_edge_spaces(self):
@@ -67,7 +67,8 @@ class LinearProblem(object):
 
         V_to_L = {}
         Lambda = {}
-        for key, facet_mesh in edge_meshes.items():
+        for key, facet_mesh_stuff in edge_meshes.items():
+            facet_mesh = facet_mesh_stuff[0]
             facet_element = ufl_element.reconstruct(cell=facet_mesh.ufl_cell())
             L = dolfinx.fem.FunctionSpace(facet_mesh, facet_element)
             Lambda[key] = L
