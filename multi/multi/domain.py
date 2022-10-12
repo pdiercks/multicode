@@ -91,6 +91,9 @@ class RceDomain(Domain):
             edges[key] = dolfinx.mesh.create_submesh(parent, fdim, facets)
         self.edges = edges
 
+    # FIXME: remove this?
+    # working with the StructuredQuadGrid or DofMap, i.e. the actual
+    # coarse grid is much easier to achieve the same thing
     def get_corner_vertices(self):
         """determine the vertices of the RceDomain
 
