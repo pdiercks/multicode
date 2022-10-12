@@ -68,7 +68,7 @@ class RceDomain(Domain):
         tdim = parent.topology.dim
         fdim = tdim - 1
         parent.topology.create_connectivity(fdim, tdim)
-        
+
         xmin, ymin, zmin = self.xmin
         xmax, ymax, zmax = self.xmax
 
@@ -91,37 +91,55 @@ class RceDomain(Domain):
             edges[key] = dolfinx.mesh.create_submesh(parent, fdim, facets)
         self.edges = edges
 
-    def get_nodes(self, n=4):
-        """get nodes of the rectangular domain
+    def get_corner_vertices(self):
+        """determine the vertices of the RceDomain
 
-        Parameters
-        ----------
-        n : int, optional
-            Number of nodes.
+        Returns
+        -------
+        verts : list of int
+            The vertices following local ordering of a
+            quadrilateral cell as in multi.dofmap.CellDofLayout.
 
         """
 
-        def midpoint(a, b):
-            return a + (b - a) / 2
+        def determine_candidates(submesh, parent, parent_facets):
+            # need to create connectivity to compute facets
+            tdim = submesh.topology.dim
+            fdim = tdim - 1
+            submesh.topology.create_connectivity(fdim, tdim)
+            boundary_vertices = sorted(dolfinx.mesh.exterior_facet_indices(submesh.topology))
 
-        xmin, ymin, zmin = self.xmin
-        xmax, ymax, zmax = self.xmax
+            child_facets = []
+            vertex_to_edge = submesh.topology.connectivity(0, 1)
+            for vertex in boundary_vertices:
+                child_facets.append(vertex_to_edge.links(vertex))
+            child_facets = np.hstack(child_facets)
 
-        # return nodes in same order as multi.dofmap.CellDofLayout
-        nodes = np.array(
-            [
-                [xmin, ymin, zmin],
-                [xmin, ymax, zmin],
-                [xmax, ymin, zmin],
-                [xmax, ymax, zmin],
-                [xmin, midpoint(ymin, ymax), zmin],
-                [midpoint(xmin, xmax), ymin, zmin],
-                [midpoint(xmin, xmax), ymax, zmin],
-                [xmax, midpoint(ymin, ymax), zmin],
-                [midpoint(xmin, xmax), midpoint(ymin, ymax), zmin],
-            ]
-        )
-        return nodes[:n]
+            parent_facets = np.array(parent_facets)[child_facets] 
+            parent.topology.create_connectivity(1, 0)
+            facet_to_vertex = parent.topology.connectivity(1, 0)
+            vertex_candidates = []
+            for facet in parent_facets:
+                verts = facet_to_vertex.links(facet)
+                vertex_candidates.append(verts)
+            vertex_candidates = np.hstack(vertex_candidates)
+
+            return vertex_candidates
+
+        parent = self.mesh
+        candidates = {}
+        for key, stuff in self.edges.items():
+            submesh = stuff[0]
+            parent_facets = stuff[1]
+            candidates[key] = set(determine_candidates(submesh, parent, parent_facets))
+
+        v0 = candidates["bottom"].intersection(candidates["left"])
+        v1 = candidates["left"].intersection(candidates["top"])
+        v2 = candidates["bottom"].intersection(candidates["right"])
+        v3 = candidates["right"].intersection(candidates["top"])
+        verts = [v0, v1, v2, v3]
+        assert all([len(s) == 1 for s in verts])
+        return [s.pop() for s in verts]
 
     def translate(self, dx):
         """translate the domain in space
