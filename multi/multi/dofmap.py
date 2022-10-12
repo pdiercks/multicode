@@ -3,7 +3,7 @@ import numpy as np
 import basix
 
 
-class CellDofLayout(object):
+class QuadrilateralDofLayout(object):
     """
     NOTE
     this is mainly tested and implemented to be used to
@@ -17,6 +17,8 @@ class CellDofLayout(object):
     compliant with domain.topology
     Ideally, this local ordering of the dofs should follow the basix element dof layout.
 
+    Order (1)
+    ---------
     v2--e3--v3
     |       |
     e1  f0  e2
@@ -28,17 +30,27 @@ class CellDofLayout(object):
 
     BUT for now the following ordering of vertices and edges is assumed:
 
+    Order (2)
+    ---------
     v1--e2--v3
     |       |
     e0  f0  e3
     |       |
     v0--e1--v2
 
+    EDIT 12.10.2022
+    Apparently the built-in mesh has above ordering (2) and
+    a mesh read from msh has ordering (1) ...
+    --> decision: go with ordering (1) and only use Gmsh, but
+    not the built-in meshes with DofMap, StructuredQuadGrid, etc.
+
     """
 
-    def __init__(self, cell_type):
-        self.topology = basix.topology(cell_type)
+    def __init__(self):
+        self.topology = basix.topology(basix.CellType.quadrilateral)
+        self.geometry = basix.geometry(basix.CellType.quadrilateral)
         self.num_entities = [len(ents) for ents in self.topology]
+        self.local_edge_index_map = {"left": 1, "bottom": 0, "top": 3, "right": 2} 
 
     def get_entity_dofs(self):
         return self.__entity_dofs
@@ -83,13 +95,13 @@ class DofMap:
         The quadrilateral mesh of the computational domain.
     """
 
-    def __init__(self, domain, cell_type=basix.CellType.quadrilateral):
+    def __init__(self, domain):
         self.domain = domain
-        self._layout = CellDofLayout(cell_type)
+        self.dof_layout = QuadrilateralDofLayout()
 
         # create connectivities
         self.conn = []
-        for dim in range(len(self._layout.num_entities)):
+        for dim in range(len(self.dof_layout.num_entities)):
             domain.topology.create_connectivity(2, dim)
             self.conn.append(domain.topology.connectivity(2, dim))
         self.num_cells = self.conn[2].num_nodes
@@ -123,10 +135,10 @@ class DofMap:
             assert dofs_per_edge.shape == (num_cells, 4)
 
         for cell_index in range(num_cells):
-            self._layout.set_entity_dofs(
+            self.dof_layout.set_entity_dofs(
                 (dofs_per_vert, dofs_per_edge[cell_index], dofs_per_face)
             )
-            entity_dofs = self._layout.get_entity_dofs()
+            entity_dofs = self.dof_layout.get_entity_dofs()
             for dim, conn in enumerate(self.conn):
                 entities = conn.links(cell_index)
                 for local_ent, ent in enumerate(entities):
