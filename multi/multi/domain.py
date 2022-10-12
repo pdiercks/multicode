@@ -210,18 +210,19 @@ class StructuredQuadGrid(object):
             cells.append(conn_02.links(tag))
         return np.unique(np.hstack(cells))
 
-    def get_cells_points(self, x):
-        """return all cells containing points given by coordinates `x`"""
-        try:
-            x = x.reshape(int(x.size/3), 3)
-        except ValueError as err:
-            raise err("x.shape = (num_points, 3) is required!")
+    # FIXME this is not predictable
+    # def get_cells_points(self, x):
+    #     """return all cells containing points given by coordinates `x`"""
+    #     try:
+    #         x = x.reshape(int(x.size/3), 3)
+    #     except ValueError as err:
+    #         raise err("x.shape = (num_points, 3) is required!")
 
-        # Find cells whose bounding-box collide with the the points
-        bb_tree = self.bb_tree
-        cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, x)
-        assert cell_candidates.num_nodes < 2
-        return cell_candidates.links(0)
+    #     # Find cells whose bounding-box collide with the the points
+    #     bb_tree = self.bb_tree
+    #     cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, x)
+    #     assert cell_candidates.num_nodes < 2
+    #     return cell_candidates.links(0)
 
     def get_cells_point_tags(self, tags):
         """return all cells containing points given by the point tags `tags`"""
