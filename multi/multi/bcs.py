@@ -225,7 +225,7 @@ class BoundaryConditions:
 
 
 def compute_multiscale_bcs(
-    problem, cell_index, edge_id, boundary_data, dofmap, chi, product=None, orth=False
+    problem, cell_index, edge, boundary_data, dofmap, chi, product=None, orth=False
 ):
     """compute multiscale bcs from given boundary data
 
@@ -240,8 +240,8 @@ def compute_multiscale_bcs(
         The linear problem.
     cell_index : int
         The cell index with respect to the coarse grid.
-    edge_id : int
-        Integer specifying the boundary edge.
+    edge : str
+        The boundary edge.
     boundary_data : dolfinx.fem.Function
         The (total) displacement value on the boundary.
         Will be projected onto the edge space.
@@ -263,37 +263,13 @@ def compute_multiscale_bcs(
         projected boundary conditions.
 
     """
-    int_to_str = ["bottom", "right", "top", "left"]
-    edge = int_to_str[edge_id]
+    assert edge in ("bottom", "right", "top", "left")
+    local_edge_index = dofmap.dof_layout.local_edge_index_map[edge]
+    local_vertices = dofmap.dof_layout.topology[1][local_edge_index]
 
-    edge_mesh = problem.domain.edges[edge]
+    edge_mesh, parent_facets, parent_vertices, _ = problem.domain.edges[edge]
     edge_space = problem.edge_spaces[edge]
     source = FenicsxVectorSpace(edge_space)
-
-    edge_coord = edge_mesh.geometry.x
-    edge_xmin = np.amin(edge_coord[:, 0])
-    edge_xmax = np.amax(edge_coord[:, 0])
-    edge_ymin = np.amin(edge_coord[:, 1])
-    edge_ymax = np.amax(edge_coord[:, 1])
-    breakpoint()
-
-    # FIXME for some reason this gives a PETSC ERROR
-    boundary_vertices = dolfinx.mesh.exterior_facet_indices(edge_mesh.topology)
-    boundary_nodes = dolfinx.mesh.compute_midpoints(edge_mesh, 0, boundary_vertices)
-
-    bcs = {}  # dofs are keys, bc_values are values
-    # coarse_vertices = np.array([[edge_xmin, edge_ymin, 0.0], [edge_xmax, edge_ymax, 0.0]])
-    # coarse_values = np.hstack([boundary_data(point) for point in coarse_vertices])
-    # TODO double check array shapes
-    coarse_values = interpolate(boundary_data, boundary_nodes)
-    # FIXME dofmap.locate_dofs does not exist
-    # TODO need to implement tabulate_dof_coordinates for this functionality ...
-    coarse_dofs = []
-    for vertex in boundary_vertices:
-        coarse_dofs += dofmap.entity_dofs(0, vertex)
-
-    for dof, val in zip(coarse_dofs, coarse_values):
-        bcs.update({dof: val})
 
     dofs_per_edge = dofmap.dofs_per_edge
     if isinstance(dofs_per_edge, (int, np.integer)):
@@ -303,36 +279,54 @@ def compute_multiscale_bcs(
         assert dofs_per_edge.shape == (dofmap.num_cells, 4)
         dofs_per_edge = dofs_per_edge[cell_index]
         add_fine_bcs = np.sum(dofs_per_edge) > 0
-        edge_basis_length = dofs_per_edge[edge_id]
+        edge_basis_length = dofs_per_edge[local_edge_index]
+
+    if edge == "bottom":
+        component = 0
+    elif edge == "top":
+        component = 0
+    elif edge == "left":
+        component = 1
+    elif edge == "right":
+        component = 1
+    else:
+        raise NotImplementedError
+
+    # need to know entities wrt the global coarse grid
+    # to determine the dof indices of the global problem
+    vertices_coarse_cell = dofmap.conn[0].links(cell_index)
+    edges_coarse_cell = dofmap.conn[1].links(cell_index)
+
+    boundary_vertices = vertices_coarse_cell[local_vertices]
+    cell_nodes = dolfinx.mesh.compute_midpoints(dofmap.domain, 0, vertices_coarse_cell)
+    boundary_nodes = cell_nodes[local_vertices]
+
+    coarse_values = interpolate(boundary_data, boundary_nodes)
+    coarse_dofs = []
+    for vertex in boundary_vertices:
+        coarse_dofs += dofmap.entity_dofs(0, vertex)
+
+    # initialize return value
+    bcs = {}  # dofs are keys, bc_values are values
+    for dof, val in zip(coarse_dofs, coarse_values.flatten()):
+        bcs.update({dof: val})
 
     if add_fine_bcs:
         # ### subtract coarse scale part from boundary data
         # FIXME interpolation for different meshes not supported (yet) in dolfinx
-        # g = df.interpolate(boundary_data, edge_space)
         x_dofs = edge_space.tabulate_dof_coordinates()
         g = interpolate(boundary_data, x_dofs)
-        # G = source.make_array([g.vector()])
-        G = source.from_numpy(g)
-
-        component = 0 if edge_id in (0, 2) else 1
-        if edge_id in (0, 2):
-            # horizontal edge
-            component = 0
-            nodes = np.array([edge_xmin, edge_xmax])
-        else:
-            # vertical edge
-            component = 1
-            nodes = np.array([edge_ymin, edge_ymax])
+        G = source.from_numpy(g.reshape(1, source.dim))
 
         def boundary(x):
-            start = np.isclose(x[component], nodes[0])
-            end = np.isclose(x[component], nodes[1])
+            start = np.isclose(x[component], boundary_nodes[:, component][0])
+            end = np.isclose(x[component], boundary_nodes[:, component][1])
             return np.logical_or(start, end)
 
-        line = NumpyLine(nodes)
+        line = NumpyLine(boundary_nodes[:, component])
         phi_array = line.interpolate(edge_space, component)
         phi = source.from_numpy(phi_array)
-        Gfine = G - phi.lincomb(coarse_values)
+        Gfine = G - phi.lincomb(coarse_values.flatten())
 
         # ### build inner product for edge space
         boundary_dofs = dolfinx.fem.locate_dofs_geometrical(edge_space, boundary)
@@ -354,13 +348,11 @@ def compute_multiscale_bcs(
             Gramian = edge_basis.gramian(product=product)
             R = edge_basis.inner(Gfine, product=product)
             coeff = np.linalg.solve(Gramian, R)
-        edge_mid_point = [
-            [
-                (edge_xmax - edge_xmin) / 2 + edge_xmin,
-                (edge_ymax - edge_ymin) / 2 + edge_ymin,
-            ]
-        ]
-        fine_dofs = dofmap.locate_dofs(edge_mid_point)
+
+        # determine entity tag for the edge of the coarse grid cell
+        edges_coarse_cell = dofmap.conn[1].links(cell_index)
+        edge_tag = edges_coarse_cell[local_edge_index]
+        fine_dofs = np.array(dofmap.entity_dofs(1, edge_tag))
 
         try:
             coeff = coeff.reshape(fine_dofs.shape)

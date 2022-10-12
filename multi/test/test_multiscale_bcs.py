@@ -5,11 +5,10 @@ from mpi4py import MPI
 import numpy as np
 from multi.bcs import compute_multiscale_bcs
 from multi.dofmap import DofMap
-from multi.domain import RectangularDomain
+from multi.domain import RceDomain
 from multi.problems import LinearElasticityProblem
 from multi.preprocessing import (
     create_rce_grid_01,
-    create_line_grid,
     create_rectangle_grid,
 )
 from multi.shapes import get_hierarchical_shape_functions
@@ -23,50 +22,26 @@ def test():
             tf.name, MPI.COMM_WORLD, gdim=2
         )
 
-    # create edge grids
-    # my_edges = {}
-    # edges = ["bottom", "right", "top", "left"]
-    # points = [
-    #         ([0, 0, 0], [1, 0, 0]),
-    #         ([1, 0, 0], [1, 1, 0]),
-    #         ([0, 1, 0], [1, 1, 0]),
-    #         ([0, 0, 0], [0, 1, 0]),
-    #         ]
-    # for name, (start, end) in zip(edges, points):
-    #     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-    #         create_line_grid(start, end, num_cells=10, out_file=tf.name)
-    #         line, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    #         my_edges[name] = line
 
-    # FIXME there may be an issue with line grid creation
-    # try submesh instead ...
-
-    def bottom(x):
-        return np.isclose(x[1], 0.0)
-
-    bottom_entities = dolfinx.mesh.locate_entities_boundary(rce_mesh, 1, bottom)
-    bottom_mesh = dolfinx.mesh.create_submesh(rce_mesh, 1, bottom_entities)[0]
-    # FIXME this does not work either ...
-    vertices = dolfinx.mesh.exterior_facet_indices(bottom_mesh.topology)
-
-    breakpoint()
-    rce_domain = RectangularDomain(
-        rce_mesh, cell_markers, facet_markers, index=1, edges=my_edges
+    rce_domain = RceDomain(
+        rce_mesh, cell_markers, facet_markers, index=1, edges=True
     )
     V = dolfinx.fem.VectorFunctionSpace(rce_domain.mesh, ("CG", 1))
     problem = LinearElasticityProblem(
         rce_domain, V, [30e3, 60e3], [0.2, 0.2], plane_stress=True
     )
-    # TODO edge spaces are actually vector elements of dim=2
+    bottom_space = problem.edge_spaces["bottom"]
+    bottom_el = bottom_space.ufl_element()
+    assert bottom_el.degree() == 1
+    assert bottom_el.family() == "Lagrange"
+    assert bottom_el.value_shape()[0] == 2
 
-    # TODO create coarse grid
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle_grid(
             0.0, 1.0, 0.0, 1.0, num_cells=1, recombine=True, out_file=tf.name
         )
         coarse_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
-    # grid = StructuredQuadGrid(coarse_grid)
     dofmap = DofMap(coarse_grid)
 
     ndofs_ent = (2, 4, 0)
@@ -75,15 +50,17 @@ def test():
 
     """DofMap
 
-    1------3       2,3-----6,7
+    2------3       4,5-----6,7
     |      |        |      |
     |      |        |      |
-    0------2       0,1-----4,5
+    0------1       0,1-----2,3
 
-            8,  9, 10, 11 for left edge
-           12, 13, 14, 15 for bottom edge
-           16, 17, 18, 19 for top edge
-           20, 21, 22, 23 for right edge
+            see DofMap.QuadrilateralCellLayout
+            for ordering of edges
+            8,  9, 10, 11 for bottom edge
+           12, 13, 14, 15 for left edge
+           16, 17, 18, 19 for right edge
+           20, 21, 22, 23 for top edge
 
 
     physical space x in [0, 1]
@@ -97,7 +74,7 @@ def test():
     x_dofs = problem.edge_spaces["bottom"].tabulate_dof_coordinates()
     hierarchical = get_hierarchical_shape_functions(x_dofs[:, 0], pmax, ncomp=2)
     cell_index = 0
-    edge_id = 0
+    edge_id = "bottom"
     boundary_data = dolfinx.fem.Function(V)
     boundary_data.interpolate(lambda x: (x[0], np.zeros_like(x[0])))
     bcs = compute_multiscale_bcs(
@@ -110,15 +87,17 @@ def test():
         product=None,
         orth=False,
     )
-    assert np.allclose(np.array(list(bcs.keys())), np.array([12, 13, 14, 15]))
+    # expect: 2 * 2 coarse dofs, and 1 * 4 fine dofs
+    assert len(bcs.keys()) == 8
+    assert np.allclose(np.array(list(bcs.keys())), np.array([0, 1, 2, 3, 8, 9, 10, 11]))
     values = np.zeros(8)
     values[2] = 1.0
     assert np.allclose(np.array(list(bcs.values())), values)
 
     boundary_data = dolfinx.fem.Function(V)
     boundary_data.interpolate(lambda x: (np.zeros_like(x[0]), x[0] * x[0]))
-    # left, bottom, top, right
-    dofs_per_edge = np.array([[3, 2 * (pmax - 1), 2, 5]])
+    # distribute dofs in order bottom, left, right, top
+    dofs_per_edge = np.array([[2 * (pmax-1), 3, 5, 2]])
     dofmap.distribute_dofs(2, dofs_per_edge, 0)
     bcs = compute_multiscale_bcs(
         problem,
@@ -130,10 +109,10 @@ def test():
         product=None,
         orth=False,
     )
+    # expected: again 4 coarse dofs, and 2 * (pmax-1) fine dofs
     assert np.allclose(
         np.array(list(bcs.keys())),
-        # left: 8, 9, 10
-        np.array([11, 12, 13, 14]),
+        np.array([0, 1, 2, 3, 8, 9, 10, 11]),
     )
     values = np.zeros(8)
     values[3] = 1.0  # y-component for linear shape function φ(x)=x
