@@ -1,14 +1,22 @@
 import dolfinx
 from contextlib import ExitStack
 import numpy as np
-# from petsc4py import PETSc
-from multi.product import InnerProduct
 from pymor.algorithms.gram_schmidt import gram_schmidt
-from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
 
 
-def build_nullspace(V, product=None, gdim=2):
-    """Build PETSc nullspace for 3D elasticity"""
+def build_nullspace(source, product=None, gdim=2):
+    """Build PETSc nullspace for 3D elasticity
+
+    Parameters
+    ----------
+    source : pymor.bindings.fenicsx.FenicsxVectorSpace
+        The FE space.
+    product : optional
+        The inner product wrt which to orthonormalize.
+    gdim : optional, int
+        The geometric dimension.
+    """
+
     if gdim not in (2, 3):
         raise NotImplementedError
 
@@ -21,6 +29,7 @@ def build_nullspace(V, product=None, gdim=2):
     ns_dim = n_trans + n_rot
 
     # Create list of vectors for building nullspace
+    V = source.V
     index_map = V.dofmap.index_map
     bs = V.dofmap.index_map_bs
     ns = [dolfinx.la.create_petsc_vector(index_map, bs) for i in range(ns_dim)]
@@ -52,16 +61,9 @@ def build_nullspace(V, product=None, gdim=2):
             basis[2][dofs[1]] = x0
 
     # Orthonormalise the basis using pymor
-    source = FenicsxVectorSpace(V)
     B = source.make_array(ns)
 
-    inner_product = InnerProduct(V, product=product)
-    matrix = inner_product.assemble_matrix()
-    if matrix is not None:
-        operator = FenicsxMatrixOperator(matrix, V, V)
-    else:
-        operator = None
-    gram_schmidt(B, operator, atol=0.0, rtol=0.0, copy=False)
+    gram_schmidt(B, product, atol=0.0, rtol=0.0, copy=False)
 
     # return value?
     # --> to remove the kernel I need the pymor VectorArray

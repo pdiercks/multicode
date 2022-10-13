@@ -120,20 +120,20 @@ class BoundaryConditions:
                 bc = dolfinx.fem.dirichletbc(value, dofs, V)
             self._bcs.append(bc)
 
-    def add_neumann_bc(self, marker, values):
+    def add_neumann_bc(self, marker, value):
         """adds a Neumann BC.
 
         Parameters
         ----------
         marker : int
-        values : some ufl type
+        value : some ufl type
             The neumann data, e.g. traction vector.
 
         """
         if isinstance(marker, int):
             assert marker in self._facet_markers.values
 
-        self._neumann_bcs.append([values, marker])
+        self._neumann_bcs.append([value, marker])
 
     @property
     def has_neumann(self):
