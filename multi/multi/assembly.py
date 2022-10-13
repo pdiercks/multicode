@@ -1,3 +1,4 @@
+import dolfinx
 import numpy as np
 from multi.bcs import compute_multiscale_bcs, apply_bcs
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
@@ -8,7 +9,6 @@ def assemble_rom(
     logger,
     problem,
     dofmap,
-    cell_to_basis,
     bases,
     edge_basis=None,
     dirichlet=None,
@@ -25,8 +25,6 @@ def assemble_rom(
         The problem defined on the subdomain.
     dofmap : multi.dofmap.DofMap
         The DofMap of the reduced order model.
-    cell_to_basis : np.ndarray
-        Mapping from cell index to basis (configuration).
     bases : list of np.ndarray
         The reduced bases with local dof ordering.
     edge_basis : np.ndarray or np.lib.npyio.NpzFile, optional
@@ -53,6 +51,7 @@ def assemble_rom(
         The right hand side.
 
     """
+    assert len(bases) == dofmap.num_cells
 
     # ### assemble local contributions once
     problem.clear_bcs()  # do not apply bcs to matrix
@@ -72,17 +71,24 @@ def assemble_rom(
     project_dirichlet = dirichlet.pop("compute_multiscale_bcs", False)
     neumann = neumann or {}
 
+    grid = dofmap.grid
+
     timer = Timer("rom")
     bcs = {}
-    edge_to_str = "brtl"
     with logger.block("Start of Assembly loop ..."):
         timer.start()
-        for cell_index, cell in enumerate(dofmap.cells):
+        for cell_index in range(dofmap.num_cells):
             # translate since dirichlet bcs dependent on physical coord
-            offset = np.around(dofmap.points[cell][0], decimals=3)  # lower left corner
-            problem.domain.translate(offset)
+
+            # TODO there are no points and cells
+            # offset = np.around(dofmap.points[cell][0], decimals=3)  # lower left corner
+            # problem.domain.translate(offset)
+            vertices = grid.get_entities(0, cell_index)
+            dx = dolfinx.mesh.compute_midpoints(grid.mesh, 0, vertices[0])
+            problem.domain.translate(dx)
+
             dofs = dofmap.cell_dofs(cell_index)
-            A[np.ix_(dofs, dofs)] += A_local[cell_to_basis[cell_index]]
+            A[np.ix_(dofs, dofs)] += A_local[cell_index]
 
             # ### Neumann BCs
             if cell_index in neumann.keys():
@@ -94,25 +100,32 @@ def assemble_rom(
                     problem.add_neumann_bc(marker, value)
                 F = problem.assemble_vector()
                 # F should be PETSc.Vec
-                b_local = bases[cell_to_basis[cell_index]] @ F.array
+                b_local = bases[cell_index] @ F.array
                 b[dofs] += b_local
 
             # ### Dirichlet BCs
             if project_dirichlet:
-                assert edge_basis is not None
+                # FIXME edge_basis not required if modes_per_edge=0
                 if cell_index in dirichlet.keys():
                     for edge, boundary_data in dirichlet[cell_index].items():
-                        try:
-                            # edge basis might be np.npzfile
-                            chi = edge_basis[edge_to_str[edge]]
-                        except IndexError:
-                            # or np.ndarray in case of hierarchical basis
-                            chi = edge_basis
+                        if edge_basis is not None:
+                            try:
+                                # edge basis might be np.npzfile
+                                chi = edge_basis[edge]
+                            except IndexError:
+                                # or np.ndarray in case of hierarchical basis
+                                chi = edge_basis
+                        else:
+                            chi = None
+                        # FIXME specific to block problem
+                        # or do this always like this??
+                        g = dolfinx.fem.Function(problem.V)
+                        g.interpolate(boundary_data)
                         bc_local = compute_multiscale_bcs(
                             problem,
                             cell_index,
                             edge,
-                            boundary_data,
+                            g,
                             dofmap,
                             chi,
                             product=edge_product,
@@ -122,7 +135,7 @@ def assemble_rom(
                             bcs.update({k: v})
 
             # translate back
-            problem.domain.translate(-offset)
+            problem.domain.translate(-dx)
         timer.stop()
         logger.info(f"... Assembly took {timer.dt}s.")
 

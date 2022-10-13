@@ -36,7 +36,10 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
     for filepath, string in bases:
         loaded.add(string)
         npz = np.load(filepath)
-        basis_functions[string] = npz[string]
+        try:
+            basis_functions[string] = npz[string]
+        except KeyError:
+            basis_functions[string] = list()
         npz.close()
         num_modes[string] = len(basis_functions[string])
 
@@ -51,8 +54,9 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
     # FIXME how can I avoid to hard code the local ordering everywhere???
     for edge in ["b", "l", "r", "t"]:
         rb = basis_functions[edge][:max_modes_per_edge]
-        num_max_modes.append(rb.shape[0])
-        R.append(rb)
+        num_max_modes.append(len(rb))
+        if len(rb) > 0:
+            R.append(rb)
 
     if return_num_modes:
         return np.vstack(R), tuple(num_max_modes)

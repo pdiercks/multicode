@@ -6,6 +6,7 @@ from dolfinx.io import gmshio
 import numpy as np
 from mpi4py import MPI
 from multi.dofmap import DofMap
+from multi.domain import StructuredQuadGrid
 from multi.preprocessing import create_rectangle_grid
 
 
@@ -13,7 +14,9 @@ def test():
     """test dofmap with type(dofs_per_edge)==int"""
     n = 8
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(n, n), recombine=True, out_file=tf.name
+        )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     n_vertex_dofs = 2
@@ -28,7 +31,8 @@ def test():
     num_vertices = conn_00.num_nodes
     num_edges = conn_11.num_nodes
 
-    dofmap = DofMap(domain)
+    grid = StructuredQuadGrid(domain)
+    dofmap = DofMap(grid)
     dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, n_face_dofs)
 
     assert dofmap.num_dofs() == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
@@ -54,6 +58,10 @@ def test():
     u.interpolate(lambda x: (44.7 * x[0], -12.3 * x[1]))
     u_values = u.vector.array
 
+    # FIXME
+    # that still does not check whether the dofs
+    # have the same coordinates ...?
+
     for ci in range(dofmap.num_cells):
         mydofs = dofmap.cell_dofs(ci)
         expected = get_global_dofs(V, ci)
@@ -64,7 +72,7 @@ def test():
     def bottom(x):
         return np.isclose(x[1], 0.0)
 
-    ents = dofmap.get_entities(1, bottom)
+    ents = dofmap.grid.locate_entities(1, bottom)
     assert ents.size == n
     # this should return an empty list
     # since zero dofs per edge are distributed
@@ -75,7 +83,9 @@ def test():
 def test_array_uniform():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(2, 1), recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
+        )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     # 6 vertices
@@ -93,7 +103,8 @@ def test_array_uniform():
     num_vertices = conn_00.num_nodes
     num_edges = conn_11.num_nodes
 
-    dofmap = DofMap(domain)
+    grid = StructuredQuadGrid(domain)
+    dofmap = DofMap(grid)
     dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, n_face_dofs)
 
     assert dofmap.num_dofs() == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
@@ -112,7 +123,7 @@ def test_array_uniform():
     def left(x):
         return np.isclose(x[0], 0.0)
 
-    ents = dofmap.get_entities(1, left)
+    ents = dofmap.grid.locate_entities(1, left)
     assert ents.size == 1
     dofs = dofmap.entity_dofs(1, ents[0])
     assert len(dofs) == 3
@@ -121,7 +132,7 @@ def test_array_uniform():
     def bottom(x):
         return np.isclose(x[1], 0.0)
 
-    ents = dofmap.get_entities(1, bottom)
+    ents = dofmap.grid.locate_entities(1, bottom)
     assert ents.size == 2
     dofs = dofmap.entity_dofs(1, ents[0])
     assert len(dofs) == 3
@@ -131,7 +142,9 @@ def test_array_uniform():
 def test_array():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(2, 1), recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
+        )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     """
     v2----e3----v3
@@ -153,7 +166,8 @@ def test_array():
     conn_00 = domain.topology.connectivity(0, 0)
     num_vertices = conn_00.num_nodes
 
-    dofmap = DofMap(domain)
+    grid = StructuredQuadGrid(domain)
+    dofmap = DofMap(grid)
     dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, n_face_dofs)
 
     N = dofmap.num_dofs()
@@ -180,18 +194,24 @@ def test_array():
     def top(x):
         return np.isclose(x[1], 1.0)
 
-    vertex = dofmap.get_entities(0, origin)
+    vertex = dofmap.grid.locate_entities(0, origin)
     assert len(vertex) == 1
     dofs = dofmap.entity_dofs(0, vertex[0])
     assert np.allclose(np.array([0, 1]), np.array(dofs))
 
-    edges = dofmap.get_entities_boundary(1, top)
+    edges = dofmap.grid.locate_entities_boundary(1, top)
     dofs = []
     for edge in edges:
         dofs += dofmap.entity_dofs(1, edge)
     assert len(dofs) == np.sum(dofs_per_edge[:, 3])
     distributed_until_top_0 = 8 + np.sum(dofs_per_edge[0, :3])
-    distributed_until_top_1 = 8 + np.sum(dofs_per_edge[0, :]) + 4 + np.sum(dofs_per_edge[1, :3]) - dofs_per_edge[1, 1]
+    distributed_until_top_1 = (
+        8
+        + np.sum(dofs_per_edge[0, :])
+        + 4
+        + np.sum(dofs_per_edge[1, :3])
+        - dofs_per_edge[1, 1]
+    )
     assert np.allclose(
         np.hstack(
             (

@@ -5,6 +5,8 @@ import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorArray
 
 
+# TODO this depends on the order in which the basis functions
+# were read from the npz file --> multi.io.read_bases
 def select_modes(basis, modes, max_modes):
     """select modes according to local dof order in multi.dofmap.DofMap
 

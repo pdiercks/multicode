@@ -56,7 +56,9 @@ class RceDomain(Domain):
         dictionary (self.edges).
     """
 
-    def __init__(self, mesh, cell_markers=None, facet_markers=None, index=None, edges=False):
+    def __init__(
+        self, mesh, cell_markers=None, facet_markers=None, index=None, edges=False
+    ):
         super().__init__(mesh, cell_markers, facet_markers, index)
         if edges:
             self._create_edge_meshes()
@@ -111,7 +113,9 @@ class RceDomain(Domain):
             tdim = submesh.topology.dim
             fdim = tdim - 1
             submesh.topology.create_connectivity(fdim, tdim)
-            boundary_vertices = sorted(dolfinx.mesh.exterior_facet_indices(submesh.topology))
+            boundary_vertices = sorted(
+                dolfinx.mesh.exterior_facet_indices(submesh.topology)
+            )
 
             child_facets = []
             vertex_to_edge = submesh.topology.connectivity(0, 1)
@@ -119,7 +123,7 @@ class RceDomain(Domain):
                 child_facets.append(vertex_to_edge.links(vertex))
             child_facets = np.hstack(child_facets)
 
-            parent_facets = np.array(parent_facets)[child_facets] 
+            parent_facets = np.array(parent_facets)[child_facets]
             parent.topology.create_connectivity(1, 0)
             facet_to_vertex = parent.topology.connectivity(1, 0)
             vertex_candidates = []
@@ -194,6 +198,8 @@ class StructuredQuadGrid(object):
         self.mesh.topology.create_connectivity(2, 1)
         self.mesh.topology.create_connectivity(0, 2)
         self.num_cells = self.mesh.topology.connectivity(2, 0).num_nodes
+        self.cells = np.arange(self.num_cells)
+        self.tdim = mesh.topology.dim
 
     @property
     def cell_sets(self):
@@ -228,6 +234,13 @@ class StructuredQuadGrid(object):
         conn = self.mesh.topology.connectivity(2, dim)
         return conn.links(cell_index)
 
+    def locate_entities(self, dim, marker):
+        return dolfinx.mesh.locate_entities(self.mesh, dim, marker)
+
+    def locate_entities_boundary(self, dim, marker):
+        assert dim < self.mesh.topology.dim
+        return dolfinx.mesh.locate_entities_boundary(self.mesh, dim, marker)
+
     @property
     def fine_grids(self):
         return self._fine_grids
@@ -249,12 +262,17 @@ class StructuredQuadGrid(object):
         fine_grids = self.fine_grids[cells]
 
         for cell, grid_path in zip(active_cells, fine_grids):
-            points = np.around(self.points[cell], decimals=5)
+            vertices = self.get_entities(0, cell)
+            dx = dolfinx.mesh.compute_midpoints(self.mesh, 0, vertices[0])
 
-            mesh = meshio.read(grid_path)
+            try:
+                instream = grid_path.as_posix()
+            except AttributeError:
+                instream = grid_path
+            mesh = meshio.read(instream)
 
             # translation
-            mesh.points += points[0]
+            mesh.points += dx
 
             with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tf:
                 subdomains.append(tf.name)

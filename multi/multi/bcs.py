@@ -176,14 +176,16 @@ class BoundaryConditions:
 
 
 def compute_multiscale_bcs(
-    problem, cell_index, edge, boundary_data, dofmap, chi, product=None, orth=False
+    problem, cell_index, edge, boundary_data, dofmap, chi=None, product=None, orth=False
 ):
     """compute multiscale bcs from given boundary data
 
-    The dof values for the fine scale edge basis are computed
-    via projection of the boundary data onto the fine scale basis.
     The coarse scale basis functions are assumed to be linear functions
     with value 1 or 0 at the endpoints of the edge mesh.
+    The dof values for the fine scale edge basis are computed
+    via projection of the boundary data onto the fine scale basis.
+    If `chi` is None, or the number of dofs per edge (dofmap) is
+    < 1, then only the coarse dof values are computed.
 
     Parameters
     ----------
@@ -198,7 +200,7 @@ def compute_multiscale_bcs(
         Will be projected onto the edge space.
     dofmap : multi.dofmap.DofMap
         The dofmap of the reduced order model.
-    chi : np.ndarray
+    chi : optional, np.ndarray
         The fine scale edge basis. ``chi.shape`` has to agree
         with number of dofs for current coarse grid cell.
     product : str or ufl.form.Form, optional
@@ -249,7 +251,9 @@ def compute_multiscale_bcs(
     edges_coarse_cell = dofmap.conn[1].links(cell_index)
 
     boundary_vertices = vertices_coarse_cell[local_vertices]
-    cell_nodes = dolfinx.mesh.compute_midpoints(dofmap.domain, 0, vertices_coarse_cell)
+    cell_nodes = dolfinx.mesh.compute_midpoints(
+        dofmap.grid.mesh, 0, vertices_coarse_cell
+    )
     boundary_nodes = cell_nodes[local_vertices]
 
     coarse_values = interpolate(boundary_data, boundary_nodes)
@@ -263,6 +267,7 @@ def compute_multiscale_bcs(
         bcs.update({dof: val})
 
     if add_fine_bcs:
+        assert chi is not None
         # ### subtract coarse scale part from boundary data
         # FIXME interpolation for different meshes not supported (yet) in dolfinx
         x_dofs = edge_space.tabulate_dof_coordinates()

@@ -5,7 +5,7 @@ from mpi4py import MPI
 import numpy as np
 from multi.bcs import compute_multiscale_bcs
 from multi.dofmap import DofMap
-from multi.domain import RceDomain
+from multi.domain import RceDomain, StructuredQuadGrid
 from multi.problems import LinearElasticityProblem
 from multi.preprocessing import (
     create_rce_grid_01,
@@ -22,10 +22,7 @@ def test():
             tf.name, MPI.COMM_WORLD, gdim=2
         )
 
-
-    rce_domain = RceDomain(
-        rce_mesh, cell_markers, facet_markers, index=1, edges=True
-    )
+    rce_domain = RceDomain(rce_mesh, cell_markers, facet_markers, index=1, edges=True)
     V = dolfinx.fem.VectorFunctionSpace(rce_domain.mesh, ("CG", 1))
     problem = LinearElasticityProblem(
         rce_domain, V, [30e3, 60e3], [0.2, 0.2], plane_stress=True
@@ -42,7 +39,8 @@ def test():
         )
         coarse_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
-    dofmap = DofMap(coarse_grid)
+    cgrid = StructuredQuadGrid(coarse_grid)
+    dofmap = DofMap(cgrid)
 
     ndofs_ent = (2, 4, 0)
     dofmap.distribute_dofs(*ndofs_ent)
@@ -97,7 +95,7 @@ def test():
     boundary_data = dolfinx.fem.Function(V)
     boundary_data.interpolate(lambda x: (np.zeros_like(x[0]), x[0] * x[0]))
     # distribute dofs in order bottom, left, right, top
-    dofs_per_edge = np.array([[2 * (pmax-1), 3, 5, 2]])
+    dofs_per_edge = np.array([[2 * (pmax - 1), 3, 5, 2]])
     dofmap.distribute_dofs(2, dofs_per_edge, 0)
     bcs = compute_multiscale_bcs(
         problem,

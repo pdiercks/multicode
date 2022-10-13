@@ -17,11 +17,12 @@ def prepare_test_data(n, modes, cell_index):
     right = np.ones((modes[1], n)) * 3
     top = np.ones((modes[2], n)) * 4
     left = np.ones((modes[3], n)) * 5
-    np.savez(DATA / f"basis_{cell_index:03}.npz", phi=phi, b=bottom, r=right, t=top, l=left)
+    np.savez(
+        DATA / f"basis_{cell_index:03}.npz", phi=phi, b=bottom, r=right, t=top, l=left
+    )
 
 
 def test_bases_loader_read_bases():
-    # FIXME cell indices are numbered differently in dolfinx
     """
     578
     246
@@ -39,21 +40,28 @@ def test_bases_loader_read_bases():
     prepare_test_data(V_dim, [9, 9, 9, 9], 8)
 
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 3., 0., 3., num_cells=(3, 3), recombine=True, out_file=tf.name)
-        domain, cell_markers, facet_markers = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+        create_rectangle_grid(
+            0.0, 3.0, 0.0, 3.0, num_cells=(3, 3), recombine=True, out_file=tf.name
+        )
+        domain, cell_markers, facet_markers = gmshio.read_from_msh(
+            tf.name, MPI.COMM_WORLD, gdim=2
+        )
 
     grid = StructuredQuadGrid(domain, cell_markers, facet_markers)
 
-    expected_num_modes = np.array([
-        [1, 1, 2, 3],
-        [2, 2, 2, 5],
-        [3, 3, 5, 3],
-        [4, 2, 4, 7],
-        [5, 5, 5, 5],
-        [3, 6, 8, 6],
-        [7, 5, 7, 7],
-        [5, 8, 8, 8],
-        [7, 8, 9, 9]])
+    expected_num_modes = np.array(
+        [
+            [1, 1, 2, 3],
+            [2, 2, 2, 5],
+            [3, 3, 5, 3],
+            [4, 2, 4, 7],
+            [5, 5, 5, 5],
+            [3, 6, 8, 6],
+            [7, 5, 7, 7],
+            [5, 8, 8, 8],
+            [7, 8, 9, 9],
+        ]
+    )
 
     num_cells = grid.num_cells
     assert num_cells == 9
@@ -63,14 +71,16 @@ def test_bases_loader_read_bases():
     right = grid.get_cells(1, grid.facet_markers.find(3))
     top = grid.get_cells(1, grid.facet_markers.find(4))
 
-    boundary_cells = np.unique(
-            np.hstack((bottom, left, right, top))
-            )
+    boundary_cells = np.unique(np.hstack((bottom, left, right, top)))
     inner_cells = np.setdiff1d(np.arange(num_cells), boundary_cells)
     corner_cells = np.array([0, 3, 5, 8], dtype=np.intc)
     boundary_cells = np.setdiff1d(boundary_cells, corner_cells)
 
-    grid.cell_sets = {"inner": inner_cells, "boundary": boundary_cells, "corner": corner_cells}
+    grid.cell_sets = {
+        "inner": inner_cells,
+        "boundary": boundary_cells,
+        "corner": corner_cells,
+    }
     # FIXME for the BasesLoader to work always require
     # cell sets 'inner', 'boundary' and 'corner' to be defined ...
 
@@ -84,7 +94,6 @@ def test_bases_loader_read_bases():
     for i in range(9):
         result = np.append(result, bases[i].shape[0])
     assert np.allclose(expected, result - 8)
-
 
 
 if __name__ == "__main__":

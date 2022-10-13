@@ -50,7 +50,7 @@ class QuadrilateralDofLayout(object):
         self.topology = basix.topology(basix.CellType.quadrilateral)
         self.geometry = basix.geometry(basix.CellType.quadrilateral)
         self.num_entities = [len(ents) for ents in self.topology]
-        self.local_edge_index_map = {"left": 1, "bottom": 0, "top": 3, "right": 2} 
+        self.local_edge_index_map = {"left": 1, "bottom": 0, "top": 3, "right": 2}
 
     def get_entity_dofs(self):
         return self.__entity_dofs
@@ -91,16 +91,17 @@ class DofMap:
 
     Parameters
     ----------
-    domain : dolfinx.mesh.Mesh
+    grid : multi.domain.StructuredQuadGrid
         The quadrilateral mesh of the computational domain.
     """
 
-    def __init__(self, domain):
-        self.domain = domain
+    def __init__(self, grid):
+        self.grid = grid
         self.dof_layout = QuadrilateralDofLayout()
 
         # create connectivities
         self.conn = []
+        domain = grid.mesh
         for dim in range(len(self.dof_layout.num_entities)):
             domain.topology.create_connectivity(2, dim)
             self.conn.append(domain.topology.connectivity(2, dim))
@@ -154,14 +155,20 @@ class DofMap:
         self.dofs_per_edge = dofs_per_edge
         self.dofs_per_face = dofs_per_face
 
-    def get_entities(self, dim, marker):
-        """dolfinx.mesh.locate_entities"""
-        return dolfinx.mesh.locate_entities(self.domain, dim, marker)
+    # FIXME
+    # pass StructuredQuadGrid to Dofmap instead of the dolfinx.mesh.Mesh
+    # StructuredQuadGrid.get_entities(dim, cell_index) works topologically whereas
+    # Dofmap.get_entities(dim, marker) determines entities geometrically !!
+    # TODO StructuredQuadGrid as arg to DofMap
+    # TODO add methods locate_entities and locate_entities_boundary to StructuredQuadGrid
+    # def get_entities(self, dim, marker):
+    #     """dolfinx.mesh.locate_entities"""
+    #     return dolfinx.mesh.locate_entities(self.domain, dim, marker)
 
-    def get_entities_boundary(self, dim, marker):
-        """dolfinx.mesh.locate_entities_boundary"""
-        assert dim < self.domain.topology.dim
-        return dolfinx.mesh.locate_entities_boundary(self.domain, dim, marker)
+    # def get_entities_boundary(self, dim, marker):
+    #     """dolfinx.mesh.locate_entities_boundary"""
+    #     assert dim < self.domain.topology.dim
+    #     return dolfinx.mesh.locate_entities_boundary(self.domain, dim, marker)
 
     def get_entity_coordinates(self, dim, entities):
         """return coordinates of `entities` of dimension `dim`"""
