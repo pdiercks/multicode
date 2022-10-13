@@ -94,6 +94,7 @@ class RceDomain(Domain):
     # FIXME: remove this?
     # working with the StructuredQuadGrid or DofMap, i.e. the actual
     # coarse grid is much easier to achieve the same thing
+    # however, this might be useful if coarse grid is not available
     def get_corner_vertices(self):
         """determine the vertices of the RceDomain
 
@@ -136,9 +137,11 @@ class RceDomain(Domain):
             parent_facets = stuff[1]
             candidates[key] = set(determine_candidates(submesh, parent, parent_facets))
 
+        # if this order does not follow multi.dofmap.QuadrilateralDofLayout
+        # the ordering of coarse scale basis is incorrect
         v0 = candidates["bottom"].intersection(candidates["left"])
-        v1 = candidates["left"].intersection(candidates["top"])
-        v2 = candidates["bottom"].intersection(candidates["right"])
+        v1 = candidates["bottom"].intersection(candidates["right"])
+        v2 = candidates["left"].intersection(candidates["top"])
         v3 = candidates["right"].intersection(candidates["top"])
         verts = [v0, v1, v2, v3]
         assert all([len(s) == 1 for s in verts])

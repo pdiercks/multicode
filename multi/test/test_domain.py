@@ -68,8 +68,8 @@ def test_2d():
 
     reference = np.array([
         [2.4, 2.4, 0.],
-        [2.4, 3.4, 0.],
         [3.4, 2.4, 0.],
+        [2.4, 3.4, 0.],
         [3.4, 3.4, 0.]])
     assert np.allclose(reference, rectangle.mesh.geometry.x[vertices])
     computed = dolfinx.mesh.compute_midpoints(rectangle.mesh, 0, vertices)

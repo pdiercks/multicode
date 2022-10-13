@@ -13,10 +13,21 @@ class BoundaryDataFactory(object):
         self.domain = domain
         self.V = V
 
-        self.tdim = domain.topology.dim
-        self.fdim = self.tdim - 1
-        domain.topology.create_connectivity(self.fdim, self.tdim)
-        self.boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+        # boundary facets
+        tdim = domain.topology.dim
+        fdim = tdim - 1
+        domain.topology.create_connectivity(fdim, tdim)
+        boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+        # boundary dofs
+        function = dolfinx.fem.Function(V)
+        function.x.set(0.0)
+        dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
+        bc = dolfinx.fem.dirichletbc(function, dofs)
+
+        self.tdim = tdim
+        self.fdim = fdim
+        self.boundary_facets = boundary_facets
+        self.boundary_dofs = bc.dof_indices()[0]
 
     def create_function(self, values, boundary_dofs):
         u = dolfinx.fem.Function(self.V)

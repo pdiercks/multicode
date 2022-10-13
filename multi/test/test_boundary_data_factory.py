@@ -31,6 +31,7 @@ def test():
     data_factory = BoundaryDataFactory(rectangle, V)
     f = data_factory.create_function(mode, bottom_dofs)
     bc_0 = data_factory.create_bc(f)
+    assert np.allclose(bc_0.dof_indices()[0], data_factory.boundary_dofs)
     g = data_factory.create_function(np.ones(bottom_dofs.size, dtype=np.float64), bottom_dofs)
     bc_1 = data_factory.create_bc(g)
 
