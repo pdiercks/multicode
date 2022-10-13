@@ -47,7 +47,9 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
     max_modes_per_edge = modes_per_edge or max([num_modes[edge] for edge in loaded])
 
     R.append(basis_functions["phi"])
-    for edge in ["b", "r", "t", "l"]:
+    # this order also has to comply with QuadrilateralDofLayout ...
+    # FIXME how can I avoid to hard code the local ordering everywhere???
+    for edge in ["b", "l", "r", "t"]:
         rb = basis_functions[edge][:max_modes_per_edge]
         num_max_modes.append(rb.shape[0])
         R.append(rb)
@@ -64,7 +66,7 @@ class BasesLoader(object):
         assert hasattr(coarse_grid, "cell_sets")
         self.dir = directory
         self.grid = coarse_grid
-        self.num_cells = coarse_grid.cells.shape[0]
+        self.num_cells = coarse_grid.num_cells
 
     def read_bases(self):
         """read basis and max number of modes for each cell in the coarse grid"""
@@ -88,13 +90,13 @@ class BasesLoader(object):
 
         marked_edges = {}
         self._bases_config = {}
-        int_to_edge_str = ["l", "b", "t", "r"]
+        int_to_edge_str = ["b", "l", "r", "t"]
 
-        cells = self.grid.cells
+        # FIXME the order of cell sets is important?!
         cell_sets = self.grid.cell_sets
 
         for cset in cell_sets.values():
-            for cell_index, cell in zip(cset, cells[cset]):
+            for cell_index in cset:
 
                 path = self.dir / f"basis_{cell_index:03}.npz"
                 self._bases_config[cell_index] = []
@@ -102,9 +104,9 @@ class BasesLoader(object):
 
                 # TODO double check that local ordering of edges
                 # and `int_to_edge_str` matches ...
-                # local ordering of edges (mesh.topology) should be
-                # ["l", "b", "t", "r"]
-                edges = self.grid.get_cell_entities(cell_index, 1)
+                # local ordering of edges (mesh.topology)
+                # see multi.dofmap.QuadrilateralDofLayout
+                edges = self.grid.get_entities(1, cell_index)
                 for local_ent, ent in enumerate(edges):
                     edge = int_to_edge_str[local_ent]
                     if ent not in marked_edges.keys():

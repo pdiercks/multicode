@@ -24,7 +24,7 @@ def test():
 
     num_entities = (4, 4)
     for dim, num in enumerate(num_entities):
-        ents = grid.get_cell_entities(8, dim)
+        ents = grid.get_entities(dim, 8)
         assert ents.size == num
 
     # h = 1./10
@@ -35,8 +35,8 @@ def test():
     # maybe there is some kind of tolerance on the bounding boxes?
     # assert other.size == 4
 
-    tags = grid.get_cell_entities(67, 0)  # assume cell 67 is surrounded by 8 cells
-    cells_67 = grid.get_cells_point_tags(tags)
+    verts = grid.get_entities(0, 67)  # assume cell 67 is surrounded by 8 cells
+    cells_67 = grid.get_cells(0, verts)
     assert cells_67.size == 9
     assert np.allclose(cells_67, grid.get_patch(67))
 

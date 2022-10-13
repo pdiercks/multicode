@@ -206,37 +206,23 @@ class StructuredQuadGrid(object):
 
     def get_patch(self, cell_index):
         """return all cells neighbouring cell with index `cell_index`"""
-        point_tags = self.get_cell_entities(cell_index, 0)
+        point_tags = self.get_entities(0, cell_index)
         conn_02 = self.mesh.topology.connectivity(0, 2)
         cells = list()
         for tag in point_tags:
             cells.append(conn_02.links(tag))
         return np.unique(np.hstack(cells))
 
-    # FIXME this is not predictable
-    # def get_cells_points(self, x):
-    #     """return all cells containing points given by coordinates `x`"""
-    #     try:
-    #         x = x.reshape(int(x.size/3), 3)
-    #     except ValueError as err:
-    #         raise err("x.shape = (num_points, 3) is required!")
-
-    #     # Find cells whose bounding-box collide with the the points
-    #     bb_tree = self.bb_tree
-    #     cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, x)
-    #     assert cell_candidates.num_nodes < 2
-    #     return cell_candidates.links(0)
-
-    def get_cells_point_tags(self, tags):
-        """return all cells containing points given by the point tags `tags`"""
-        conn_02 = self.mesh.topology.connectivity(0, 2)
+    def get_cells(self, dim, entities):
+        """return cells containing entities of dimension `dim`"""
+        ent_to_cell = self.mesh.topology.connectivity(dim, 2)
         cells = list()
-        for tag in tags.flatten():
-            c = conn_02.links(tag)
-            cells.append(c)
+        for tag in entities.flatten():
+            candidates = ent_to_cell.links(tag)
+            cells.append(candidates)
         return np.unique(cells)
 
-    def get_cell_entities(self, cell_index, dim):
+    def get_entities(self, dim, cell_index):
         """get entities of dimension `dim` for cell with index `cell_index`"""
         assert dim in (0, 1)
         conn = self.mesh.topology.connectivity(2, dim)
