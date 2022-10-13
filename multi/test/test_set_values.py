@@ -1,6 +1,6 @@
 import numpy as np
 from multi.misc import set_values
-from pymor.bindings.fenics import FenicsVectorSpace
+# from pymor.bindings.fenics import FenicsVectorSpace
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 

@@ -26,7 +26,6 @@ def test():
     B = source.make_array(phi)
 
     vertices = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [1., 1., 0.]]) 
-    breakpoint()
     vertex_dofs = locate_dofs(xdofs_VectorFunctionSpace(V), vertices, gdim=3)
     nodal_values = B.dofs(vertex_dofs)
     assert len(B) == 8
