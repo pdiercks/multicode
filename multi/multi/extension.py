@@ -107,7 +107,8 @@ def extend(problem, boundary_data):
     problem.add_dirichlet_bc(
             zero_fun, boundary_facets, method='topological', entity_dim=fdim
             )
-    problem.assemble_matrix()
+    bcs = problem.get_dirichlet_bcs()
+    problem.assemble_matrix(bcs)
     problem.clear_bcs()
 
     # define all extensions that should be computed
@@ -118,7 +119,8 @@ def extend(problem, boundary_data):
         problem.clear_bcs()
         for bc in bcs:
             problem.add_dirichlet_bc(bc)
-        rhs = problem.assemble_vector()
+        current_bcs = problem.get_dirichlet_bcs()
+        rhs = problem.assemble_vector(current_bcs)
         f = dolfinx.fem.Function(V)
         fvec = f.vector
         solver.solve(rhs, fvec)
