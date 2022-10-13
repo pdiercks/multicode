@@ -31,7 +31,8 @@ def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
     cell_data = mesh.get_cell_data(name_to_read, cell_type)
     points = mesh.points[:, :2] if prune_z else mesh.points
     out_mesh = meshio.Mesh(
-            points=points, cells={cell_type: cells}, cell_data={name_to_read:[cell_data]}
+            points=points, cells={cell_type: cells}, 
+            cell_data={name_to_read: [cell_data]}
             )
     return out_mesh
 
@@ -84,10 +85,10 @@ def create_rectangle_grid(
     p2 = gmsh.model.geo.addPoint(xmax, ymax, z, lc)
     p3 = gmsh.model.geo.addPoint(xmin, ymax, z, lc)
 
-    l0 = gmsh.model.geo.addLine(p0, p1)
-    l1 = gmsh.model.geo.addLine(p1, p2)
-    l2 = gmsh.model.geo.addLine(p2, p3)
-    l3 = gmsh.model.geo.addLine(p3, p0)
+    l0 = gmsh.model.geo.addLine(p0, p1)  # bottom
+    l1 = gmsh.model.geo.addLine(p1, p2)  # right
+    l2 = gmsh.model.geo.addLine(p2, p3)  # top
+    l3 = gmsh.model.geo.addLine(p3, p0)  # left
 
     curve_loop = gmsh.model.geo.addCurveLoop([l0, l1, l2, l3])
     surface = gmsh.model.geo.addPlaneSurface([curve_loop])
@@ -110,6 +111,14 @@ def create_rectangle_grid(
 
     gmsh.model.geo.synchronize()
     gmsh.model.addPhysicalGroup(2, [surface])
+
+    # markers for the facets following ordering of 
+    # entities of multi.dofmap.QuadrilateralDofLayout
+    # bottom: 1, left: 2, right: 3, top: 4
+    gmsh.model.add_physical_group(1, [l0], 1, name="bottom")
+    gmsh.model.add_physical_group(1, [l3], 2, name="left")
+    gmsh.model.add_physical_group(1, [l1], 3, name="right")
+    gmsh.model.add_physical_group(1, [l2], 4,  name="top")
 
     filepath = out_file or "./rectangle.msh"
     _generate_and_write_grid(2, filepath)
@@ -182,8 +191,8 @@ def create_rce_grid_01(xmin, xmax, ymin, ymax, z=0.0, radius=0.2, lc=0.1, num_ce
     # connect rectangle points and circle points from outer to inner
     conn = []
     for i in range(len(circle_points)):
-        l = geom.add_line(rectangle_points[i], circle_points[i])
-        conn.append(l)
+        line = geom.add_line(rectangle_points[i], circle_points[i])
+        conn.append(line)
 
     # add curve loops defining surfaces of the matrix
     mat_loops = []
@@ -226,9 +235,17 @@ def create_rce_grid_01(xmin, xmax, ymin, ymax, z=0.0, radius=0.2, lc=0.1, num_ce
     geom.synchronize()
     geom.removeAllDuplicates()
 
-    # physical groups
-    gmsh.model.add_physical_group(2, matrix, name="matrix")
-    gmsh.model.add_physical_group(2, [circle_surface], name="inclusion")
+    # ### physical groups
+    gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
+    gmsh.model.add_physical_group(2, [circle_surface], 2, name="inclusion")
+
+    # markers for the facets following ordering of 
+    # entities of multi.dofmap.QuadrilateralDofLayout
+    # bottom: 1, left: 2, right: 3, top: 4
+    gmsh.model.add_physical_group(1, rectangle_lines[5:7], 1, name="bottom")
+    gmsh.model.add_physical_group(1, rectangle_lines[3:5], 2, name="left")
+    gmsh.model.add_physical_group(1, [rectangle_lines[0], rectangle_lines[-1]], 3, name="right")
+    gmsh.model.add_physical_group(1, rectangle_lines[1:3], 4,  name="top")
 
     filepath = out_file or "./rce_type_01.msh"
     _generate_and_write_grid(2, filepath)
