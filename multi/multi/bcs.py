@@ -7,66 +7,6 @@ from multi.interpolation import interpolate
 from multi.shapes import NumpyLine
 from multi.product import InnerProduct
 
-"""boundary conditions in fenicsx
-
-Dirichlet
----------
-
-V = FunctionSpace
-
-Option (1): locate_dofs_topological
-tdim = domain.topology.dim
-fdim = tdim - 1
-domain.topology.create_connectivity(fdim, tdim)
-boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-boundary_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
-bc = dolfinx.fem.dirichletbc(uD, boundary_dofs)
-
-Option (2): locate_dofs_geometrical
-def on_boundary(x):
-    return np.isclose(np.sqrt(x[0]**2 + x[1]**2), 1)
-boundary_dofs = fem.locate_dofs_geometrical(V, on_boundary)
-bc = fem.dirichletbc(ScalarType(0), boundary_dofs, V)
-
-V = VectorFunctionSpace
-
-def clamped_boundary(x):
-    return np.isclose(x[1], 0)
-
-u_zero = np.array((0,)*mesh.geometry.dim, dtype=ScalarType)
-bc = dirichletbc(u_zero, locate_dofs_geometrical(V, clamped_boundary), V)
-
-Componet-wise
--------------
-
-def right(x):
-    return np.logical_and(np.isclose(x[0], L), x[1] < H)
-boundary_facets = locate_entities_boundary(mesh, mesh.topology.dim-1, right)
-boundary_dofs_x = locate_dofs_topological(V.sub(0), mesh.topology.dim-1, boundary_facets)
-bcx = dirichletbc(ScalarType(0), boundary_dofs_x, V.sub(0))
-
-"""
-
-"""locate_dofs_topological(V, entity_dim, entities)
-    V: iter(FunctionSpace)
-    entity_dim: int
-    entities: np.ndarray
-"""
-
-"""locate_dofs_geometrical(V, marker)
-    V: iter(FunctionSpace)
-    marker: callable
-        A function that takes an array of points x with shape (gdim, num_points)
-        and returns an array of booleans of length num_points evaluating to True
-        for entities whose dof should be returned.
-"""
-
-"""fem.dirichletbc(value, dofs, V=None)
-    value: Function, Constant or np.ndarray
-    dofs: np.ndarray
-    V: FunctionSpace; optional if value is Function
-"""
-
 
 class BoundaryDataFactory(object):
     def __init__(self, domain, V):
