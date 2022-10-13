@@ -1,14 +1,23 @@
 """test serendipity shape functions"""
 
-import dolfin as df
+import dolfinx
+from dolfinx.io import gmshio
+from mpi4py import MPI
+import tempfile
 import numpy as np
+from multi.domain import Domain
+from multi.preprocessing import create_rectangle_grid
 from multi.shapes import NumpyQuad
 
 
 def test():
-    mesh = df.RectangleMesh(df.Point([0, 0]), df.Point([2, 2]), 20, 20, "crossed")
-    mesh.translate(df.Point([-1, -1]))
-    V = df.FunctionSpace(mesh, "CG", 2)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 2., 0., 2., num_cells=(20, 20), recombine=True, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+
+    omega = Domain(domain)
+    omega.translate([-1, -1, 0])
+    V = dolfinx.fem.FunctionSpace(domain, ("CG", 2))
     quad8 = NumpyQuad(
         np.array([[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]])
     )
