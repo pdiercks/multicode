@@ -1,7 +1,6 @@
 import numpy as np
-import dolfin as df
 from multi.bcs import compute_multiscale_bcs, apply_bcs
-from pymor.bindings.fenics import FenicsMatrixOperator, FenicsVectorSpace
+from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
 from pymor.tools.timing import Timer
 
 
@@ -37,14 +36,14 @@ def assemble_rom(
         Defines the Dirichlet BCs.
         (a) Keys are bc_dofs and values are bc_values.
         (b) Keys are cell indices and values are dict where keys are edge
-        indices and values are dolfin.Expression or similar.
+        indices and values are functions (dolfinx.fem.Function).
         (b) can be used to compute multiscale bcs via projection and should
         contain extra key value pair ('compute_multiscale_bcs', True).
     edge_product : str, optional
         The inner product wrt which the edge basis was orthonormalized.
     neumann : dict, optional
         Defines the Neumann BCs. Keys are cell indices and values are
-        list of dict specifying the Neumann data.
+        list of tuple (marker, value) specifying the Neumann data.
 
     Returns
     -------
@@ -56,14 +55,16 @@ def assemble_rom(
     """
 
     # ### assemble local contributions once
-    matrix = df.assemble(problem.get_form_lhs())
-    operator = FenicsMatrixOperator(matrix, problem.V, problem.V)
-    source = FenicsVectorSpace(problem.V)
+    problem.clear_bcs()  # do not apply bcs to matrix
+    problem.setup_solver()  # create matrix object
+    matrix = problem.assemble_matrix()
+    operator = FenicsxMatrixOperator(matrix, problem.V, problem.V)
+    source = FenicsxVectorSpace(problem.V)
     B = [source.from_numpy(rb) for rb in bases]
     A_local = [operator.apply2(basis, basis) for basis in B]
 
     # ### initialize global system
-    N = dofmap.dofs()
+    N = dofmap.num_dofs()
     A = np.zeros((N, N))
     b = np.zeros(N)
 
@@ -79,17 +80,21 @@ def assemble_rom(
         for cell_index, cell in enumerate(dofmap.cells):
             # translate since dirichlet bcs dependent on physical coord
             offset = np.around(dofmap.points[cell][0], decimals=3)  # lower left corner
-            problem.domain.translate(df.Point(offset))
+            problem.domain.translate(offset)
             dofs = dofmap.cell_dofs(cell_index)
             A[np.ix_(dofs, dofs)] += A_local[cell_to_basis[cell_index]]
 
             # ### Neumann BCs
             if cell_index in neumann.keys():
                 neumann_bcs = neumann[cell_index]
-                for force in neumann_bcs:
-                    problem.add_neumann_bc(**force)
-                F = df.assemble(problem.get_form_rhs())
-                b_local = bases[cell_to_basis[cell_index]] @ F[:]
+                # TODO double check neumann bcs input is correctly defined
+                # Neumann bc should be tuple of (marker, values)
+                # marker (int in range(4)+1) should be local to the respective RceDomain
+                for marker, value in neumann_bcs:
+                    problem.add_neumann_bc(marker, value)
+                F = problem.assemble_vector()
+                # F should be PETSc.Vec
+                b_local = bases[cell_to_basis[cell_index]] @ F.array
                 b[dofs] += b_local
 
             # ### Dirichlet BCs
@@ -117,7 +122,7 @@ def assemble_rom(
                             bcs.update({k: v})
 
             # translate back
-            problem.domain.translate(df.Point(-offset))
+            problem.domain.translate(-offset)
         timer.stop()
         logger.info(f"... Assembly took {timer.dt}s.")
 
