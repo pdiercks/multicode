@@ -5,6 +5,13 @@ import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorArray
 
 
+def x_dofs_VectorFunctionSpace(V):
+    bs = V.dofmap.bs
+    x = V.tabulate_dof_coordinates()
+    x_dofs = np.repeat(x, repeats=bs, axis=0)
+    return x_dofs
+
+
 # TODO this depends on the order in which the basis functions
 # were read from the npz file --> multi.io.read_bases
 def select_modes(basis, modes, max_modes):

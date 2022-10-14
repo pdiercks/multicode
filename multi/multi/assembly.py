@@ -1,6 +1,6 @@
 import dolfinx
 import numpy as np
-from multi.bcs import compute_multiscale_bcs, apply_bcs
+from multi.bcs import compute_multiscale_bcs
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
 from pymor.tools.timing import Timer
 
@@ -79,13 +79,20 @@ def assemble_rom(
         timer.start()
         for cell_index in range(dofmap.num_cells):
             # translate since dirichlet bcs dependent on physical coord
-
-            # TODO there are no points and cells
-            # offset = np.around(dofmap.points[cell][0], decimals=3)  # lower left corner
-            # problem.domain.translate(offset)
             vertices = grid.get_entities(0, cell_index)
             dx = dolfinx.mesh.compute_midpoints(grid.mesh, 0, vertices[0])
+            dx = np.around(dx, decimals=4)
             problem.domain.translate(dx)
+
+            # FIXME careful with translation ...
+            # It might happen that later on when trying to interpolate
+            # function on boundary points of the domain, these points
+            # are actually not found ...
+            # currently this is solved by using np.around inside
+            # multi.bcs.compute_multiscale_bcs when computing vertex coordinates
+            # TODO? use StructuredQuadGrid.create_fine_grids to "instantiate"
+            # RCE grid for each coarse grid cell ? --> then no translation is needed
+            # at all, but have to read mesh and build function space etc. each time
 
             dofs = dofmap.cell_dofs(cell_index)
             A[np.ix_(dofs, dofs)] += A_local[cell_index]
@@ -93,19 +100,14 @@ def assemble_rom(
             # ### Neumann BCs
             if cell_index in neumann.keys():
                 neumann_bcs = neumann[cell_index]
-                # TODO double check neumann bcs input is correctly defined
-                # Neumann bc should be tuple of (marker, values)
-                # marker (int in range(4)+1) should be local to the respective RceDomain
                 for marker, value in neumann_bcs:
                     problem.add_neumann_bc(marker, value)
                 F = problem.assemble_vector()
-                # F should be PETSc.Vec
                 b_local = bases[cell_index] @ F.array
                 b[dofs] += b_local
 
             # ### Dirichlet BCs
             if project_dirichlet:
-                # FIXME edge_basis not required if modes_per_edge=0
                 if cell_index in dirichlet.keys():
                     for edge, boundary_data in dirichlet[cell_index].items():
                         if edge_basis is not None:
@@ -133,14 +135,15 @@ def assemble_rom(
                         )
                         for k, v in bc_local.items():
                             bcs.update({k: v})
+                        if cell_index == 10:
+                            breakpoint()
 
             # translate back
             problem.domain.translate(-dx)
         timer.stop()
         logger.info(f"... Assembly took {timer.dt}s.")
 
-    logger.info("Applying BCs to global ROM system ...")
     if not project_dirichlet:
         bcs.update(dirichlet)
-    apply_bcs(A, b, list(bcs.keys()), list(bcs.values()))
-    return A, b
+
+    return A, b, bcs

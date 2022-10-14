@@ -251,15 +251,19 @@ def compute_multiscale_bcs(
     edges_coarse_cell = dofmap.conn[1].links(cell_index)
 
     boundary_vertices = vertices_coarse_cell[local_vertices]
-    cell_nodes = dolfinx.mesh.compute_midpoints(
-        dofmap.grid.mesh, 0, vertices_coarse_cell
-    )
-    boundary_nodes = cell_nodes[local_vertices]
+    boundary_nodes = dolfinx.mesh.compute_midpoints(
+            dofmap.grid.mesh, 0, boundary_vertices
+            )
+    # make sure points are withing problem.domain
+    boundary_nodes = np.around(boundary_nodes, decimals=3)
 
     coarse_values = interpolate(boundary_data, boundary_nodes)
     coarse_dofs = []
     for vertex in boundary_vertices:
         coarse_dofs += dofmap.entity_dofs(0, vertex)
+
+    if not len(coarse_dofs) == coarse_values.size:
+        breakpoint()
 
     # initialize return value
     bcs = {}  # dofs are keys, bc_values are values

@@ -1,6 +1,11 @@
 import dolfinx
-# import numpy as np
+from dolfinx.io import gmshio
+from mpi4py import MPI
+import numpy as np
+import yaml
 
+from multi.problems import LinearElasticityProblem
+from multi.domain import RceDomain
 from multi.bcs import BoundaryDataFactory
 from multi.extension import extend
 # from multi.misc import locate_dofs
@@ -117,6 +122,41 @@ def compute_phi(problem):
 
     phi = extend(problem, boundary_data)
     return phi
+
+
+def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
+    """method to be used within python action of a dodoFile
+
+    Parameters
+    ----------
+    rce_grid : filepath
+        The partition of the subdomain.
+    material : filepath
+        The material parameters (.yaml).
+    degree : int
+        Degree of the VectorFunctionSpace
+    """
+    domain, cell_marker, facet_marker = gmshio.read_from_msh(
+        rce_grid, MPI.COMM_WORLD, gdim=2
+    )
+    omega = RceDomain(domain, cell_marker, facet_marker, index=0, edges=True)
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", degree))
+
+    with material.open("r") as f:
+        mat = yaml.safe_load(f)
+
+    E = mat["Material parameters"]["E"]["value"]
+    NU = mat["Material parameters"]["NU"]["value"]
+    plane_stress = mat["Constraints"]["plane_stress"]
+    problem = LinearElasticityProblem(
+        omega, V, E=E, NU=NU, plane_stress=plane_stress
+    )
+    basis_vectors = compute_phi(problem)
+    out = []
+    for vec in basis_vectors:
+        out.append(vec.array)
+
+    np.savez(out_file, phi=out)
 
 
 # adapted from pymor.algorithms.randrangefinder.adaptive_rrf

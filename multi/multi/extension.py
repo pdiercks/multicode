@@ -127,3 +127,29 @@ def extend(problem, boundary_data):
         extensions.append(fvec.copy())
 
     return extensions
+
+
+def restrict(function, boundary, dim):
+    """restrict the function to the subdomain/boundary
+
+    Parameters
+    ----------
+    function : dolfinx.fem.Function
+        The function to be evaluated at the boundary.
+    boundary : callable
+        A function that defines the boundary geometrically.
+
+    Returns
+    -------
+    function values on the boundary of function.function_space.mesh.
+    """
+
+    V = function.function_space
+    domain = V.mesh
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+
+    # TODO boundary could be
+    # (a) subdomain --> entity dim = mesh.tdim, geometrically via locate_entities
+    # (b) part of boundary --> entity dim = mesh.tdim - 1, geomtrically via locate_entities
+    # (c) whole boundary --> exterior facet (mesh.topology)

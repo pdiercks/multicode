@@ -264,6 +264,7 @@ class StructuredQuadGrid(object):
         for cell, grid_path in zip(active_cells, fine_grids):
             vertices = self.get_entities(0, cell)
             dx = dolfinx.mesh.compute_midpoints(self.mesh, 0, vertices[0])
+            dx = np.around(dx, decimals=3)
 
             try:
                 instream = grid_path.as_posix()
