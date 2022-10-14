@@ -105,14 +105,20 @@ def extend(problem, boundary_data):
     zero_fun.vector.zeroEntries()
     boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
     problem.add_dirichlet_bc(
-            zero_fun, boundary_facets, method='topological', entity_dim=fdim
-            )
+        zero_fun, boundary_facets, method="topological", entity_dim=fdim
+    )
     bcs = problem.get_dirichlet_bcs()
     problem.assemble_matrix(bcs)
     problem.clear_bcs()
 
     # define all extensions that should be computed
-    assert all([isinstance(bc, dolfinx.fem.DirichletBCMetaClass) for bcs in boundary_data for bc in bcs])
+    assert all(
+        [
+            isinstance(bc, dolfinx.fem.DirichletBCMetaClass)
+            for bcs in boundary_data
+            for bc in bcs
+        ]
+    )
 
     extensions = []
     for bcs in boundary_data:

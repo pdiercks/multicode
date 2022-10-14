@@ -18,7 +18,7 @@ class NumpyLine:
         if self.nn == 2:
             self.G = np.column_stack((np.ones(nodes.size), nodes))
         elif self.nn == 3:
-            self.G = np.column_stack((np.ones(nodes.size), nodes, nodes ** 2))
+            self.G = np.column_stack((np.ones(nodes.size), nodes, nodes**2))
         else:
             raise NotImplementedError
 
@@ -45,7 +45,7 @@ class NumpyLine:
             X = np.column_stack((np.ones(coordinates.size), coordinates))
         elif self.nn == 3:
             X = np.column_stack(
-                (np.ones(coordinates.size), coordinates, coordinates ** 2)
+                (np.ones(coordinates.size), coordinates, coordinates**2)
             )
         else:
             assert False
@@ -86,18 +86,18 @@ def get_P_matrix(X, nn):
         x,
         y,
         x * y,
-        x ** 2,
-        y ** 2,
-        x ** 2 * y,
-        x * y ** 2,
-        x ** 2 * y ** 2,
-        x ** 3,
-        y ** 3,
-        x ** 3 * y,
-        x * y ** 3,
-        x ** 3 * y ** 2,
-        x ** 2 * y ** 3,
-        x ** 3 * y ** 3,
+        x**2,
+        y**2,
+        x**2 * y,
+        x * y**2,
+        x**2 * y**2,
+        x**3,
+        y**3,
+        x**3 * y,
+        x * y**3,
+        x**3 * y**2,
+        x**2 * y**3,
+        x**3 * y**3,
     ]
     return np.column_stack(variables[:nn])
 
@@ -223,7 +223,7 @@ def _get_hierarchical_shape_fun_expr(degree):
     else:
         p = degree - 1
         x = sympy.symbols("x")
-        N = sympy.diff((x ** 2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
+        N = sympy.diff((x**2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
         return sympy.lambdify(x, N, "numpy")
 
 

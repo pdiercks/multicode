@@ -307,7 +307,7 @@ class TransferProblem(object):
     Note: The above problem can be formulated as a transfer operator which
     maps the boundary data on Γ_out (source space) to the solution u in
     the (range) space defined on Ω_in. Since FEniCS does
-    not allow to define function spaces on some part of the boundary 
+    not allow to define function spaces on some part of the boundary
     of a domain (yet), the full space is defined as the source space.
     The range space is the space defined on Ω_in.
 
@@ -416,9 +416,7 @@ class TransferProblem(object):
         """discretize the operator"""
         V = self.source.V
         Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
-        self.logger.info(
-            f"Discretizing left hand side of the problem (size={Vdim})."
-        )
+        self.logger.info(f"Discretizing left hand side of the problem (size={Vdim}).")
         ufl_lhs = self.problem.get_form_lhs()
         compiled_form = dolfinx.fem.form(ufl_lhs)
 
@@ -460,8 +458,8 @@ class TransferProblem(object):
         rhs_vector.zeroEntries()
         dolfinx.fem.petsc.assemble_vector(rhs_vector, compiled_form)
         rhs_vector.ghostUpdate(
-                addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE
-                )
+            addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE
+        )
         rhs = self.source.make_array([rhs_vector])
         self._f_ext = rhs
 

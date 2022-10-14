@@ -252,8 +252,8 @@ def compute_multiscale_bcs(
 
     boundary_vertices = vertices_coarse_cell[local_vertices]
     boundary_nodes = dolfinx.mesh.compute_midpoints(
-            dofmap.grid.mesh, 0, boundary_vertices
-            )
+        dofmap.grid.mesh, 0, boundary_vertices
+    )
     # make sure points are withing problem.domain
     boundary_nodes = np.around(boundary_nodes, decimals=3)
 

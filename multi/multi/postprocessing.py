@@ -167,8 +167,8 @@ def compute_local_error_norm(
     fom_norm = fom.norm(product)
     rom_norm = rom.norm(product)
 
-    global_err_norm = np.sqrt(np.sum(err_norm ** 2))
-    global_fom_norm = np.sqrt(np.sum(fom_norm ** 2))
+    global_err_norm = np.sqrt(np.sum(err_norm**2))
+    global_fom_norm = np.sqrt(np.sum(fom_norm**2))
     return {
         "err_norm": err_norm,
         "fom_norm": fom_norm,

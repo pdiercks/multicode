@@ -8,6 +8,7 @@ from multi.problems import LinearElasticityProblem
 from multi.domain import RceDomain
 from multi.bcs import BoundaryDataFactory
 from multi.extension import extend
+
 # from multi.misc import locate_dofs
 # from multi.product import InnerProduct
 from multi.shapes import NumpyQuad  # , get_hierarchical_shape_functions
@@ -148,9 +149,7 @@ def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
     E = mat["Material parameters"]["E"]["value"]
     NU = mat["Material parameters"]["NU"]["value"]
     plane_stress = mat["Constraints"]["plane_stress"]
-    problem = LinearElasticityProblem(
-        omega, V, E=E, NU=NU, plane_stress=plane_stress
-    )
+    problem = LinearElasticityProblem(omega, V, E=E, NU=NU, plane_stress=plane_stress)
     basis_vectors = compute_phi(problem)
     out = []
     for vec in basis_vectors:
