@@ -135,8 +135,6 @@ def extend(problem, boundary_data):
     return extensions
 
 
-# FIXME
-# the restriction returns dof values in correct order?
 def restrict(function, marker, dim, boundary=False):
     """restrict the function to some part of the domain
 

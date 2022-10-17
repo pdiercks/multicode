@@ -12,3 +12,5 @@ if __name__ == "__main__":
     finegrids = np.tile(np.array([fn]), (4,))
     grid.fine_grids = finegrids
     grid.create_fine_grid(np.arange(3), "./domain.msh")
+
+    # TODO gmshio.read_from_msh --> success?

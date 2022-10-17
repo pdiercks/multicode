@@ -17,17 +17,17 @@ def test_restrict_subdomain():
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", degree))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", degree))
     u = dolfinx.fem.Function(V)
     u.x.set(1.0)
 
     subdomain = within_range([0.5, 0.5, 0.], [1.5, 1.5, 0.])
     # h = 0.2, unit length = 1.
-    # --> 5 elements --> 36 nodes
+    # --> 5 elements --> 36 nodes --> 72 dofs
 
     # restriction
     r = restrict(u, subdomain, 2)
-    assert np.isclose(np.sum(r), 36)
+    assert np.isclose(np.sum(r), 36 * 2)
 
 
 def test_restrict_bottom():
