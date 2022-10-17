@@ -524,7 +524,7 @@ class TransferProblem(object):
         Parameters
         ----------
         boundary_data : VectorArray
-            Vectors in FenicsVectorSpace(problem.V) with DoF entries holding
+            Vectors in FenicsxVectorSpace(problem.V) with DoF entries holding
             values of boundary data on Γ_out and zero elsewhere.
 
         Returns
