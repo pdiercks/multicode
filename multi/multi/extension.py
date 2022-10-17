@@ -135,27 +135,43 @@ def extend(problem, boundary_data):
     return extensions
 
 
-def restrict(function, boundary, dim):
-    """restrict the function to the subdomain/boundary
+# FIXME
+# the restriction returns dof values in correct order?
+def restrict(function, marker, dim, boundary=False):
+    """restrict the function to some part of the domain
 
     Parameters
     ----------
     function : dolfinx.fem.Function
         The function to be evaluated at the boundary.
-    boundary : callable
-        A function that defines the boundary geometrically.
+    marker : callable
+        A function that defines the subdomain geometrically.
+        `dolfinx.mesh.locate_entities` is used.
+    dim : int
+        Topological dimension of the entities.
+    boundary : optional, bool
+        If True, use `dolfinx.mesh.locate_entities_boundary` and
+        locate entities on the boundary only.
 
     Returns
     -------
-    function values on the boundary of function.function_space.mesh.
+    function values restricted to some part of the domain
     """
 
     V = function.function_space
     domain = V.mesh
     tdim = domain.topology.dim
     fdim = tdim - 1
+    assert dim in (fdim, tdim)
 
-    # TODO boundary could be
-    # (a) subdomain --> entity dim = mesh.tdim, geometrically via locate_entities
-    # (b) part of boundary --> entity dim = mesh.tdim - 1, geomtrically via locate_entities
-    # (c) whole boundary --> exterior facet (mesh.topology)
+    if boundary:
+        entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
+    else:
+        entities = dolfinx.mesh.locate_entities(domain, tdim, marker)
+
+    dofs = dolfinx.fem.locate_dofs_topological(V, dim, entities)
+    dummy = dolfinx.fem.Function(V)
+    dummy.x.set(0.0)
+    bc = dolfinx.fem.dirichletbc(dummy, dofs)
+    dof_indices = bc.dof_indices()[0]
+    return function.vector.array[dof_indices]

@@ -18,9 +18,6 @@ def test_function_space():
         dolfinx.mesh.CellType.quadrilateral,
     )
     V = dolfinx.fem.FunctionSpace(domain, ("CG", degree))
-    u = dolfinx.fem.Function(V)
-    ndofs = V.dofmap.index_map.size_global * V.dofmap.bs
-    u.x.array[:] = np.arange(ndofs, dtype=np.intc)
 
     # bottom edge
     interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, 2.0])
@@ -51,10 +48,6 @@ def test_vector_function_space():
         dolfinx.mesh.CellType.quadrilateral,
     )
     V = dolfinx.fem.VectorFunctionSpace(rectangle, ("CG", degree))
-    u = dolfinx.fem.Function(V)
-    ndofs = V.dofmap.index_map.size_global * V.dofmap.bs
-    u.x.array[:] = np.arange(ndofs, dtype=np.intc)
-
     x_dofs_V = xdofs_VectorFunctionSpace(V)
 
     # bottom edge
