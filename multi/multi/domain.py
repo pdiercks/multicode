@@ -260,7 +260,7 @@ class StructuredQuadGrid(object):
             The cell indices for which to create a fine scale grid.
             Requires `self.fine_grid_method` to be defined.
         output : str
-            The path to write the result (suffix .msh).
+            The path to write the result (suffix .xdmf).
         cell_type : optional
             The `meshio` cell type of the fine grid.
             Currently, only meshes with one cell type are supported.
