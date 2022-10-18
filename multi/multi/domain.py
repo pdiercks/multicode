@@ -1,9 +1,10 @@
-import os
+import pathlib
 import gmsh
 import tempfile
 import meshio
 import numpy as np
 import dolfinx
+from mpi4py import MPI
 from multi.preprocessing import create_mesh
 
 
@@ -173,65 +174,6 @@ class RceDomain(Domain):
                 xg += dx
 
 
-def extract_to_meshio():
-    # extract point coords
-    idx, points, _ = gmsh.model.mesh.getNodes()
-    points = np.asarray(points).reshape(-1, 3)
-    idx -= 1
-    srt = np.argsort(idx)
-    assert np.all(idx[srt] == np.arange(len(idx)))
-    points = points[srt]
-
-    # extract cells
-    elem_types, elem_tags, node_tags = gmsh.model.mesh.getElements()
-    cells = []
-    for elem_type, elem_tags, node_tags in zip(elem_types, elem_tags, node_tags):
-        # `elementName', `dim', `order', `numNodes', `localNodeCoord',
-        # `numPrimaryNodes'
-        num_nodes_per_cell = gmsh.model.mesh.getElementProperties(elem_type)[3]
-
-        node_tags_reshaped = np.asarray(node_tags).reshape(-1, num_nodes_per_cell) - 1
-        node_tags_sorted = node_tags_reshaped[np.argsort(elem_tags)]
-        cells.append(
-            meshio.CellBlock(
-                meshio.gmsh.gmsh_to_meshio_type[elem_type], node_tags_sorted
-            )
-        )
-
-    cell_sets = {}
-    for dim, tag in gmsh.model.getPhysicalGroups():
-        name = gmsh.model.getPhysicalName(dim, tag)
-        cell_sets[name] = [[] for _ in range(len(cells))]
-        for e in gmsh.model.getEntitiesForPhysicalGroup(dim, tag):
-            # TODO node_tags?
-            # elem_types, elem_tags, node_tags
-            elem_types, elem_tags, _ = gmsh.model.mesh.getElements(dim, e)
-            assert len(elem_types) == len(elem_tags)
-            assert len(elem_types) == 1
-            elem_type = elem_types[0]
-            elem_tags = elem_tags[0]
-
-            meshio_cell_type = meshio.gmsh.gmsh_to_meshio_type[elem_type]
-            # make sure that the cell type appears only once in the cell list
-            # -- for now
-            idx = []
-            for k, cell_block in enumerate(cells):
-                if cell_block.type == meshio_cell_type:
-                    idx.append(k)
-            assert len(idx) == 1
-            idx = idx[0]
-            cell_sets[name][idx].append(elem_tags - 1)
-
-        cell_sets[name] = [
-            (None if len(idcs) == 0 else np.concatenate(idcs))
-            for idcs in cell_sets[name]
-        ]
-
-    # make meshio mesh
-    # TODO add cell data ....
-    return meshio.Mesh(points, cells, cell_sets=cell_sets)
-
-
 class StructuredQuadGrid(object):
     """class representing a structured (coarse scale) quadrilateral grid
 
@@ -302,75 +244,72 @@ class StructuredQuadGrid(object):
         return dolfinx.mesh.locate_entities_boundary(self.mesh, dim, marker)
 
     @property
-    def fine_grids(self):
-        return self._fine_grids
+    def fine_grid_method(self):
+        return self._fine_grid_method
 
-    @fine_grids.setter
-    def fine_grids(self, values):
-        """values as array of length (num_cells,) holding path to fine grid"""
-        # TODO only support .msh format for fine grids of this class
-        self._fine_grids = values
+    @fine_grid_method.setter
+    def fine_grid_method(self, method):
+        """set method to create fine grid for coarse grid cell"""
+        self._fine_grid_method = method
 
-    def create_fine_grid(self, cells, output, cell_type="triangle"):
+    def create_fine_grid(self, cells, output, cell_type="triangle", **kwargs):
         """creates a fine scale grid for given cells
 
         Parameters
         ----------
         cells : np.ndarray
             The cell indices for which to create a fine scale grid.
-            Requires `self.fine_grids` to be defined.
+            Requires `self.fine_grid_method` to be defined.
         output : str
             The path to write the result (suffix .msh).
         cell_type : optional
             The `meshio` cell type of the fine grid.
+            Currently, only meshes with one cell type are supported.
+        kwargs : optional
+            Keyword arguments to be passed to `self.fine_grid_method`.
         """
         # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
 
         tdim = self.tdim
+        num_cells = kwargs.get("num_cells", 10)
 
         # initialize
         subdomains = []
 
         cells = np.array(cells)
         active_cells = self.cells[cells]
-        fine_grids = self.fine_grids[cells]
 
-        for cell, grid_path in zip(active_cells, fine_grids):
+        for cell in active_cells:
             vertices = self.get_entities(0, cell)
-            dx = dolfinx.mesh.compute_midpoints(self.mesh, 0, vertices[0])
+            dx = dolfinx.mesh.compute_midpoints(self.mesh, 0, vertices)
             dx = np.around(dx, decimals=3)
+            xmin, ymin, zmin = dx[0]
+            xmax, ymax, zmax = dx[3]
+            assert xmin < xmax
+            assert ymin < ymax
 
-            try:
-                instream = grid_path.as_posix()
-            except AttributeError:
-                instream = grid_path
-            mesh = meshio.read(instream)
-            out_mesh = create_mesh(mesh, cell_type)
-
-            # translation
-            out_mesh.points += dx
-
-            assert "gmsh:physical" in out_mesh.cell_data.keys()
-            # true for rce_05.msh, test case
-            cell_data = out_mesh.get_cell_data("gmsh:physical", "triangle")
-            assert cell_data.shape[0] == 160
-            assert np.isclose(np.sum(cell_data), 192)
-            # inclusion: 32 cells, matrix: 128 cells; 128 * 1 + 32 * 2 = 192
-
-            # FIXME this is not working at all as expected
+            # create msh file using self._fine_grid_method
             with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tf:
                 subdomains.append(tf.name)
-                meshio.write(tf.name, out_mesh, file_format="gmsh22", binary=False)
-                # meshio.write(tf.name, out_mesh, file_format="gmsh")
+                create_fine_grid = self._fine_grid_method
+                create_fine_grid(
+                    xmin,
+                    xmax,
+                    ymin,
+                    ymax,
+                    num_cells=num_cells,
+                    facets=False,
+                    out_file=tf.name,
+                )
 
         # merge subdomains
         gmsh.initialize()
         gmsh.clear()
         gmsh.model.add("fine_grid")
+        gmsh.option.setNumber("General.Verbosity", 0)  # silent except for fatal errors
 
         for msh_file in subdomains:
             gmsh.merge(msh_file)
-        assert len(subdomains) == 1
 
         gmsh.model.geo.remove_all_duplicates()
         gmsh.model.geo.synchronize()
@@ -382,15 +321,25 @@ class StructuredQuadGrid(object):
         gmsh.write(output)
         gmsh.finalize()
 
+        # convert to xdmf using meshio
+        in_mesh = meshio.read(output)
+        if tdim < 3:
+            prune_z = True
+        out_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
 
-        # test = meshio.read(output)
-        breakpoint()
-        cd = test.get_cell_data("gmsh:physical", "triangle")
-        assert np.sum(cd) > 160
+        with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
+            meshio.write(tf.name, out_mesh)
 
-        # FIXME Write final mesh to xdmf instead of msh?
-        # currently the created msh cannot be imported with gmshio.read_from_msh
+            with dolfinx.io.XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
+                mesh = xdmf.read_mesh(name="Grid")
+                ct = xdmf.read_meshtags(mesh, name="Grid")
+
+            # remove the h5 as well
+            h5 = pathlib.Path(tf.name).with_suffix(".h5")
+            h5.unlink()
 
         # clean up
         for msh_file in subdomains:
-            os.remove(msh_file)
+            pathlib.Path(msh_file).unlink()
+
+        return (mesh, ct)

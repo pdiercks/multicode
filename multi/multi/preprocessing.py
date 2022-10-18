@@ -73,6 +73,7 @@ def create_rectangle_grid(
     lc=0.1,
     num_cells=None,
     recombine=False,
+    facets=False,
     out_file=None,
 ):
     """TODO docstring"""
@@ -114,10 +115,11 @@ def create_rectangle_grid(
     # markers for the facets following ordering of
     # entities of multi.dofmap.QuadrilateralDofLayout
     # bottom: 1, left: 2, right: 3, top: 4
-    gmsh.model.add_physical_group(1, [l0], 1, name="bottom")
-    gmsh.model.add_physical_group(1, [l3], 2, name="left")
-    gmsh.model.add_physical_group(1, [l1], 3, name="right")
-    gmsh.model.add_physical_group(1, [l2], 4, name="top")
+    if facets:
+        gmsh.model.add_physical_group(1, [l0], 1, name="bottom")
+        gmsh.model.add_physical_group(1, [l3], 2, name="left")
+        gmsh.model.add_physical_group(1, [l1], 3, name="right")
+        gmsh.model.add_physical_group(1, [l2], 4, name="top")
 
     filepath = out_file or "./rectangle.msh"
     _generate_and_write_grid(2, filepath)
@@ -131,7 +133,7 @@ def create_rce_grid_01(
     z=0.0,
     radius=0.2,
     lc=0.1,
-    num_cells_per_edge=None,
+    num_cells=None,
     facets=True,
     out_file=None,
 ):
@@ -225,13 +227,13 @@ def create_rce_grid_01(
         mat_surface = geom.add_plane_surface([curve_loop])
         matrix.append(mat_surface)
 
-    if num_cells_per_edge is not None:
-        if not num_cells_per_edge % 2 == 0:
+    if num_cells is not None:
+        if not num_cells % 2 == 0:
             raise ValueError(
                 "Number of cells per edge must be even for transfinite mesh. Sorry!"
             )
 
-        N = int(num_cells_per_edge) // 2  # num_cells_per_segment
+        N = int(num_cells) // 2  # num_cells_per_segment
 
         for line in circle_arcs:
             geom.mesh.set_transfinite_curve(line, N + 1)
@@ -286,10 +288,10 @@ def create_rce_grid_02(
     ymin,
     ymax,
     z=0.0,
-    num_cells_per_edge=None,
+    num_cells=None,
     facets=True,
     out_file=None,
-    ):
+):
     """TODO"""
 
     gmsh.initialize()
@@ -302,7 +304,7 @@ def create_rce_grid_02(
     gmsh.option.setNumber("Mesh.Optimize", 2)
     gmsh.option.setNumber("Mesh.Smoothing", 2)
 
-    lc_matrix = 20. / num_cells_per_edge
+    lc_matrix = 20.0 / num_cells
     lc_aggregates = lc_matrix * 0.7
 
     surfaces_aggregates = []
@@ -312,8 +314,8 @@ def create_rce_grid_02(
     def add_aggregate(x, y, z, R):
         """add circle at (x, y, z) with radius R"""
         p1 = gmsh.model.geo.add_point(x, y, z, lc_aggregates)
-        p2 = gmsh.model.geo.add_point(x+R, y, z, lc_aggregates)
-        p3 = gmsh.model.geo.add_point(x-R, y, z, lc_aggregates)
+        p2 = gmsh.model.geo.add_point(x + R, y, z, lc_aggregates)
+        p3 = gmsh.model.geo.add_point(x - R, y, z, lc_aggregates)
 
         c1 = gmsh.model.geo.add_circle_arc(p2, p1, p3)
         c2 = gmsh.model.geo.add_circle_arc(p3, p1, p2)
@@ -328,6 +330,7 @@ def create_rce_grid_02(
     right = []
     top = []
     left = []
+
     def add_matrix(xmin, xmax, ymin, ymax, z):
         """adds a rectangle from (xmin, ymin, z) to (xmax, ymax, z)"""
         p0 = gmsh.model.geo.add_point(xmin, ymin, z, lc_matrix)
@@ -345,19 +348,19 @@ def create_rce_grid_02(
         loop = gmsh.model.geo.add_curve_loop([l0, l1, l2, l3])
 
         for line in [l0, l1, l2, l3]:
-            gmsh.model.geo.mesh.set_transfinite_curve(line, num_cells_per_edge+1)
+            gmsh.model.geo.mesh.set_transfinite_curve(line, num_cells + 1)
         curve_loop_matrix.append(loop)
 
     # add aggregates
-    aggregates = [ # (x, y, z, R)
-    (8.124435628293494,  16.250990871336494, z, 2.2),
-    (3.104265948507514,  3.072789217500327,  z, 1.9),
-    (16.205618753300654, 16.37885427346391,  z, 1.5),
-    (3.8648187874608415, 10.576264325380615, z, 2.1),
-    (12.807996595076595, 12.686751823841977, z, 1.7),
-    (16.23956045449863,  7.686853577410513,  z, 1.9),
-    (7.9915552082180366, 6.689767983295199,  z, 2.0),
-    (12.561194629950934, 2.7353694913178512, z, 1.6)
+    aggregates = [  # (x, y, z, R)
+        (8.124435628293494, 16.250990871336494, z, 2.2),
+        (3.104265948507514, 3.072789217500327, z, 1.9),
+        (16.205618753300654, 16.37885427346391, z, 1.5),
+        (3.8648187874608415, 10.576264325380615, z, 2.1),
+        (12.807996595076595, 12.686751823841977, z, 1.7),
+        (16.23956045449863, 7.686853577410513, z, 1.9),
+        (7.9915552082180366, 6.689767983295199, z, 2.0),
+        (12.561194629950934, 2.7353694913178512, z, 1.6),
     ]
     for xc, yc, zc, radius in aggregates:
         add_aggregate(xc, yc, zc, radius)
@@ -366,7 +369,9 @@ def create_rce_grid_02(
     add_matrix(xmin, xmax, ymin, ymax, z)
     # add_plane_surface expects list of int (tags of curve loops)
     # if len(arg) > 1 --> subtract curve loops from first
-    surface_matrix = gmsh.model.geo.add_plane_surface(curve_loop_matrix+curve_loops_aggregates)
+    surface_matrix = gmsh.model.geo.add_plane_surface(
+        curve_loop_matrix + curve_loops_aggregates
+    )
 
     # add physical groups
     gmsh.model.geo.synchronize()

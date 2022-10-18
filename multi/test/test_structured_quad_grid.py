@@ -9,7 +9,9 @@ import tempfile
 
 def test():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(10, 10), recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(10, 10), recombine=True, out_file=tf.name
+        )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     grid = StructuredQuadGrid(domain)
@@ -37,29 +39,20 @@ def test():
 def test_fine_grid_creation():
     # ### create coarse grid
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 2., 0., 2., num_cells=(2, 2), recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0, 2.0, 0.0, 2.0, num_cells=(2, 2), recombine=True, out_file=tf.name
+        )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     grid = StructuredQuadGrid(domain)
+    grid.fine_grid_method = create_rce_grid_01
 
-    # ### create fine grid with certain rce structure
-    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rce_grid_01(0., 1., 0., 1., num_cells_per_edge=4, out_file=tf.name)
-        rce_domain, cmarkers, fmarkers = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-        num_cells = 1
-        fine_grids = np.repeat(np.array([tf.name]), num_cells)
-        grid.fine_grids = fine_grids
-
-        # target = tempfile.NamedTemporaryFile(suffix=".msh4", delete=False)
-        target = pathlib.Path("/home/pdiercks/Desktop/merged.msh")
-        grid.create_fine_grid(np.arange(num_cells), target.as_posix())
-        print(target.name)
-
-        # ### try to load created .msh file
-        # breakpoint()
-        # fine_domain, cell_markers, facet_markers = gmshio.read_from_msh(
-        #         target.as_posix(), MPI.COMM_WORLD, gdim=2
-        #         )
+    target = pathlib.Path("/tmp/merged.msh")
+    mesh, ct = grid.create_fine_grid(
+        np.array([0, 1]), target.as_posix(), cell_type="triangle", num_cells=4
+    )
+    assert ct.find(1).size > 0
+    assert ct.find(2).size > 0
 
 
 if __name__ == "__main__":
