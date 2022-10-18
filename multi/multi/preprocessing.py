@@ -11,6 +11,8 @@ import gmsh
 import meshio
 import numpy as np
 
+GMSH_VERBOSITY = 0
+
 
 def to_array(values):
     floats = []
@@ -36,6 +38,11 @@ def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
     return out_mesh
 
 
+def _initialize():
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Verbosity", 0)  # silent except for fatal errors
+
+
 def _generate_and_write_grid(dim, filepath):
     gmsh.model.mesh.generate(dim)
     gmsh.write(filepath)
@@ -47,7 +54,7 @@ def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
     start = to_array(start)
     end = to_array(end)
 
-    gmsh.initialize()
+    _initialize()
     gmsh.model.add("line")
 
     p0 = gmsh.model.geo.addPoint(*start, lc)
@@ -77,7 +84,7 @@ def create_rectangle_grid(
     out_file=None,
 ):
     """TODO docstring"""
-    gmsh.initialize()
+    _initialize()
     gmsh.model.add("rectangle")
 
     p0 = gmsh.model.geo.addPoint(xmin, ymin, z, lc)
@@ -142,7 +149,7 @@ def create_rce_grid_01(
     width = abs(xmax - xmin)
     height = abs(ymax - ymin)
 
-    gmsh.initialize()
+    _initialize()
     gmsh.model.add("rce_01")
 
     # options
@@ -294,7 +301,7 @@ def create_rce_grid_02(
 ):
     """TODO"""
 
-    gmsh.initialize()
+    _initialize()
     gmsh.model.add("rce_02")
 
     # options
