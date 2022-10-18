@@ -1,10 +1,11 @@
 import pathlib
+import tempfile
+import dolfinx
 from dolfinx.io import gmshio
 import numpy as np
 from mpi4py import MPI
 from multi.domain import StructuredQuadGrid
 from multi.preprocessing import create_rectangle_grid, create_rce_grid_01
-import tempfile
 
 
 def test():
@@ -47,10 +48,18 @@ def test_fine_grid_creation():
     grid = StructuredQuadGrid(domain)
     grid.fine_grid_method = create_rce_grid_01
 
-    target = pathlib.Path("/tmp/merged.msh")
-    mesh, ct = grid.create_fine_grid(
-        np.array([0, 1]), target.as_posix(), cell_type="triangle", num_cells=4
-    )
+    with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
+        grid.create_fine_grid(
+            np.array([0, 1]), tf.name, cell_type="triangle", num_cells=4
+        )
+        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
+            mesh = xdmf.read_mesh(name="Grid")
+            ct = xdmf.read_meshtags(mesh, name="Grid")
+
+        # remove the h5 as well
+        h5 = pathlib.Path(tf.name).with_suffix(".h5")
+        h5.unlink()
+
     assert ct.find(1).size > 0
     assert ct.find(2).size > 0
 

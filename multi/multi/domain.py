@@ -4,7 +4,6 @@ import tempfile
 import meshio
 import numpy as np
 import dolfinx
-from mpi4py import MPI
 from multi.preprocessing import create_mesh
 
 
@@ -316,30 +315,22 @@ class StructuredQuadGrid(object):
         gmsh.model.mesh.remove_duplicate_nodes()
         gmsh.model.mesh.remove_duplicate_elements()
 
-        gmsh.model.mesh.generate(self.tdim)
+        gmsh.model.mesh.generate(tdim)
 
-        gmsh.write(output)
+        tf_msh = tempfile.NamedTemporaryFile(suffix=".msh")
+        gmsh.write(tf_msh.name)
         gmsh.finalize()
 
         # convert to xdmf using meshio
-        in_mesh = meshio.read(output)
+        # reasoning: always convert to xdmf since (merged) msh
+        # cannot be read by dolfinx.io.gmshio
+        in_mesh = meshio.read(tf_msh.name)
         if tdim < 3:
             prune_z = True
         out_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
-
-        with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
-            meshio.write(tf.name, out_mesh)
-
-            with dolfinx.io.XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
-                mesh = xdmf.read_mesh(name="Grid")
-                ct = xdmf.read_meshtags(mesh, name="Grid")
-
-            # remove the h5 as well
-            h5 = pathlib.Path(tf.name).with_suffix(".h5")
-            h5.unlink()
+        meshio.write(output, out_mesh)
 
         # clean up
+        tf_msh.close()
         for msh_file in subdomains:
             pathlib.Path(msh_file).unlink()
-
-        return (mesh, ct)
