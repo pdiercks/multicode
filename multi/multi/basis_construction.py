@@ -126,7 +126,11 @@ def compute_phi(problem):
 
 
 def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
-    """method to be used within python action of a dodoFile
+    """compute the coarse scale basis (extension of bilinear shape functions)
+
+    NOTE
+    ----
+    method to be used within python action of a dodoFile
 
     Parameters
     ----------
