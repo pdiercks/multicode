@@ -17,7 +17,7 @@ from multi.shapes import get_hierarchical_shape_functions
 def test():
     # create rce grid
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rce_grid_01(0.0, 1.0, 0.0, 1.0, num_cells_per_edge=10, out_file=tf.name)
+        create_rce_grid_01(0.0, 1.0, 0.0, 1.0, num_cells=10, out_file=tf.name)
         rce_mesh, cell_markers, facet_markers = gmshio.read_from_msh(
             tf.name, MPI.COMM_WORLD, gdim=2
         )

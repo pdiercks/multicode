@@ -41,7 +41,7 @@ def test_bases_loader_read_bases():
 
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle_grid(
-            0.0, 3.0, 0.0, 3.0, num_cells=(3, 3), recombine=True, out_file=tf.name
+            0.0, 3.0, 0.0, 3.0, num_cells=(3, 3), facets=True, recombine=True, out_file=tf.name
         )
         domain, cell_markers, facet_markers = gmshio.read_from_msh(
             tf.name, MPI.COMM_WORLD, gdim=2

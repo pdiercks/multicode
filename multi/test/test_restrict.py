@@ -9,11 +9,12 @@ from mpi4py import MPI
 def test_restrict_subdomain():
     num_cells = 10
     degree = 1
+    length = 1.0
 
     # rectangle
     domain = dolfinx.mesh.create_rectangle(
         MPI.COMM_WORLD,
-        [[0.0, 0.0], [2.0, 2.0]],
+        [[0.0, 0.0], [length, length]],
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
@@ -21,9 +22,11 @@ def test_restrict_subdomain():
     u = dolfinx.fem.Function(V)
     u.x.set(1.0)
 
-    subdomain = within_range([0.5, 0.5, 0.], [1.5, 1.5, 0.])
-    # h = 0.2, unit length = 1.
-    # --> 5 elements --> 36 nodes --> 72 dofs
+    subdomain = within_range([.3, .3, 0.], [.8, .8, 0.])
+    # h = length / num_cells = 0.1
+    # subdomain has is 0.5 width and height
+    # therefore 5x5 = 25 cells
+    # --> 25 elements --> 36 nodes --> 72 dofs
 
     # restriction
     r = restrict(u, subdomain, 2)
@@ -61,3 +64,4 @@ def test_restrict_bottom():
 
 if __name__ == "__main__":
     test_restrict_bottom()
+    test_restrict_subdomain()

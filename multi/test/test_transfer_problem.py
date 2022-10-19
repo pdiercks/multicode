@@ -70,7 +70,7 @@ def test_dirichlet_neumann():
 
     n = 20
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), recombine=True, out_file=tf.name)
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), facets=True, recombine=True, out_file=tf.name)
         square, cell_markers, facet_markers = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     V = dolfinx.fem.VectorFunctionSpace(square, ("CG", 1))
 
@@ -133,7 +133,7 @@ def test_neumann():
 
     n = 20
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), recombine=True, out_file=tf.name)
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), facets=True, recombine=True, out_file=tf.name)
         square, cell_markers, facet_markers = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     V = dolfinx.fem.VectorFunctionSpace(square, ("CG", 1))
 
