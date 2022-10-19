@@ -2,22 +2,22 @@ import dolfinx
 import ufl
 import numpy as np
 from petsc4py import PETSc
+
 from multi.bcs import BoundaryConditions
-
-# from multi.dofmap import DofMap
-from multi.materials import LinearElasticMaterial
-
 from multi.interpolation import make_mapping
+from multi.materials import LinearElasticMaterial
+from multi.misc import x_dofs_VectorFunctionSpace
 from multi.product import InnerProduct
-
 from multi.projection import orthogonal_part
+from multi.sampling import correlation_matrix, _create_random_values
 from multi.solver import build_nullspace
 
 from pymor.core.logger import getLogger
-
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
+from pymor.tools.random import get_random_state
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
+
 from scipy.sparse import csc_matrix
 
 
@@ -495,6 +495,14 @@ class TransferProblem(object):
 
         return self.source.from_numpy(rhs_array)
 
+    def get_correlation_matrix(self, clength, mean, metric="euclidean"):
+        """get the correlation matrix"""
+        V = self.source.V
+        x = x_dofs_VectorFunctionSpace(V)
+        sigma = correlation_matrix(x, clength, mean, distance_metric=metric)
+        return sigma
+
+
     def generate_boundary_data(self, values):
         """generate boundary data g in V with ``values`` on Γ_out and zero elsewhere"""
         bc_dofs = self._bc_dofs_gamma_out
@@ -504,18 +512,24 @@ class TransferProblem(object):
         return self.source.from_numpy(D)
 
     def generate_random_boundary_data(
-        self, count, distribution="normal", random_state=None, seed=None
+        self, count, distribution="normal", random_state=None, seed=None, **kwargs
     ):
         """generate random boundary data g in V with random values on Γ_out and zero elsewhere"""
         # initialize
-        D = np.zeros((count, self.source.dim))
+        D = np.zeros((count, self.source.dim))  # source.dim is the full space
 
-        bc_dofs = self._bc_dofs_gamma_out
-        random_values = self._source_gamma.random(
-            count, distribution=distribution, random_state=random_state, seed=seed
-        )
+        # FIXME
+        # there is self._source_gamma = NumpyVectorSpace()
+        # but it cannot create random values for distribution='multivariate_normal'
+        bc_dofs = self._bc_dofs_gamma_out  # actual size of the source space
+        assert random_state is None or seed is None
+        random_state = get_random_state(random_state, seed)
+        values = _create_random_values(
+                (count, bc_dofs.size), distribution, random_state, **kwargs
+                )
+
         # set random data at boundary dofs
-        D[:, bc_dofs] = random_values.to_numpy()
+        D[:, bc_dofs] = values
         return self.source.from_numpy(D)
 
     def solve(self, boundary_data):
