@@ -60,6 +60,11 @@ def plane_at(coordinate, dim):
 
 
 def within_range(start, end, tol=1e-6):
+    """mark the domain within range
+
+    Note: best used together with dolfinx.mesh.locate_entities_boundary
+    and topological definition of the Dirichlet bc
+    """
     start = to_floats(start)
     end = to_floats(end)
 
@@ -91,3 +96,23 @@ def point_at(coord):
         )
 
     return boundary
+
+
+def show_marked(domain, marker):
+    import dolfinx
+    import matplotlib.pyplot as plt
+
+    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    dofs = dolfinx.fem.locate_dofs_geometrical(V, marker)
+    u = dolfinx.fem.Function(V)
+    bc = dolfinx.fem.dirichletbc(u, dofs)
+    x_dofs = V.tabulate_dof_coordinates()
+    x_dofs = x_dofs[:, :2]
+    marked = x_dofs[bc.dof_indices()[0]]
+
+    plt.figure(1)
+    x, y = x_dofs.T
+    plt.scatter(x, y, facecolors="none", edgecolors="k", marker="o")
+    xx, yy = marked.T
+    plt.scatter(xx, yy, facecolors="r", edgecolors="none", marker="o")
+    plt.show()
