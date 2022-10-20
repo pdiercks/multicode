@@ -244,12 +244,22 @@ class StructuredQuadGrid(object):
 
     @property
     def fine_grid_method(self):
+        """methods to create fine grid for each coarse grid cell"""
         return self._fine_grid_method
 
     @fine_grid_method.setter
-    def fine_grid_method(self, method):
-        """set method to create fine grid for coarse grid cell"""
-        self._fine_grid_method = method
+    def fine_grid_method(self, methods):
+        """set methods to create fine grid for each coarse grid cell"""
+        try:
+            num = len(methods)
+            if not num == self.num_cells:
+                raise ValueError
+        except TypeError:
+            # set same method for every cell
+            methods = [
+                methods,
+            ] * self.num_cells
+        self._fine_grid_method = methods
 
     def create_fine_grid(self, cells, output, cell_type="triangle", **kwargs):
         """creates a fine scale grid for given cells
@@ -290,7 +300,7 @@ class StructuredQuadGrid(object):
             # create msh file using self._fine_grid_method
             with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tf:
                 subdomains.append(tf.name)
-                create_fine_grid = self._fine_grid_method
+                create_fine_grid = self.fine_grid_method[cell]
                 create_fine_grid(
                     xmin,
                     xmax,
