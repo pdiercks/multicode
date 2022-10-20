@@ -1,9 +1,13 @@
+import pathlib
 import dolfinx
+from dolfinx.io import gmshio
 import ufl
 import numpy as np
+from mpi4py import MPI
 from petsc4py import PETSc
 
 from multi.bcs import BoundaryConditions
+from multi.domain import StructuredQuadGrid
 from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
 from multi.misc import x_dofs_VectorFunctionSpace
@@ -318,12 +322,13 @@ class TransferProblem(object):
     subdomain_space : dolfinx.fem.FunctionSpace
         The range space defined on the target subdomain Ω_in.
     gamma_out : callable
-        A function that defines Γ_out geometrically.
+        A function that defines facets of Γ_out geometrically.
+        `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
         Γ_out is the part of the boundary of the oversampling domain that does
         not intersect with the boundary of the global domain.
     dirichlet : list of dict or dict, optional
         Homogeneous dirichlet boundary conditions.
-        See multi.bcs.BoundaryConditinos.add_dirichlet_bc for suitable values.
+        See multi.bcs.BoundaryConditions.add_dirichlet_bc for suitable values.
     neumann : list of dict or dict, optional
         Inhomogeneous neumann boundary conditions or source terms.
         See multi.bcs.BoundaryConditions.add_neumann_bc for suitable values.
@@ -362,7 +367,7 @@ class TransferProblem(object):
         self.gamma_out = gamma_out
         self.neumann = neumann
         self.remove_kernel = remove_kernel
-        self.solver_options = solver_options
+        self.solver_options = solver_options or {"inverse": _solver_options()}
 
         # initialize commonly used quantities
         self._init_bc_gamma_out()
@@ -398,9 +403,16 @@ class TransferProblem(object):
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
         V = self.source.V
+        tdim = V.mesh.topology.dim
+        fdim = tdim - 1
         dummy = dolfinx.fem.Function(V)
+
+        # determine boundary facets of Γ_out
+        boundary_facets = dolfinx.mesh.locate_entities_boundary(
+            V.mesh, fdim, self.gamma_out
+        )
         # determine dofs on Γ_out
-        _dofs = dolfinx.fem.locate_dofs_geometrical(V, self.gamma_out)
+        _dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
         bc = dolfinx.fem.dirichletbc(dummy, _dofs)
         dofs = bc.dof_indices()[0]
         self._bc_gamma_out = bc
@@ -502,7 +514,6 @@ class TransferProblem(object):
         sigma = correlation_matrix(x, clength, mean, distance_metric=metric)
         return sigma
 
-
     def generate_boundary_data(self, values):
         """generate boundary data g in V with ``values`` on Γ_out and zero elsewhere"""
         bc_dofs = self._bc_dofs_gamma_out
@@ -525,8 +536,8 @@ class TransferProblem(object):
         assert random_state is None or seed is None
         random_state = get_random_state(random_state, seed)
         values = _create_random_values(
-                (count, bc_dofs.size), distribution, random_state, **kwargs
-                )
+            (count, bc_dofs.size), distribution, random_state, **kwargs
+        )
 
         # set random data at boundary dofs
         D[:, bc_dofs] = values
@@ -613,74 +624,41 @@ class TransferProblem(object):
             return FenicsxMatrixOperator(matrix, self.range.V, self.range.V)
 
 
-# class RomProblemBase(object):
-#     def __init__(self, coarse_grid):
-#         self.dofmap = DofMap(coarse_grid, tdim=2, gdim=2)
-#         self.points = self.dofmap.points
-#         self.cells = self.dofmap.cells
-#         cell_points = self.points[self.dofmap.cells[0]]
-#         self.unit_length = np.around(cell_points[2] - cell_points[0])[0]
-#         self.xmin = self.points[:, 0].min()
-#         self.xmax = self.points[:, 0].max()
-#         self.ymin = self.points[:, 1].min()
-#         self.ymax = self.points[:, 1].max()
+class MultiscaleProblem(object):
+    def __init__(self, mshfile):
+        self.mshfile = mshfile
+        domain, ct, ft = gmshio.read_from_msh(mshfile, MPI.COMM_WORLD, gdim=2)
+        self.grid = StructuredQuadGrid(domain, ct, ft)
+        self.grid_dir = pathlib.Path(mshfile).parent
 
-#     @property
-#     def bases_path(self):
-#         pass
+    @property
+    def cell_sets(self):
+        pass
 
-#     @bases_path.setter
-#     def bases_path(self, bases):
-#         pass
+    @property
+    def dirichlet_offline(self):
+        """dirichlet bcs for oversampling"""
+        pass
 
-#     @property
-#     def cell_sets(self):
-#         pass
+    @property
+    def dirichlet_online(self):
+        """dirichlet bcs for global approx"""
+        pass
 
-#     @property
-#     def cell_to_basis(self):
-#         pass
+    @property
+    def gamma_out(self):
+        pass
 
-#     @property
-#     def config_to_cells(self):
-#         pass
+    @property
+    def neumann_offline(self):
+        """neumann bcs for oversampling"""
+        pass
 
-#     @property
-#     def dirichlet_offline(self):
-#         """dirichlet bcs for oversampling"""
-#         pass
+    @property
+    def neumann_online(self):
+        """neumann bcs for global approx"""
+        pass
 
-#     @property
-#     def dirichlet_online(self):
-#         """dirichlet bcs for global approx"""
-#         pass
-
-#     @property
-#     def gamma_out(self):
-#         pass
-
-#     @property
-#     def neumann_offline(self):
-#         """neumann bcs for oversampling"""
-#         pass
-
-#     @property
-#     def neumann_online(self):
-#         """neumann bcs for global approx"""
-#         pass
-
-#     @property
-#     def offset_oversampling_domain(self):
-#         pass
-
-#     @property
-#     def offset_target_subdomain(self):
-#         pass
-
-#     @property
-#     def pod_config(self):
-#         pass
-
-#     @property
-#     def read_bases_config(self):
-#         pass
+    @property
+    def pod_config(self):
+        pass
