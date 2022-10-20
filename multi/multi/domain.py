@@ -198,8 +198,8 @@ class StructuredQuadGrid(object):
         self.mesh.topology.create_connectivity(2, 0)
         self.mesh.topology.create_connectivity(2, 1)
         self.mesh.topology.create_connectivity(0, 2)
-        self.num_cells = self.mesh.topology.connectivity(2, 0).num_nodes
-        self.cells = np.arange(self.num_cells)
+        self.num_cells = mesh.topology.index_map(mesh.topology.dim).size_local
+        self.cells = np.arange(self.num_cells, dtype=np.int32)
         self.tdim = mesh.topology.dim
 
     @property
