@@ -103,13 +103,14 @@ from multi.shapes import NumpyQuad  # , get_hierarchical_shape_functions
 #         return basis
 
 
-def compute_phi(problem):
+def compute_phi(problem, nodes=None):
     """compute coarse scale basis functions for given problem"""
     V = problem.V
     # FIXME just define nodes based on domain.geometry?
     # get_corner_vertices might be a bit too much effort
-    vertices = problem.domain.get_corner_vertices()
-    nodes = dolfinx.mesh.compute_midpoints(problem.domain.mesh, 0, vertices)
+    if nodes is None:
+        vertices = problem.domain.get_corner_vertices()
+        nodes = dolfinx.mesh.compute_midpoints(problem.domain.mesh, 0, vertices)
     quadrilateral = NumpyQuad(nodes)
     shape_functions = quadrilateral.interpolate(V)
 
