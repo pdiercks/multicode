@@ -1,10 +1,14 @@
+import tempfile
 import dolfinx
+from dolfinx.io import gmshio
 import numpy as np
 from mpi4py import MPI
 from petsc4py import PETSc
 from multi.boundary import plane_at
-from multi.domain import Domain
+from multi.domain import Domain, RceDomain
+from multi.preprocessing import create_rectangle_grid
 from multi.problems import LinearElasticityProblem
+from multi.misc import x_dofs_VectorFunctionSpace
 
 
 def test():
@@ -47,34 +51,35 @@ def test():
     assert np.sum(np.abs(u.x.array[:])) > 0.0
 
 
-# def test_with_edges():
-#     domain = RectangularDomain(
-#         "data/rcedomain.xdmf", _id=1, subdomains=False, edges=True
-#     )
-#     V = df.VectorFunctionSpace(domain.mesh, "CG", 1)
-#     problem = LinearElasticityProblem(domain, V, 210e3, 0.3)
+def test_with_edges():
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 1., 0., 1., num_cells=10, facets=True, recombine=True, out_file=tf.name)
+        domain, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    Ω = RceDomain(domain, None, ft, edges=True)
+    V = dolfinx.fem.VectorFunctionSpace(Ω.mesh, ("CG", 1))
+    problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 
-#     x_dofs = problem.V.tabulate_dof_coordinates()
-#     bottom = x_dofs[problem.V_to_L[0]]
-#     assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
-#     left = x_dofs[problem.V_to_L[3]]
-#     assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
+    x_dofs = x_dofs_VectorFunctionSpace(problem.V)
+    bottom = x_dofs[problem.V_to_L["bottom"]]
+    assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
+    left = x_dofs[problem.V_to_L["left"]]
+    assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
 
-#     left = plane_at(0.0)
-#     right = plane_at(1.0)
-#     problem.add_dirichlet_bc(left, df.Constant((0, 0)))
-#     problem.add_neumann_bc(right, df.Constant((1000, 0)))
-#     a = problem.get_form_lhs()
-#     L = problem.get_form_rhs()
+    left = plane_at(0.0, "x")
+    gdim = domain.geometry.dim
+    zero = np.array((0, ) * gdim, dtype=PETSc.ScalarType)
+    problem.add_dirichlet_bc(zero, boundary=left, method="geometrical")
+    T = dolfinx.fem.Constant(domain, PETSc.ScalarType((1000., 0.)))
+    problem.add_neumann_bc(3, T)
 
-#     u = df.Function(V)
-#     df.solve(a == L, u, problem.dirichlet_bcs())
+    u = problem.solve()
 
-#     assert np.sum(df.assemble(L)[:]) > 0.0
-#     assert df.assemble(a).array().shape == (V.dim(), V.dim())
-#     assert np.sum(np.abs(u.vector()[:])) > 0.0
+    Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
+    assert np.sum(problem._vector[:]) > 0.0
+    assert problem._matrix[:, :].shape == (Vdim, Vdim)
+    assert np.sum(np.abs(u.vector.array[:])) > 0.0
 
 
 if __name__ == "__main__":
     test()
-    # test_with_edges()
+    test_with_edges()
