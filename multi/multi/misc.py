@@ -1,8 +1,6 @@
 """miscellaneous helpers"""
 
-# import dolfinx
 import numpy as np
-from pymor.vectorarrays.numpy import NumpyVectorArray
 
 
 def x_dofs_VectorFunctionSpace(V):
@@ -50,42 +48,6 @@ def select_modes(basis, modes, max_modes):
         mask += [offset + i for i in range(modes[edge])]
         offset += max_modes[edge]
     return basis[mask]
-
-
-def set_values(U, dofs, values):
-    """set ``dofs`` entries of all vectors in VectorArray U to ``values``"""
-    if isinstance(U, NumpyVectorArray):
-        # unfortunately, I cannot figure out how to achieve the same
-        # for ListVectorArray of FenicsVectors
-        array = U.to_numpy()
-        array[:, dofs] = values
-    else:
-        space = U.space
-        array = U.to_numpy()
-        array[:, dofs] = values
-        return space.from_numpy(array)
-
-
-# TODO
-# def restrict_to(domain, function):
-#     """restrict given function or list of functions to domain"""
-#     if isinstance(function, list):
-#         # assuming all functions are elements of V
-#         V = function[0].function_space()
-#         element = V.ufl_element()
-#         Vsub = df.FunctionSpace(domain.mesh, element)
-#         assert Vsub.dim() < V.dim()
-#         interp = []
-#         for f in function:
-#             If = df.interpolate(f, Vsub)
-#             interp.append(If)
-#         return interp
-#     else:
-#         V = function.function_space()
-#         element = V.ufl_element()
-#         Vsub = df.FunctionSpace(domain.mesh, element)
-#         assert Vsub.dim() < V.dim()
-#         return df.interpolate(function, Vsub)
 
 
 def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
