@@ -8,17 +8,30 @@ from multi.shapes import NumpyLine
 from multi.product import InnerProduct
 
 
+def get_boundary_dofs(V, marker):
+    """get dofs on the boundary"""
+    domain = V.mesh
+    gdim = domain.geometry.dim
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
+    dofs = dolfinx.fem.locate_dofs_topological(V, fdim, entities)
+    bc = dolfinx.fem.dirichletbc(np.array((0, ) * gdim, dtype=PETSc.ScalarType), dofs)
+    dof_indices = bc.dof_indices()[0]
+    return dof_indices
+
+
 class BoundaryDataFactory(object):
     def __init__(self, domain, V):
         self.domain = domain
         self.V = V
 
-        # boundary facets
+        # boundary facets (entire boundary)
         tdim = domain.topology.dim
         fdim = tdim - 1
         domain.topology.create_connectivity(fdim, tdim)
         boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-        # boundary dofs
+        # boundary dofs (entire boundary)
         function = dolfinx.fem.Function(V)
         function.x.set(0.0)
         dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
