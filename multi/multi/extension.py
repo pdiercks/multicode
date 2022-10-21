@@ -135,6 +135,7 @@ def extend(problem, boundary_data):
     return extensions
 
 
+# FIXME dim or boundary, but not both are required?
 def restrict(function, marker, dim, boundary=False):
     """restrict the function to some part of the domain
 
