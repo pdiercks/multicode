@@ -30,7 +30,7 @@ def test():
     Ω = Domain(domain, cell_markers=None, facet_markers=facet_tags)
 
     # initialize problem
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 
     # add dirichlet and neumann bc
@@ -53,10 +53,19 @@ def test():
 
 def test_with_edges():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=10, facets=True, recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=10,
+            facets=True,
+            recombine=True,
+            out_file=tf.name,
+        )
         domain, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     Ω = RceDomain(domain, None, ft, edges=True)
-    V = dolfinx.fem.VectorFunctionSpace(Ω.mesh, ("CG", 1))
+    V = dolfinx.fem.VectorFunctionSpace(Ω.mesh, ("Lagrange", 1))
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 
     x_dofs = x_dofs_VectorFunctionSpace(problem.V)
@@ -67,9 +76,9 @@ def test_with_edges():
 
     left = plane_at(0.0, "x")
     gdim = domain.geometry.dim
-    zero = np.array((0, ) * gdim, dtype=PETSc.ScalarType)
+    zero = np.array((0,) * gdim, dtype=PETSc.ScalarType)
     problem.add_dirichlet_bc(zero, boundary=left, method="geometrical")
-    T = dolfinx.fem.Constant(domain, PETSc.ScalarType((1000., 0.)))
+    T = dolfinx.fem.Constant(domain, PETSc.ScalarType((1000.0, 0.0)))
     problem.add_neumann_bc(3, T)
 
     u = problem.solve()

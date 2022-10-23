@@ -27,7 +27,7 @@ def test_poisson():
         MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
     )
     Ω = Domain(domain)
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
 
     options = {"solver": "preonly", "preconditioner": "lu", "keep_solver": True}
     problem = PoissonProblem(Ω, V, solver_options=options)

@@ -17,11 +17,11 @@ def test_function_space():
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", degree))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", degree))
 
     # bottom edge
     interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, 2.0])
-    L = dolfinx.fem.FunctionSpace(interval, ("CG", degree))
+    L = dolfinx.fem.FunctionSpace(interval, ("Lagrange", degree))
     dofs = make_mapping(L, V)
 
     x_dofs_V = V.tabulate_dof_coordinates()
@@ -47,12 +47,12 @@ def test_vector_function_space():
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
-    V = dolfinx.fem.VectorFunctionSpace(rectangle, ("CG", degree))
+    V = dolfinx.fem.VectorFunctionSpace(rectangle, ("Lagrange", degree))
     x_dofs_V = xdofs_VectorFunctionSpace(V)
 
     # bottom edge
     interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, 2.0])
-    L = dolfinx.fem.VectorFunctionSpace(interval, ("CG", degree), dim=2)
+    L = dolfinx.fem.VectorFunctionSpace(interval, ("Lagrange", degree), dim=2)
     dofs = make_mapping(L, V)
 
     x_dofs_L = xdofs_VectorFunctionSpace(L)

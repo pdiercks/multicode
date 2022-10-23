@@ -37,7 +37,7 @@ def test():
 
     assert dofmap.num_dofs() == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
 
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
 
     def get_global_dofs(V, cell_index):
         """get global dofs of V for cell index"""

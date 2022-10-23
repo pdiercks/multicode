@@ -9,7 +9,7 @@ from pymor.algorithms.gram_schmidt import gram_schmidt
 
 def test():
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
     nodes = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
     quad = NumpyQuad(nodes)
     shapes = quad.interpolate(V)

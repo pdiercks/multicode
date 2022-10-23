@@ -9,7 +9,7 @@ def test():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
 
     bottom = plane_at(0.0, "y")
     top = plane_at(1.0, "y")

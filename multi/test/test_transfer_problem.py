@@ -70,10 +70,20 @@ def test_dirichlet_neumann():
 
     n = 20
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), facets=True, recombine=True, out_file=tf.name)
-        square, cell_markers, facet_markers = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    V = dolfinx.fem.VectorFunctionSpace(square, ("CG", 1))
-
+        create_rectangle_grid(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=(n, n),
+            facets=True,
+            recombine=True,
+            out_file=tf.name,
+        )
+        square, cell_markers, facet_markers = gmshio.read_from_msh(
+            tf.name, MPI.COMM_WORLD, gdim=2
+        )
+    V = dolfinx.fem.VectorFunctionSpace(square, ("Lagrange", 1))
 
     domain = RceDomain(square, cell_markers=None, facet_markers=facet_markers)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
@@ -83,20 +93,17 @@ def test_dirichlet_neumann():
     Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
 
     # marker=1 points to bottom
-    traction = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3)))
+    traction = dolfinx.fem.Constant(
+        square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3))
+    )
     zero = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(0.0)))
     neumann_bc = {"marker": 1, "value": traction}
     right = plane_at(1.0, "x")
     dirichlet_bc = {"boundary": right, "value": zero, "method": "geometrical"}
     gamma_out = plane_at(0.0, "x")  # left
 
-    # NOTE pymor solver options have different format
     os_problem = TransferProblem(
-        problem,
-        Vsub,
-        gamma_out,
-        dirichlet=dirichlet_bc,
-        neumann=neumann_bc
+        problem, Vsub, gamma_out, dirichlet=dirichlet_bc, neumann=neumann_bc
     )
     # generate boundary data
     randomState = np.random.RandomState(seed=6)
@@ -111,7 +118,11 @@ def test_dirichlet_neumann():
         boundary_vector = boundary_function.vector
         boundary_vector.array[:] = vector
 
-        bc_gamma_out = {"boundary": gamma_out, "value": boundary_function, "method": "geometrical"}
+        bc_gamma_out = {
+            "boundary": gamma_out,
+            "value": boundary_function,
+            "method": "geometrical",
+        }
         u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc])
         u_ex[i, :] = u_exact
 
@@ -133,9 +144,20 @@ def test_neumann():
 
     n = 20
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(n, n), facets=True, recombine=True, out_file=tf.name)
-        square, cell_markers, facet_markers = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    V = dolfinx.fem.VectorFunctionSpace(square, ("CG", 1))
+        create_rectangle_grid(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=(n, n),
+            facets=True,
+            recombine=True,
+            out_file=tf.name,
+        )
+        square, cell_markers, facet_markers = gmshio.read_from_msh(
+            tf.name, MPI.COMM_WORLD, gdim=2
+        )
+    V = dolfinx.fem.VectorFunctionSpace(square, ("Lagrange", 1))
 
     domain = RceDomain(square, cell_markers=None, facet_markers=facet_markers)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
@@ -144,24 +166,24 @@ def test_neumann():
     submesh = dolfinx.mesh.create_submesh(domain.mesh, 2, cells_submesh)[0]
     Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
 
-    traction = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3)))
+    traction = dolfinx.fem.Constant(
+        square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3))
+    )
     neumann_bc = {"marker": 1, "value": traction}
+    zero = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(0.0)))
+    right = plane_at(1.0, "x")
+    dirichlet_bc = {"boundary": right, "value": zero, "method": "geometrical"}
 
     def get_gamma_out(n):
         # mark the top and left boundary excluding points on bottom and right boundary
-        Δx = Δy = 1. / (n+1)  # must be smaller than cell size
+        Δx = Δy = 1.0 / (n + 1)  # must be smaller than cell size
         gamma_out = within_range([0.0, 0.0 + Δy, 0.0], [1.0 - Δx, 1.0, 0.0])
         return gamma_out
 
     gamma_out = get_gamma_out(n)
 
-
     os_problem = TransferProblem(
-        problem,
-        Vsub,
-        gamma_out,
-        dirichlet=None,
-        neumann=neumann_bc
+        problem, Vsub, gamma_out, dirichlet=dirichlet_bc, neumann=neumann_bc
     )
     # generate boundary data
     randomState = np.random.RandomState(seed=6)
@@ -176,13 +198,18 @@ def test_neumann():
         boundary_vector = boundary_function.vector
         boundary_vector.array[:] = vector
 
-        bc_gamma_out = {"boundary": gamma_out, "value": boundary_function, "method": "geometrical"}
-        u_exact = exact_solution(problem, neumann_bc, bc_gamma_out)
+        bc_gamma_out = {
+            "boundary": gamma_out,
+            "value": boundary_function,
+            "method": "geometrical",
+        }
+        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc])
         u_ex[i, :] = u_exact
 
     error = u_ex - u_arr
     norm = np.linalg.norm(error)
     print(norm)
+    breakpoint()
     assert np.linalg.norm(error) < 1e-12
 
 

@@ -10,8 +10,8 @@ def test_FunctionSpace():
     coarse = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 2)
     fine = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 20)
 
-    V = dolfinx.fem.FunctionSpace(fine, ("CG", 2))
-    W = dolfinx.fem.FunctionSpace(coarse, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(fine, ("Lagrange", 2))
+    W = dolfinx.fem.FunctionSpace(coarse, ("Lagrange", 1))
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: x[0] * 12.0)
@@ -31,8 +31,8 @@ def test_VectorFunctionSpace():
     coarse = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 2)
     fine = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 20)
 
-    V = dolfinx.fem.VectorFunctionSpace(fine, ("CG", 2), dim=2)
-    W = dolfinx.fem.VectorFunctionSpace(coarse, ("CG", 1), dim=2)
+    V = dolfinx.fem.VectorFunctionSpace(fine, ("Lagrange", 2), dim=2)
+    W = dolfinx.fem.VectorFunctionSpace(coarse, ("Lagrange", 1), dim=2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[0]]))
@@ -56,8 +56,8 @@ def test_VectorFunctionSpace_square():
         MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle
     )
 
-    V = dolfinx.fem.VectorFunctionSpace(fine, ("CG", 2), dim=2)
-    W = dolfinx.fem.VectorFunctionSpace(coarse, ("CG", 1), dim=2)
+    V = dolfinx.fem.VectorFunctionSpace(fine, ("Lagrange", 2), dim=2)
+    W = dolfinx.fem.VectorFunctionSpace(coarse, ("Lagrange", 1), dim=2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
@@ -81,8 +81,8 @@ def test_VectorFunctionSpace_square_Boundary():
         MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle
     )
 
-    V = dolfinx.fem.VectorFunctionSpace(fine, ("CG", 2), dim=2)
-    W = dolfinx.fem.VectorFunctionSpace(coarse, ("CG", 1), dim=2)
+    V = dolfinx.fem.VectorFunctionSpace(fine, ("Lagrange", 2), dim=2)
+    W = dolfinx.fem.VectorFunctionSpace(coarse, ("Lagrange", 1), dim=2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))

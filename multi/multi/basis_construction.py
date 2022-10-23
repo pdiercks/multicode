@@ -146,7 +146,7 @@ def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
         rce_grid, MPI.COMM_WORLD, gdim=2
     )
     omega = RceDomain(domain, cell_marker, facet_marker, index=0, edges=True)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", degree))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree))
 
     with material.open("r") as f:
         mat = yaml.safe_load(f)

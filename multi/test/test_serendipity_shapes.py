@@ -12,12 +12,14 @@ from multi.shapes import NumpyQuad
 
 def test():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 2., 0., 2., num_cells=(20, 20), recombine=True, out_file=tf.name)
+        create_rectangle_grid(
+            0.0, 2.0, 0.0, 2.0, num_cells=(20, 20), recombine=True, out_file=tf.name
+        )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     omega = Domain(domain)
     omega.translate([-1, -1, 0])
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
     quad8 = NumpyQuad(
         np.array([[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]])
     )
@@ -25,7 +27,7 @@ def test():
 
     def serendipity(xi, eta):
         """return shape function at 8th node"""
-        return (1 - xi) * (1 - eta ** 2) / 2
+        return (1 - xi) * (1 - eta**2) / 2
 
     assert np.isclose(np.sum(shapes), len(V.tabulate_dof_coordinates()))
     x_dofs = V.tabulate_dof_coordinates()

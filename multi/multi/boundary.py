@@ -102,7 +102,7 @@ def show_marked(domain, marker):
     import dolfinx
     import matplotlib.pyplot as plt
 
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
     dofs = dolfinx.fem.locate_dofs_geometrical(V, marker)
     u = dolfinx.fem.Function(V)
     bc = dolfinx.fem.dirichletbc(u, dofs)

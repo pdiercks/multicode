@@ -10,7 +10,7 @@ def test_function_space():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
 
     h = 1.0 / n
     my_point = point_at([h * 2, h * 5, 0.0])
@@ -27,7 +27,7 @@ def test_vector_function_space():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
 
     points = np.array(
         [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]

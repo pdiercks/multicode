@@ -15,8 +15,8 @@ def test():
     )  # [-1, 1]x{0}
 
     degree = 1
-    V = dolfinx.fem.FunctionSpace(rectangle, ("CG", degree))
-    W = dolfinx.fem.FunctionSpace(interval, ("CG", degree))
+    V = dolfinx.fem.FunctionSpace(rectangle, ("Lagrange", degree))
+    W = dolfinx.fem.FunctionSpace(interval, ("Lagrange", degree))
 
     # generate mode on interval (bottom edge)
     w = dolfinx.fem.Function(W)
@@ -32,7 +32,9 @@ def test():
     f = data_factory.create_function(mode, bottom_dofs)
     bc_0 = data_factory.create_bc(f)
     assert np.allclose(bc_0.dof_indices()[0], data_factory.boundary_dofs)
-    g = data_factory.create_function(np.ones(bottom_dofs.size, dtype=np.float64), bottom_dofs)
+    g = data_factory.create_function(
+        np.ones(bottom_dofs.size, dtype=np.float64), bottom_dofs
+    )
     bc_1 = data_factory.create_bc(g)
 
     u = dolfinx.fem.Function(V)

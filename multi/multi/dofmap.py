@@ -206,7 +206,7 @@ class DofMap:
         return self._dm[dim][entity]
 
     # FIXME where is this actually needed?
-    # could build V = dolfinx.FunctionSpace(domain, ("CG", 2)) since
+    # could build V = dolfinx.FunctionSpace(domain, ("Lagrange", 2)) since
     # the VectorFunctionSpace also returns each dof coordinate only once
     # def tabulate_dof_coordinates(self):
     #     """return dof coordinates"""

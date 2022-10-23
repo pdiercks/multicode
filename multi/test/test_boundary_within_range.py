@@ -9,7 +9,7 @@ def test():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
 
     Δx = Δy = 1 / (
         n + 1

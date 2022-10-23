@@ -23,14 +23,14 @@ def test():
         )
 
     rce_domain = RceDomain(rce_mesh, cell_markers, facet_markers, index=1, edges=True)
-    V = dolfinx.fem.VectorFunctionSpace(rce_domain.mesh, ("CG", 1))
+    V = dolfinx.fem.VectorFunctionSpace(rce_domain.mesh, ("Lagrange", 1))
     problem = LinearElasticityProblem(
         rce_domain, V, [30e3, 60e3], [0.2, 0.2], plane_stress=True
     )
     bottom_space = problem.edge_spaces["bottom"]
     bottom_el = bottom_space.ufl_element()
     assert bottom_el.degree() == 1
-    assert bottom_el.family() == "Lagrange"
+    assert bottom_el.family() in ("Lagrange", "P")
     assert bottom_el.value_shape()[0] == 2
 
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:

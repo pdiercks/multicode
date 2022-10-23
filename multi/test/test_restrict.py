@@ -18,11 +18,11 @@ def test_restrict_subdomain():
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", degree))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree))
     u = dolfinx.fem.Function(V)
     u.x.set(1.0)
 
-    subdomain = within_range([.3, .3, 0.], [.8, .8, 0.])
+    subdomain = within_range([0.3, 0.3, 0.0], [0.8, 0.8, 0.0])
     # h = length / num_cells = 0.1
     # subdomain has is 0.5 width and height
     # therefore 5x5 = 25 cells
@@ -44,13 +44,13 @@ def test_restrict_bottom():
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", degree))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", degree))
     u = dolfinx.fem.Function(V)
-    u.interpolate(lambda x: 1. + x[0] ** 2 + 2 * x[1] ** 2)
+    u.interpolate(lambda x: 1.0 + x[0] ** 2 + 2 * x[1] ** 2)
 
     # bottom edge
     interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, 2.0])
-    L = dolfinx.fem.FunctionSpace(interval, ("CG", degree))
+    L = dolfinx.fem.FunctionSpace(interval, ("Lagrange", degree))
     dofs = make_mapping(L, V)
 
     def bottom(x):
@@ -59,7 +59,6 @@ def test_restrict_bottom():
     # restriction
     r = restrict(u, bottom, 1, boundary=True)
     assert np.allclose(u.x.array[dofs], r)
-
 
 
 if __name__ == "__main__":

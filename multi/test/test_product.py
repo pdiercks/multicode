@@ -9,7 +9,7 @@ from multi.product import InnerProduct
 
 def test():
     domain = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
     names = ("mass", "l2", "h1-semi", "stiffness", "h1")
     for name in names:
         prod = InnerProduct(V, name, bcs=())

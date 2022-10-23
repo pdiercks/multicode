@@ -37,7 +37,7 @@ class NumpyLine:
         phi : np.ndarray
             The shape functions.
         """
-        assert function_space.ufl_element().family() in ("Lagrange", "CG")
+        assert function_space.ufl_element().family() in ("Lagrange", "P")
         coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         coordinates = coordinates[:, sub]
@@ -138,7 +138,7 @@ class NumpyQuad:
             The standard shape functions.
 
         """
-        assert function_space.ufl_element().family() in ("Lagrange", "Q", "CG")
+        assert function_space.ufl_element().family() in ("P", "Q", "Lagrange")
         coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         X = get_P_matrix(coordinates, self.nn)

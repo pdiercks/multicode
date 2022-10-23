@@ -37,7 +37,7 @@ def test():
     # ### compare with dolfin
     # mesh = df.UnitSquareMesh(10, 10)
     # degree = 2
-    # func_space = df.FunctionSpace(mesh, "CG", degree)
+    # func_space = df.FunctionSpace(mesh, "Lagrange", degree)
     # boundary_data = df.Expression(boundary_expression(), degree=2)
 
     # def boundary(_, on_boundary):

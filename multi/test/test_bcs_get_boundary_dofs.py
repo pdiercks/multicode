@@ -11,12 +11,12 @@ def test():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", degree), dim=dim)
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree), dim=dim)
 
     bc_handler = BoundaryConditions(domain, V)
     boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
     u = dolfinx.fem.Function(V)
-    u.x.set(0.)
+    u.x.set(0.0)
     bc_handler.add_dirichlet_bc(u, boundary_facets, method="topological", entity_dim=1)
     bcs = bc_handler.bcs
     dofs = bcs[0].dof_indices()[0]

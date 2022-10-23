@@ -59,25 +59,6 @@ class LinearProblem(object):
         self.v = ufl.TestFunction(V)
         self._bc_handler = BoundaryConditions(domain.mesh, V, domain.facet_markers)
         self._solver_options = solver_options or _solver_options()
-        if hasattr(domain, "edges"):
-            if domain.edges:
-                self._init_edge_spaces()
-
-    def _init_edge_spaces(self):
-        edge_meshes = self.domain.edges
-        V = self.V
-        ufl_element = V.ufl_element()
-
-        V_to_L = {}
-        Lambda = {}
-        for key, facet_mesh_stuff in edge_meshes.items():
-            facet_mesh = facet_mesh_stuff[0]
-            facet_element = ufl_element.reconstruct(cell=facet_mesh.ufl_cell())
-            L = dolfinx.fem.FunctionSpace(facet_mesh, facet_element)
-            Lambda[key] = L
-            V_to_L[key] = make_mapping(L, V)
-        self.V_to_L = V_to_L
-        self.edge_spaces = Lambda
 
     def add_dirichlet_bc(
         self, value, boundary=None, sub=None, method="topological", entity_dim=None
@@ -250,6 +231,32 @@ class LinearElasticityProblem(LinearProblem):
             LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
             for e, nu in zip(E, NU)
         ]
+        if hasattr(domain, "edges"):
+            if domain.edges:
+                self._init_edge_spaces()
+
+    def _init_edge_spaces(self):
+        edge_meshes = self.domain.edges
+        V = self.V
+        ufl_element = V.ufl_element()
+        family_name = ufl_element.family_name
+        degree = ufl_element.degree()
+
+        # FIXME dolfinx:nightly now returns basix.ufl_wrapper.VectorElement
+        # instead of ufl.VectorElement --> .reconstruct is not implemened
+        # Therefore, _init_edge_spaces was moved to here and VectorFunctionSpace
+        # is used to create edge spaces.
+
+        V_to_L = {}
+        Lambda = {}
+        for key, facet_mesh_stuff in edge_meshes.items():
+            facet_mesh = facet_mesh_stuff[0]
+            # facet_element = ufl_element.reconstruct(cell=facet_mesh.ufl_cell())
+            L = dolfinx.fem.VectorFunctionSpace(facet_mesh, (family_name, degree))
+            Lambda[key] = L
+            V_to_L[key] = make_mapping(L, V)
+        self.V_to_L = V_to_L
+        self.edge_spaces = Lambda
 
     def get_form_lhs(self):
         """get bilinear form a(u, v) of the problem"""

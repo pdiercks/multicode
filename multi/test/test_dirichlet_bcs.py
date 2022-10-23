@@ -43,7 +43,7 @@ def test_vector_geom():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
 
     bc_handler = BoundaryConditions(domain, V)
 
@@ -75,7 +75,7 @@ def test_vector_geom():
 
 def test_scalar_geom():
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
 
     bc_handler = BoundaryConditions(domain, V)
 
@@ -96,7 +96,7 @@ def test_scalar_geom():
 def test_scalar_topo():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
 
     bc_handler = BoundaryConditions(domain, V)
 

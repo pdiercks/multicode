@@ -18,7 +18,7 @@ def xdofs_VectorFunctionSpace(V):
 def test():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
     rce = RceDomain(domain, edges=True)
     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
     phi = compute_phi(problem)
@@ -38,7 +38,7 @@ def test():
 def test_nodes():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 2))
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
     rce = RceDomain(domain, edges=True)
     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
 

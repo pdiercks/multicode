@@ -32,7 +32,7 @@ class TestProblem(LinearProblem):
 def test():
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 10, 10)
     Ω = Domain(domain)
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
 
     problem = TestProblem(Ω, V)
 

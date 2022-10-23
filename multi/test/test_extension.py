@@ -10,8 +10,10 @@ from multi.extension import extend
 
 def test():
     num_cells = 2
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, num_cells, num_cells, dolfinx.mesh.CellType.quadrilateral)
-    V = dolfinx.fem.FunctionSpace(domain, ("CG", 2))
+    domain = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, num_cells, num_cells, dolfinx.mesh.CellType.quadrilateral
+    )
+    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
     print(f"Number of DoFs={Vdim}")
 
@@ -26,7 +28,7 @@ def test():
 
         def get_form_rhs(self):
             v = self.v
-            f = dolfinx.fem.Constant(self.V.mesh, ScalarType(0.))
+            f = dolfinx.fem.Constant(self.V.mesh, ScalarType(0.0))
             return f * v * ufl.dx
 
     def bottom(x):
@@ -37,6 +39,7 @@ def test():
         #     return np.sin(k * np.pi * x[0])
         def expr(x):
             return x[0] * k
+
         return expr
 
     Ω = Domain(domain)
@@ -45,7 +48,7 @@ def test():
 
     boundary_data = []
     num_test = 7
-    for i in range(1, num_test+1):
+    for i in range(1, num_test + 1):
         problem.clear_bcs()
         g = dolfinx.fem.Function(V)
         g.interpolate(boundary_expression_factory(i))
@@ -68,8 +71,7 @@ def test():
     problem.add_dirichlet_bc(g, boundary_facets, entity_dim=1)
     uex = problem.solve()
 
-    assert np.allclose(uex.vector[:], extensions[j-1][:])
-
+    assert np.allclose(uex.vector[:], extensions[j - 1][:])
 
 
 if __name__ == "__main__":
