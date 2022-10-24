@@ -41,6 +41,7 @@ def make_mapping(subspace, superspace):
     ndofs = superspace.dofmap.index_map.size_global * superspace.dofmap.bs
     u.vector.array[:] = np.arange(ndofs, dtype=np.intc)
 
-    x_dofs = subspace.tabulate_dof_coordinates()
-    dofs = (interpolate(u, x_dofs.T) + 0.5).astype(np.intc).flatten()
+    f = dolfinx.fem.Function(subspace)
+    f.interpolate(u)
+    dofs = (f.vector.array + 0.5).astype(np.int32).flatten()
     return dofs
