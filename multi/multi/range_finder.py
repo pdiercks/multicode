@@ -42,6 +42,7 @@ Questions:
 import numpy as np
 
 from pymor.algorithms.gram_schmidt import gram_schmidt
+from pymor.core.logger import getLogger
 from pymor.operators.interface import Operator
 
 from scipy.sparse.linalg import eigsh, LinearOperator
@@ -50,7 +51,6 @@ from scipy.special import erfinv
 
 # modified version of pymor.algorithms.rand_la.adaptive_rrf
 def adaptive_rrf(
-    logger,
     transfer_problem,
     random_state,
     distribution,
@@ -118,6 +118,7 @@ def adaptive_rrf(
         |VectorArray| which contains the basis, whose span approximates the range of A.
     """
 
+    logger = getLogger("multi.range_finder.adaptive_rrf")
     tp = transfer_problem
 
     assert source_product is None or isinstance(source_product, Operator)
