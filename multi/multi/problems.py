@@ -249,8 +249,7 @@ class LinearElasticityProblem(LinearProblem):
 
         V_to_L = {}
         Lambda = {}
-        for key, facet_mesh_stuff in edge_meshes.items():
-            facet_mesh = facet_mesh_stuff[0]
+        for key, facet_mesh in edge_meshes.items():
             # facet_element = ufl_element.reconstruct(cell=facet_mesh.ufl_cell())
             L = dolfinx.fem.VectorFunctionSpace(facet_mesh, (family_name, degree))
             Lambda[key] = L
@@ -400,9 +399,6 @@ class TransferProblem(object):
         # initialize kernel
         if remove_kernel:
             # build null space
-            u = dolfinx.fem.Function(subdomain_space)
-            vector = u.vector()
-            vector.zero()
             l2_product = self._get_range_product(product="l2")
             self.range_l2_product = l2_product
             self.kernel = build_nullspace(self.range, product=l2_product, gdim=2)
