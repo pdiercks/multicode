@@ -64,7 +64,8 @@ def test_with_edges():
             out_file=tf.name,
         )
         domain, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    Ω = RceDomain(domain, None, ft, edges=True)
+    Ω = RceDomain(domain, None, ft)
+    Ω.create_edge_meshes(10)
     V = dolfinx.fem.VectorFunctionSpace(Ω.mesh, ("Lagrange", 1))
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 

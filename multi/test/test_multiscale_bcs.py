@@ -22,7 +22,8 @@ def test():
             tf.name, MPI.COMM_WORLD, gdim=2
         )
 
-    rce_domain = RceDomain(rce_mesh, cell_markers, facet_markers, index=1, edges=True)
+    rce_domain = RceDomain(rce_mesh, cell_markers, facet_markers, index=1)
+    rce_domain.create_edge_meshes(10)
     V = dolfinx.fem.VectorFunctionSpace(rce_domain.mesh, ("Lagrange", 1))
     problem = LinearElasticityProblem(
         rce_domain, V, [30e3, 60e3], [0.2, 0.2], plane_stress=True

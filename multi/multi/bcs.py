@@ -233,7 +233,6 @@ def compute_multiscale_bcs(
     local_edge_index = dofmap.dof_layout.local_edge_index_map[edge]
     local_vertices = dofmap.dof_layout.topology[1][local_edge_index]
 
-    edge_mesh, parent_facets, parent_vertices, _ = problem.domain.edges[edge]
     edge_space = problem.edge_spaces[edge]
     source = FenicsxVectorSpace(edge_space)
 

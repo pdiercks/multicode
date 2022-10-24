@@ -53,27 +53,17 @@ def test_2d():
     assert np.isclose(xmax[0], 3.1)
 
     rectangle = RceDomain(
-        get_unit_square_mesh(10, 10), index=17, edges=True
+        get_unit_square_mesh(10, 10), index=17
     )
+    rectangle.create_edge_meshes(10)
     assert len(rectangle.edges.keys()) == 4
-    assert isinstance(rectangle.edges["bottom"][0], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.edges["top"][0], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.edges["right"][0], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.edges["left"][0], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.edges["bottom"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.edges["top"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.edges["right"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.edges["left"], dolfinx.mesh.Mesh)
     rectangle.translate([2.4, 2.4, 0.0])
-    x_top = rectangle.edges["top"][0].geometry.x
+    x_top = rectangle.edges["top"].geometry.x
     assert np.allclose(np.amin(x_top, axis=0), np.array([2.4, 3.4, 0.]))
-    vertices = rectangle.get_corner_vertices()
-    assert len(vertices) == 4
-
-    reference = np.array([
-        [2.4, 2.4, 0.],
-        [3.4, 2.4, 0.],
-        [2.4, 3.4, 0.],
-        [3.4, 3.4, 0.]])
-    assert np.allclose(reference, rectangle.mesh.geometry.x[vertices])
-    computed = dolfinx.mesh.compute_midpoints(rectangle.mesh, 0, vertices)
-    assert np.allclose(reference, computed)
 
 
 if __name__ == "__main__":

@@ -15,31 +15,33 @@ def xdofs_VectorFunctionSpace(V):
     return x_dofs
 
 
-def test():
-    n = 20
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
-    rce = RceDomain(domain, edges=True)
-    problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
-    phi = compute_phi(problem)
-    source = FenicsxVectorSpace(V)
-    B = source.make_array(phi)
+# def test():
+#     n = 20
+#     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
+#     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+#     rce = RceDomain(domain)
+#     rce.create_edge_meshes(20)
+#     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
+#     phi = compute_phi(problem)
+#     source = FenicsxVectorSpace(V)
+#     B = source.make_array(phi)
 
-    vertices = np.array(
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]
-    )
-    vertex_dofs = locate_dofs(xdofs_VectorFunctionSpace(V), vertices, gdim=3)
-    nodal_values = B.dofs(vertex_dofs)
-    assert len(B) == 8
+#     vertices = np.array(
+#         [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]
+#     )
+#     vertex_dofs = locate_dofs(xdofs_VectorFunctionSpace(V), vertices, gdim=3)
+#     nodal_values = B.dofs(vertex_dofs)
+#     assert len(B) == 8
 
-    assert np.sum(nodal_values) == 8
+#     assert np.sum(nodal_values) == 8
 
 
 def test_nodes():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
-    rce = RceDomain(domain, edges=True)
+    rce = RceDomain(domain)
+    rce.create_edge_meshes(20)
     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
 
     vertices = np.array(
@@ -57,5 +59,4 @@ def test_nodes():
 
 
 if __name__ == "__main__":
-    test()
     test_nodes()
