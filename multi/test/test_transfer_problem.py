@@ -21,7 +21,7 @@ def target_subdomain(x):
     return np.logical_and(a, b)
 
 
-def exact_solution(problem, neumann_bc, dirichlet_bc):
+def exact_solution(problem, neumann_bc, dirichlet_bc, Vsub):
     """exact solution in full space"""
     problem.clear_bcs()
 
@@ -41,20 +41,13 @@ def exact_solution(problem, neumann_bc, dirichlet_bc):
     # ### exact solution full space
     u_exact = problem.solve()
 
-    # ### exact solution in range space
-    domain = problem.domain.mesh
-    cells_submesh = dolfinx.mesh.locate_entities(domain, 2, target_subdomain)
-    submesh = dolfinx.mesh.create_submesh(domain, 2, cells_submesh)[0]
-    Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
-
     # TODO best way to get restriction of u in V to Vsub?
-    V = problem.V
-    mapping = make_mapping(Vsub, V)
-    u_ex = u_exact.x.array[mapping]
+    u_in = dolfinx.fem.Function(Vsub)
+    u_in.interpolate(u_exact)
 
     # clean up
     problem.clear_bcs()
-    return u_ex
+    return u_in.vector.array
 
 
 def test_dirichlet_neumann():
@@ -102,13 +95,13 @@ def test_dirichlet_neumann():
     dirichlet_bc = {"boundary": right, "value": zero, "method": "geometrical"}
     gamma_out = plane_at(0.0, "x")  # left
 
-    os_problem = TransferProblem(
+    tp = TransferProblem(
         problem, Vsub, gamma_out, dirichlet=dirichlet_bc, neumann=neumann_bc
     )
     # generate boundary data
     randomState = np.random.RandomState(seed=6)
-    D = os_problem.generate_random_boundary_data(2, random_state=randomState)
-    U = os_problem.solve(D)
+    D = tp.generate_random_boundary_data(2, random_state=randomState)
+    U = tp.solve(D)
     u_arr = U.to_numpy()
 
     # compute reference solutions
@@ -123,7 +116,7 @@ def test_dirichlet_neumann():
             "value": boundary_function,
             "method": "geometrical",
         }
-        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc])
+        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc], Vsub)
         u_ex[i, :] = u_exact
 
     error = u_ex - u_arr
@@ -182,13 +175,17 @@ def test_neumann():
 
     gamma_out = get_gamma_out(n)
 
-    os_problem = TransferProblem(
+    facets_gamma_out = dolfinx.mesh.locate_entities_boundary(
+        V.mesh, 1, gamma_out
+    )
+
+    tp = TransferProblem(
         problem, Vsub, gamma_out, dirichlet=dirichlet_bc, neumann=neumann_bc
     )
     # generate boundary data
-    randomState = np.random.RandomState(seed=6)
-    D = os_problem.generate_random_boundary_data(10, random_state=randomState)
-    U = os_problem.solve(D)
+    randomState = np.random.RandomState(seed=13)
+    D = tp.generate_random_boundary_data(1, random_state=randomState)
+    U = tp.solve(D)
     u_arr = U.to_numpy()
 
     # compute reference solutions
@@ -199,17 +196,17 @@ def test_neumann():
         boundary_vector.array[:] = vector
 
         bc_gamma_out = {
-            "boundary": gamma_out,
+            "boundary": facets_gamma_out,
             "value": boundary_function,
-            "method": "geometrical",
+            "method": "topological",
+            "entity_dim": 1,
         }
-        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc])
+        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc], Vsub)
         u_ex[i, :] = u_exact
 
     error = u_ex - u_arr
     norm = np.linalg.norm(error)
     print(norm)
-    breakpoint()
     assert np.linalg.norm(error) < 1e-12
 
 
