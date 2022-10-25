@@ -1,4 +1,5 @@
 import pathlib
+import yaml
 import dolfinx
 from dolfinx.io import gmshio
 import ufl
@@ -635,33 +636,42 @@ class MultiscaleProblem(object):
         self.grid_dir = pathlib.Path(mshfile).parent
 
     @property
+    def material(self):
+        return self._material
+
+    @material.setter
+    def material(self, yaml_file):
+        with open(yaml_file, "r") as instream:
+            mat = yaml.safe_load(instream)
+        self._material = mat
+
+    @property
+    def degree(self):
+        return self._degree
+
+    @degree.setter
+    def degree(self, degree):
+        self._degree = int(degree)
+
+    @property
     def cell_sets(self):
-        pass
+        raise NotImplementedError
 
     @property
-    def dirichlet_offline(self):
-        """dirichlet bcs for oversampling"""
-        pass
+    def boundaries(self):
+        raise NotImplementedError
 
-    @property
-    def dirichlet_online(self):
-        """dirichlet bcs for global approx"""
-        pass
+    def get_dirichlet(self):
+        raise NotImplementedError
 
-    @property
-    def gamma_out(self):
-        pass
+    def get_neumann(self):
+        raise NotImplementedError
 
-    @property
-    def neumann_offline(self):
-        """neumann bcs for oversampling"""
-        pass
+    def get_gamma_out(self):
+        raise NotImplementedError
 
-    @property
-    def neumann_online(self):
-        """neumann bcs for global approx"""
-        pass
+    def get_remove_kernel(self):
+        raise NotImplementedError
 
-    @property
-    def pod_config(self):
-        pass
+    def get_pod_config(self):
+        raise NotImplementedError
