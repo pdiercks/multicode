@@ -63,6 +63,38 @@ def test_fine_grid_creation():
     assert ct.find(1).size > 0
     assert ct.find(2).size > 0
 
+    num_cells_subdomain = 10
+    with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
+        grid.create_fine_grid(
+            np.array([0, ]), tf.name, cell_type="triangle", num_cells=num_cells_subdomain
+        )
+        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
+            mesh = xdmf.read_mesh(name="Grid")
+            ct = xdmf.read_meshtags(mesh, name="Grid")
+        tdim = mesh.topology.dim
+        fdim = tdim - 1
+        mesh.topology.create_connectivity(tdim, fdim)
+        fpath = pathlib.Path(tf.name)
+        facets = fpath.parent / (fpath.stem + "_facets.xdmf")
+        assert facets.exists()
+        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, facets.as_posix(), "r") as xdmf:
+            ft = xdmf.read_meshtags(mesh, name="Grid")
+
+        # remove the h5 as well
+        h5 = pathlib.Path(tf.name).with_suffix(".h5")
+        h5.unlink()
+
+        # clean up the facet files
+        facets.with_suffix(".h5").unlink()
+        facets.unlink()
+
+    assert ct.find(1).size > 0
+    assert ct.find(2).size > 0
+    assert ft.find(1).size == num_cells_subdomain
+    assert ft.find(2).size == num_cells_subdomain
+    assert ft.find(3).size == num_cells_subdomain
+    assert ft.find(4).size == num_cells_subdomain
+
 
 if __name__ == "__main__":
     test()

@@ -225,6 +225,10 @@ class StructuredQuadGrid(object):
         """
         # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
 
+        # meshio cell types for mesh creation
+        assert cell_type in ("triangle", "quad")
+        facet_cell_type = "line"
+
         tdim = self.tdim
         num_cells = kwargs.get("num_cells", 10)
 
@@ -232,7 +236,9 @@ class StructuredQuadGrid(object):
         subdomains = []
 
         cells = np.array(cells)
+        assert cells.size > 0
         active_cells = self.cells[cells]
+        create_facets = cells.size < 2
 
         for cell in active_cells:
             vertices = self.get_entities(0, cell)
@@ -253,7 +259,7 @@ class StructuredQuadGrid(object):
                     ymin,
                     ymax,
                     num_cells=num_cells,
-                    facets=False,
+                    facets=create_facets,
                     out_file=tf.name,
                 )
 
@@ -283,8 +289,13 @@ class StructuredQuadGrid(object):
         in_mesh = meshio.read(tf_msh.name)
         if tdim < 3:
             prune_z = True
-        out_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
-        meshio.write(output, out_mesh)
+        cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
+        meshio.write(output, cell_mesh)
+        if create_facets:
+            outfile = pathlib.Path(output)
+            facet_output = outfile.parent / (outfile.stem + "_facets.xdmf")
+            facet_mesh = create_mesh(in_mesh, facet_cell_type, prune_z=prune_z)
+            meshio.write(facet_output.as_posix(), facet_mesh)
 
         # clean up
         tf_msh.close()
