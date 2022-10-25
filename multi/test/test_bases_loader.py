@@ -20,8 +20,69 @@ def prepare_test_data(n, modes, cell_index):
     top = np.ones((modes[2], n)) * 4
     left = np.ones((modes[3], n)) * 5
     np.savez(
-        DATA / f"basis_{cell_index:03}.npz", phi=phi, b=bottom, r=right, t=top, l=left
+        DATA / f"basis_{cell_index:03}.npz", phi=phi, bottom=bottom, right=right, top=top, left=left
     )
+
+
+# TODO add test where boundary edges have zero modes
+def test_zero_modes_boundary():
+    """
+    23
+    01
+    """
+    V_dim = 10
+    # bottom, left, right, top
+    prepare_test_data(V_dim, [0, 0, 1, 1], 0)
+    prepare_test_data(V_dim, [0, 2, 0, 2], 1)
+    prepare_test_data(V_dim, [3, 0, 3, 0], 2)
+    prepare_test_data(V_dim, [4, 4, 0, 0], 3)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(
+            0.0,
+            3.0,
+            0.0,
+            3.0,
+            num_cells=(2, 2),
+            facets=True,
+            recombine=True,
+            out_file=tf.name,
+        )
+        domain, cell_markers, facet_markers = gmshio.read_from_msh(
+            tf.name, MPI.COMM_WORLD, gdim=2
+        )
+
+    grid = StructuredQuadGrid(domain, cell_markers, facet_markers)
+    expected_num_modes = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 1, 0, 2],
+            [1, 0, 3, 0],
+            [2, 3, 0, 0]
+        ]
+    )
+
+    num_cells = grid.num_cells
+    assert num_cells == 4
+
+    # ### cell sets for basis loading
+    # possibly re-use cell sets defined for instance of MultiscaleProblem
+    # NOTE cell sets for bases loading and definition of BCs etc. are
+    # not necessarily the same
+    inner_cells = np.array([0, 1, 2, 3], dtype=np.int32)
+
+    loader = BasesLoader(DATA, grid)
+    loader.cell_sets = {
+        "inner": inner_cells,
+    }
+    bases, modes = loader.read_bases()
+
+    assert len(bases) == 4
+    assert np.allclose(expected_num_modes, modes)
+    expected = np.sum(expected_num_modes, axis=1)
+    result = np.array([], dtype=int)
+    for i in range(4):
+        result = np.append(result, bases[i].shape[0])
+    assert np.allclose(expected, result - 8)
 
 
 def test_bases_loader_read_bases():
@@ -74,7 +135,11 @@ def test_bases_loader_read_bases():
 
     num_cells = grid.num_cells
     assert num_cells == 9
-    # cell sets
+
+    # ### cell sets for basis loading
+    # possibly re-use cell sets defined for instance of MultiscaleProblem
+    # NOTE cell sets for bases loading and definition of BCs etc. are
+    # not necessarily the same
     bottom = grid.get_cells(1, grid.facet_markers.find(1))
     left = grid.get_cells(1, grid.facet_markers.find(2))
     right = grid.get_cells(1, grid.facet_markers.find(3))
@@ -85,15 +150,12 @@ def test_bases_loader_read_bases():
     corner_cells = np.array([0, 3, 5, 8], dtype=np.intc)
     boundary_cells = np.setdiff1d(boundary_cells, corner_cells)
 
-    grid.cell_sets = {
+    loader = BasesLoader(DATA, grid)
+    loader.cell_sets = {
         "inner": inner_cells,
         "boundary": boundary_cells,
         "corner": corner_cells,
     }
-    # FIXME for the BasesLoader to work always require
-    # cell sets 'inner', 'boundary' and 'corner' to be defined ...
-
-    loader = BasesLoader(DATA, grid)
     bases, modes = loader.read_bases()
 
     assert len(bases) == 9

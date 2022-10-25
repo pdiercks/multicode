@@ -64,11 +64,13 @@ class RceDomain(Domain):
     ):
         super().__init__(mesh, cell_markers, facet_markers, index)
 
-    def create_edge_meshes(self, num_cells):
+    def create_edge_meshes(self, num_cells=None):
         parent = self.mesh
         tdim = parent.topology.dim
         fdim = tdim - 1
         parent.topology.create_connectivity(fdim, tdim)
+        facets = dolfinx.mesh.locate_entities_boundary(parent, fdim, lambda x: np.full(x[0].shape, True, dtype=bool))
+        num_cells = num_cells or int(facets.size / 4)
 
         xmin, ymin, zmin = self.xmin
         xmax, ymax, zmax = self.xmax
@@ -154,15 +156,6 @@ class StructuredQuadGrid(object):
         self.num_cells = mesh.topology.index_map(mesh.topology.dim).size_local
         self.cells = np.arange(self.num_cells, dtype=np.int32)
         self.tdim = mesh.topology.dim
-
-    @property
-    def cell_sets(self):
-        return self._cell_sets
-
-    @cell_sets.setter
-    def cell_sets(self, pairs):
-        """set cell sets for given pairs of key and array of cell indices"""
-        self._cell_sets = pairs
 
     def get_patch(self, cell_index):
         """return all cells neighbouring cell with index `cell_index`"""

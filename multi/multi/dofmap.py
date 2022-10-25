@@ -50,7 +50,10 @@ class QuadrilateralDofLayout(object):
         self.topology = basix.topology(basix.CellType.quadrilateral)
         self.geometry = basix.geometry(basix.CellType.quadrilateral)
         self.num_entities = [len(ents) for ents in self.topology]
-        self.local_edge_index_map = {"left": 1, "bottom": 0, "top": 3, "right": 2}
+        self.local_edge_index_map = {
+                "left": 1, "bottom": 0, "top": 3, "right": 2,
+                1: "left", 0: "bottom", 3: "top", 2: "right"
+                }
 
     def get_entity_dofs(self):
         return self.__entity_dofs
