@@ -103,14 +103,9 @@ from multi.shapes import NumpyQuad  # , get_hierarchical_shape_functions
 #         return basis
 
 
-def compute_phi(problem, nodes=None):
+def compute_phi(problem, nodes):
     """compute coarse scale basis functions for given problem"""
     V = problem.V
-    # FIXME just define nodes based on domain.geometry?
-    # get_corner_vertices might be a bit too much effort
-    if nodes is None:
-        vertices = problem.domain.get_corner_vertices()
-        nodes = dolfinx.mesh.compute_midpoints(problem.domain.mesh, 0, vertices)
     quadrilateral = NumpyQuad(nodes)
     shape_functions = quadrilateral.interpolate(V)
 
@@ -145,8 +140,18 @@ def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
     domain, cell_marker, facet_marker = gmshio.read_from_msh(
         rce_grid, MPI.COMM_WORLD, gdim=2
     )
-    omega = RceDomain(domain, cell_marker, facet_marker, index=0, edges=True)
+    omega = RceDomain(domain, cell_marker, facet_marker, index=0)
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree))
+
+    # FIXME define nodes via multi.dofmap.QuadrilateralDofLayout ?
+    xmin = omega.xmin
+    xmax = omega.xmax
+    nodes = np.array([
+        [xmin[0], xmin[1], 0.],
+        [xmax[0], xmin[1], 0.],
+        [xmin[0], xmax[1], 0.],
+        [xmax[0], xmax[1], 0.]
+        ])
 
     with material.open("r") as f:
         mat = yaml.safe_load(f)
@@ -155,7 +160,7 @@ def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
     NU = mat["Material parameters"]["NU"]["value"]
     plane_stress = mat["Constraints"]["plane_stress"]
     problem = LinearElasticityProblem(omega, V, E=E, NU=NU, plane_stress=plane_stress)
-    basis_vectors = compute_phi(problem)
+    basis_vectors = compute_phi(problem, nodes)
     out = []
     for vec in basis_vectors:
         out.append(vec.array)
