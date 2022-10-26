@@ -301,14 +301,12 @@ class TransferProblem(object):
 
         A(u) = 0 in Ω,
         with homogeneous Dirichlet bcs on Γ_D,
-        with homogeneous Neumann bcs on Γ_N,
-        with inhomogeneous Neumann bcs on Γ_N_inhom,
         with arbitrary Dirichlet boundary conditions on Γ_out.
+
+    Additional Neumann bcs can be set via property `neumann`.
 
     Here, we are only interested in the solution u restricted to the
     space defined on a target subdomain Ω_in ⊂ Ω.
-    The Dirichlet bcs prescribed on Γ_out are transferred to
-    the target subdomain, hence the name.
 
     The boundaries Γ_D, Γ_N and Γ_N_inhom are the part of ∂Ω that
     intersects with the (respective dirichlet or neumann) boundary
@@ -317,7 +315,7 @@ class TransferProblem(object):
 
     Note: The above problem can be formulated as a transfer operator which
     maps the boundary data on Γ_out (source space) to the solution u in
-    the (range) space defined on Ω_in. Since FEniCS does
+    the (range) space defined on Ω_in. Since FEniCS(x) does
     not allow to define function spaces on some part of the boundary
     of a domain (yet), the full space is defined as the source space.
     The range space is the space defined on Ω_in.
@@ -336,9 +334,6 @@ class TransferProblem(object):
     dirichlet : list of dict or dict, optional
         Homogeneous dirichlet boundary conditions.
         See multi.bcs.BoundaryConditions.add_dirichlet_bc for suitable values.
-    neumann : list of dict or dict, optional
-        Inhomogeneous neumann boundary conditions or source terms.
-        See multi.bcs.BoundaryConditions.add_neumann_bc for suitable values.
     source_product : dict, optional
         The inner product to use for the source space. The dictionary should define
         the key `product` and optionally `bcs` and `product_name`.
@@ -360,7 +355,6 @@ class TransferProblem(object):
         subdomain_space,
         gamma_out,
         dirichlet=None,
-        neumann=None,
         source_product=None,
         range_product=None,
         remove_kernel=False,
@@ -372,7 +366,6 @@ class TransferProblem(object):
         self.source = FenicsxVectorSpace(problem.V)
         self.range = FenicsxVectorSpace(subdomain_space)
         self.gamma_out = gamma_out
-        self.neumann = neumann
         self.remove_kernel = remove_kernel
         self.solver_options = solver_options or {"inverse": _solver_options()}
 
@@ -403,6 +396,21 @@ class TransferProblem(object):
             l2_product = self._get_range_product(product="l2")
             self.range_l2_product = l2_product
             self.kernel = build_nullspace(self.range, product=l2_product, gdim=2)
+
+    @property
+    def neumann(self):
+        return self._neumann
+
+    @neumann.setter
+    def neumann(self, neumann):
+        """
+        Parameters
+        ----------
+        neumann : list of dict or dict, optional
+            Inhomogeneous neumann boundary conditions or source terms.
+            See multi.bcs.BoundaryConditions.add_neumann_bc for suitable values.
+        """
+        self._neumann = neumann
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -458,15 +466,24 @@ class TransferProblem(object):
         )
 
     def discretize_neumann(self):
+        # FIXME handling of volume forces not possible
+        # BoundaryConditinos only handles traction forces
+        # each LinearProblem handles volume forces via .get_form_rhs,
+        # but I cannot assume same interface here, or should I?
+        # --> maybe LinearProblem needs a method to set evtl. source term
+        # instead of passing 'body_forces' or so to .get_form_rhs
         """discretize inhomogeneous neumann bc(s)"""
         self.problem.clear_bcs(dirichlet=False)
-        if self.neumann is not None:
-            if isinstance(self.neumann, (list, tuple)):
-                for force in self.neumann:
+        try:
+            neumann = self.neumann
+            if isinstance(neumann, (list, tuple)):
+                for force in neumann:
                     # force is dict
                     self.problem.add_neumann_bc(**force)
             else:
-                self.problem.add_neumann_bc(**self.neumann)
+                self.problem.add_neumann_bc(**neumann)
+        except AttributeError:
+            pass
 
         ufl_rhs = self.problem.get_form_rhs()
         compiled_form = dolfinx.fem.form(ufl_rhs)
