@@ -110,11 +110,11 @@ def compute_phi(problem, nodes):
     shape_functions = quadrilateral.interpolate(V)
 
     data_factory = BoundaryDataFactory(problem.domain.mesh, V)
-    bc_dofs = data_factory.boundary_dofs
 
     boundary_data = []
     for shape in shape_functions:
-        f = data_factory.create_function(shape[bc_dofs], bc_dofs)
+        f = dolfinx.fem.Function(V)
+        f.x.array[:] = shape
         boundary_data.append([data_factory.create_bc(f)])
 
     phi = extend(problem, boundary_data)
