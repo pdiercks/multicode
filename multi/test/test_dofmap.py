@@ -35,7 +35,7 @@ def test():
     dofmap = DofMap(grid)
     dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, n_face_dofs)
 
-    assert dofmap.num_dofs() == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
+    assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
 
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
 
@@ -107,8 +107,8 @@ def test_array_uniform():
     dofmap = DofMap(grid)
     dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, n_face_dofs)
 
-    assert dofmap.num_dofs() == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
-    N = dofmap.num_dofs()
+    assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
+    N = dofmap.num_dofs
 
     num_verts_cell = 4
     num_edges_cell = 4
@@ -170,7 +170,7 @@ def test_array():
     dofmap = DofMap(grid)
     dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, n_face_dofs)
 
-    N = dofmap.num_dofs()
+    N = dofmap.num_dofs
     # num dofs minus dofs on the middle edge that are not distributed twice
     expected_N = (
         n_vertex_dofs * num_vertices + np.sum(dofs_per_edge) - dofs_per_edge[1][1]
