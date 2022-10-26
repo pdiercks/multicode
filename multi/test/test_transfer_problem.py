@@ -7,7 +7,6 @@ import dolfinx
 from dolfinx.io import gmshio
 from mpi4py import MPI
 from petsc4py import PETSc
-from multi.interpolation import make_mapping
 from multi.domain import RceDomain
 from multi.problems import LinearElasticityProblem, TransferProblem
 from multi.boundary import plane_at, within_range
@@ -41,7 +40,6 @@ def exact_solution(problem, neumann_bc, dirichlet_bc, Vsub):
     # ### exact solution full space
     u_exact = problem.solve()
 
-    # TODO best way to get restriction of u in V to Vsub?
     u_in = dolfinx.fem.Function(Vsub)
     u_in.interpolate(u_exact)
 
@@ -96,8 +94,9 @@ def test_dirichlet_neumann():
     gamma_out = plane_at(0.0, "x")  # left
 
     tp = TransferProblem(
-        problem, Vsub, gamma_out, dirichlet=dirichlet_bc, neumann=neumann_bc
+        problem, Vsub, gamma_out, dirichlet=dirichlet_bc
     )
+    tp.neumann = neumann_bc
     # generate boundary data
     randomState = np.random.RandomState(seed=6)
     D = tp.generate_random_boundary_data(2, random_state=randomState)
@@ -180,8 +179,9 @@ def test_neumann():
     )
 
     tp = TransferProblem(
-        problem, Vsub, gamma_out, dirichlet=dirichlet_bc, neumann=neumann_bc
+        problem, Vsub, gamma_out, dirichlet=dirichlet_bc
     )
+    tp.neumann = neumann_bc
     # generate boundary data
     randomState = np.random.RandomState(seed=13)
     D = tp.generate_random_boundary_data(1, random_state=randomState)
