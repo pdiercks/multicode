@@ -22,27 +22,46 @@ def get_boundary_dofs(V, marker):
 
 
 class BoundaryDataFactory(object):
+    """handles creation of Functions for extension into a domain Ω
+
+    the Functions are constructed such that
+        u=g on Γ and u=0 on ∂Ω \\ Γ
+
+    (for the extension also the latter condition is important).
+    Usually, we have a bc known as {value, boundary(=Γ)} and
+    can create a bc and apply it to a function (dolfinx.fem.petsc.set_bc)
+    to achieve the above.
+    However, for the extension we require a dirichletbc object that
+    applies to the entire boundary ∂Ω.
+    """
     def __init__(self, domain, V):
         self.domain = domain
         self.V = V
 
-        # boundary facets (entire boundary)
+        # bc handler
+        self.bch = BoundaryConditions(domain, V)
+
+        # boundary facets and dofs (entire boundary)
         tdim = domain.topology.dim
         fdim = tdim - 1
         domain.topology.create_connectivity(fdim, tdim)
         boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-        # boundary dofs (entire boundary)
-        function = dolfinx.fem.Function(V)
-        function.x.set(0.0)
-        dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
-        bc = dolfinx.fem.dirichletbc(function, dofs)
+        self.boundary_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
 
-        self.tdim = tdim
-        self.fdim = fdim
-        self.boundary_facets = boundary_facets
-        self.boundary_dofs = bc.dof_indices()[0]
+    def create_function_values(self, values, boundary_dofs):
+        """create a function and set values
 
-    def create_function(self, values, boundary_dofs):
+        Parameters
+        ----------
+        values : np.ndarray
+            The values to set.
+        boundary_dofs : np.ndarray
+            The dof indices of the vector.
+
+        Returns
+        -------
+        u : dolfinx.fem.Function
+        """
         u = dolfinx.fem.Function(self.V)
         u.vector.zeroEntries()
         u.vector.setValues(boundary_dofs, values, addv=PETSc.InsertMode.INSERT)
@@ -50,12 +69,43 @@ class BoundaryDataFactory(object):
         u.vector.assemblyEnd()
         return u
 
-    def create_bc(self, function):
-        V = self.V
-        fdim = self.fdim
-        boundary_facets = self.boundary_facets
+    def create_function_bc(self, bc):
+        """create a function and set given bc
 
-        dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
+        Parameters
+        ----------
+        bc : dict
+            A suitable definition of a Dirichlet bc.
+            See multi.bcs.BoundaryConditions.add_dirichlet_bc.
+
+        Returns
+        -------
+        u : dolfinx.fem.Function
+        """
+        self.bch.clear()
+        self.bch.add_dirichlet_bc(**bc)
+        bcs = self.bch.bcs
+        u = dolfinx.fem.Function(self.V)
+        dolfinx.fem.petsc.set_bc(u.vector, bcs)
+        u.vector.ghostUpdate(
+            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+        )
+        return u
+
+
+    def create_bc(self, function):
+        """create a bc with value function for the entire boundary
+
+        Parameters
+        ----------
+        function : dolfinx.fem.Function
+            The function to prescribe.
+
+        Returns
+        -------
+        bc : dolfinx.fem.dirichletbc
+        """
+        dofs = self.boundary_dofs
         bc = dolfinx.fem.dirichletbc(function, dofs)
         return bc
 

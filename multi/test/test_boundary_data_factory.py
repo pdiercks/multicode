@@ -29,10 +29,10 @@ def test():
     bottom_dofs = dolfinx.fem.locate_dofs_geometrical(V, bottom)
 
     data_factory = BoundaryDataFactory(rectangle, V)
-    f = data_factory.create_function(mode, bottom_dofs)
+    f = data_factory.create_function_values(mode, bottom_dofs)
     bc_0 = data_factory.create_bc(f)
     assert np.allclose(bc_0.dof_indices()[0], data_factory.boundary_dofs)
-    g = data_factory.create_function(
+    g = data_factory.create_function_values(
         np.ones(bottom_dofs.size, dtype=np.float64), bottom_dofs
     )
     bc_1 = data_factory.create_bc(g)
@@ -51,6 +51,11 @@ def test():
         addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
     )
     assert np.allclose(uvec[bottom_dofs], np.ones(bottom_dofs.size))
+
+    my_bc = {"value": PETSc.ScalarType(1.), "boundary": bottom, "method": "geometrical"}
+    f = data_factory.create_function_bc(my_bc)
+    bc_f = data_factory.create_bc(f)
+    assert np.isclose(np.sum(bc_f.g.x.array), 9)
 
 
 if __name__ == "__main__":
