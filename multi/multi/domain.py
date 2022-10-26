@@ -181,11 +181,16 @@ class StructuredQuadGrid(object):
         conn = self.mesh.topology.connectivity(2, dim)
         return conn.links(cell_index)
 
+    def get_entity_coordinates(self, dim, entities):
+        """return coordinates of `entities` of dimension `dim`"""
+        return dolfinx.mesh.compute_midpoints(self.mesh, dim, entities)
+
     def locate_entities(self, dim, marker):
+        """locate entities of `dim` geometrically using `marker`"""
         return dolfinx.mesh.locate_entities(self.mesh, dim, marker)
 
     def locate_entities_boundary(self, dim, marker):
-        assert dim < self.mesh.topology.dim
+        """locate entities of `dim` on the boundary geometrically using `marker`"""
         return dolfinx.mesh.locate_entities_boundary(self.mesh, dim, marker)
 
     @property
