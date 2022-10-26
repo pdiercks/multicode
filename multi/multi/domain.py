@@ -54,9 +54,9 @@ class RceDomain(Domain):
         The identification number of the domain.
     edges : optional, bool
         If True, create meshes for the edges of the domain
-        using `dolfinx.mesh.create_submesh`.
-        The submesh and associated mappings are stored in a
-        dictionary (self.edges).
+        using `multi.preprocessing.create_line_grid`.
+        Note that `mesh` needs to have equispaced (transfinite lines)
+        nodes on the boundary.
     """
 
     def __init__(
