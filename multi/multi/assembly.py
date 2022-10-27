@@ -40,6 +40,8 @@ def assemble_rom(
     # ### assemble local contributions once
     timer = Timer("assembly")
     timer.start()
+    # FIXME instead of subdomain_problem pass high fidelity operators?
+    # this way these are assembled outside the loop over modes
     subdomain_problem.clear_bcs()  # do not apply bcs to matrix
     subdomain_problem.setup_solver()  # create matrix object
     matrix = subdomain_problem.assemble_matrix()
@@ -67,6 +69,7 @@ def assemble_rom(
             if cell_index in cell_sets["neumann"]:
                 # assemble F and project
                 # this has to be done locally (on subdomain level)
+                # need to instantiate new problem ...
                 # b += b_local
                 raise NotImplementedError
         timer.stop()
