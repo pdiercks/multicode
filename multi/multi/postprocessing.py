@@ -1,12 +1,13 @@
 import pathlib
 import yaml
 import numpy as np
-# import dolfin as df
+import dolfinx
+from mpi4py import MPI
+from dolfinx.io import XDMFFile
 import matplotlib.pyplot as plt
-# from pymor.bindings.fenics import FenicsVectorSpace
-# from multi.domain import Domain
-# from multi.io import ResultFile
-# from multi.product import InnerProduct
+from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
+
+from multi.product import InnerProduct
 
 
 def plot_modes(edge_space, edge, modes, component, mask):
@@ -123,56 +124,71 @@ def read_bam_colors():
 #         problem.domain.translate(df.Point(-offset))
 
 
-# def compute_local_error_norm(
-#     problem, dofmap, bases, cell_to_basis, u_rom, u_fom, product=None
-# ):
-#     """compute local error norm"""
+# compute error and write to file at the same time
+# to avoid doing same loop twice
+# what was the reason for splitting this up?
+def compute_local_error_norm(
+    multiscale_problem, dofmap, bases, u_rom, u_fom, product=None
+):
+    """compute local error norm"""
 
-#     num_cells = len(dofmap.cells)
-#     assert cell_to_basis.shape[0] == num_cells
-#     assert cell_to_basis.max() < len(bases)
+    # TODO docstring
+    # urom array
+    # ufom Function (global fine grid)
 
-#     V = problem.V
-#     source = FenicsVectorSpace(V)
-#     inner_product = InnerProduct(V, product, bcs=())
-#     product = inner_product.assemble_operator()
+    rom_solutions = []
+    fom_solutions = []
 
-#     reconstructed = []
-#     fom_solutions = []
-#     u_rom_local = df.Function(V)
-#     u_rom_vector = u_rom_local.vector()
-#     for cell_index, cell in enumerate(dofmap.cells):
-#         offset = np.around(dofmap.points[cell][0], decimals=5)
-#         problem.domain.translate(df.Point(offset))
+    degree = multiscale_problem.degree
+    grid_dir = multiscale_problem.grid_dir
 
-#         # ### fom solution for cell
-#         u_fom_local = df.interpolate(u_fom, V)
-#         fom_solutions.append(u_fom_local.vector())
+    num_cells = dofmap.grid.num_cells
+    for cell_index in range(num_cells):
 
-#         # ### rom for cell
-#         dofs = dofmap.cell_dofs(cell_index)
-#         basis = bases[cell_to_basis[cell_index]]
-#         u_rom_vector.set_local(basis.T @ u_rom[dofs])
-#         reconstructed.append(u_rom_vector.copy())
+        subdomain_xdmf = grid_dir / f"offline/subdomain_{cell_index:03}.xdmf"
 
-#         # translate back
-#         problem.domain.translate(df.Point(-offset))
+        with XDMFFile(MPI.COMM_WORLD, subdomain_xdmf.as_posix(), "r") as xdmf:
+            subdomain = xdmf.read_mesh(name="Grid")
+        V = dolfinx.fem.VectorFunctionSpace(subdomain, ("P", degree))
+        inner_product = InnerProduct(V, product, bcs=())
+        matrix = inner_product.assemble_matrix()
+        if matrix is not None:
+            product_op = FenicsxMatrixOperator(matrix, V, V)
+        else:
+            product_op = None
 
-#     # ### compute error
-#     fom = source.make_array(fom_solutions)
-#     rom = source.make_array(reconstructed)
-#     err = fom - rom
+        # ### fom solution for cell
+        u_fom_local = u_fom.interpolate(V)
+        u_fom_local.name = f"u_fom_{cell_index:03}"
+        fom_solutions.append(u_fom_local.vector)
 
-#     err_norm = err.norm(product)
-#     fom_norm = fom.norm(product)
-#     rom_norm = rom.norm(product)
+        # ### rom solution for cell
+        dofs = dofmap.cell_dofs(cell_index)
+        basis = bases[cell_index]
+        u_rom = dolfinx.fem.Function(V, name=f"u_rom_{cell_index:03}")
+        u_rom_vec = u_rom.vector
+        u_rom_vec.array[:] = basis.T @ u_rom[dofs]
+        rom_solutions.append(u_rom_vec)
 
-#     global_err_norm = np.sqrt(np.sum(err_norm**2))
-#     global_fom_norm = np.sqrt(np.sum(fom_norm**2))
-#     return {
-#         "err_norm": err_norm,
-#         "fom_norm": fom_norm,
-#         "rom_norm": rom_norm,
-#         "global_err_norm": global_err_norm,
-#         "global_fom_norm": global_fom_norm,
-#     }
+    # TODO --> implement FenicsxVisualizer for convenient output?
+    # more efficient computation of abs err and rel err
+
+    # ### compute error
+    source = FenicsxVectorSpace(V)
+    fom = source.make_array(fom_solutions)
+    rom = source.make_array(rom_solutions)
+    err = fom - rom
+
+    err_norm = err.norm(product_op)
+    fom_norm = fom.norm(product_op)
+    rom_norm = rom.norm(product_op)
+
+    global_err_norm = np.sqrt(np.sum(err_norm**2))
+    global_fom_norm = np.sqrt(np.sum(fom_norm**2))
+    return {
+        "err_norm": err_norm,
+        "fom_norm": fom_norm,
+        "rom_norm": rom_norm,
+        "global_err_norm": global_err_norm,
+        "global_fom_norm": global_fom_norm,
+    }
