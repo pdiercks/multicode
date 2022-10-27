@@ -1,42 +1,8 @@
-import dolfinx
 import numpy as np
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
 from pymor.core.logger import getLogger
 from pymor.tools.timing import Timer
-from multi.interpolation import interpolate
-
-"""Design
-
-inputs:
-    multiscale problem --> info global BC etc.
-    subdomain_problem --> compute projected operators
-    dofmap
-    bases
-
-returns:
-    A, b, bcs
-
-    determine bc dofs and values (depends on kind of dirichlet bc)
-------------------------------------------------------------------
-    (a) f = const. --> evaluate f at vertices, get fine scale modes dofs and set to 0.
-    (there should not be any modes, because f=const --> triggers f=0 in oversampling)
-    (b) f = non zero --> evaluate f at vertices, get fine scale modes and set to 1. since
-    these should be correctly computed already
-    (c) f = 0 --> evaluate f at vertices?
-
-    ... f might not be a Function?
-    ... how does the dofmap determine the dofs? --> geometrically via locator?
-
-
-• the multiscale problem should define a cell set 'neumann' or 'dirichlet'
-• therefore I know which cells are on said boundaries
-• using the StructuredQuadGrid, the entities of the boundary can be determined by marker
-• thus still need multiscale_problem.get_dirichlet(ci)["boundary"]
-
-first check for inhomogeneous dirichlet,
---> if yes --> apply 
---> if None --> check if homogeneous ones and apply
-"""
+from multi.bcs import compute_dirichlet_online
 
 
 def assemble_rom(
@@ -72,6 +38,8 @@ def assemble_rom(
     assert len(bases) == dofmap.num_cells
 
     # ### assemble local contributions once
+    timer = Timer("assembly")
+    timer.start()
     subdomain_problem.clear_bcs()  # do not apply bcs to matrix
     subdomain_problem.setup_solver()  # create matrix object
     matrix = subdomain_problem.assemble_matrix()
@@ -79,14 +47,16 @@ def assemble_rom(
     source = FenicsxVectorSpace(subdomain_problem.V)
     B = [source.from_numpy(rb) for rb in bases]
     A_local = [operator.apply2(basis, basis) for basis in B]
+    timer.stop()
+    logger.info(f"Assembled local operators in {timer.dt}s.")
 
     # ### initialize global system
-    grid = dofmap.grid
     N = dofmap.num_dofs
     A = np.zeros((N, N))
     b = np.zeros(N)
 
-    timer = Timer("assembly")
+    cell_sets = multiscale_problem.cell_sets
+
     with logger.block("Start of Assembly loop ..."):
         timer.start()
         for cell_index in range(dofmap.num_cells):
@@ -94,78 +64,17 @@ def assemble_rom(
             dofs = dofmap.cell_dofs(cell_index)
             A[np.ix_(dofs, dofs)] += A_local[cell_index]
 
-            if cell_index in neumann_set:
+            if cell_index in cell_sets["neumann"]:
                 # assemble F and project
                 # this has to be done locally (on subdomain level)
+                # b += b_local
                 raise NotImplementedError
+        timer.stop()
+    logger.info(f"Assembled ROM system in {timer.dt}s.")
 
-    logger.info("Computing Dirichlet BCs for ROM")
     dirichlet = multiscale_problem.get_dirichlet()
-    bcs = {}
-    for bc in dirichlet["inhomogeneous"]:
-        locator = bc["boundary"]
-        uD = bc["value"]
-
-        # locate entities
-        vertices = grid.locate_entities_boundary(0, locator)
-        edges = grid.locate_entities_boundary(1, locator)
-        # entity coordinates
-        x_verts = grid.get_entity_coordinates(0, vertices)
-
-        # FIXME this interpolation does produce unwanted result
-        # if bc is component-wise, but inhomogeneous
-
-        # coarse scale dofs
-        coarse_values = interpolate(uD, x_verts)
-        for values, ent in zip(coarse_values, vertices):
-            dofs = dofmap.entity_dofs(0, ent)
-            for k, v in zip(values, dofs):
-                bcs.update({k: v})
-
-        # fine scale dofs
-        for ent in edges:
-            dofs = dofmap.entity_dofs(1, ent)
-            assert len(dofs) == 1
-            bcs.update({dofs[0]: 1.})
-
-    for bc in dirichlet["homogeneous"]:
-        locator = bc["boundary"]
-        uD = bc["value"]
-
-        # locate entities
-        vertices = grid.locate_entities_boundary(0, locator)
-        edges = grid.locate_entities_boundary(1, locator)
-
-        # this sets zero to all dofs
-        # wrong for component-wise homogeneous bc
-        for ent in vertices:
-            dofs = dofmap.entity_dofs(0, ent)
-            for d in dofs:
-                bcs.update({d: 0.0})
-
-        # no need to deal with the edges
-        # elif bc_type == "homogeneous":
-        #     for ent in edges:
-        #         dofs = dofmap.entity_dofs(1, ent)
-        #         if len(dofs) < 1:
-        #             # there are no modes for this edge
-        #             # do nothing
-        #         else:
-        #             # component-wise homogeneous bc
-        #             # do nothing
-
-        # TODO what about a constant function?
-
-
-        # TODO edges
-        # inhom --> there should be a single mode --> v=1.
-        # hom --> either no mode because fully constrained and hence no reason to train this in the oversampling
-        # OR component-wise hom bc --> several modes should be present , but no dof values should be set ... --> free component dof values are determined from system solve
-
-        # NOTE 26.10.2022
-        # I get the feeling that this won't work
-        # I need more information here, than what is defined in BlockProblem (MultiscaleProblem) on a global level
-        # It would have been nice to define the dirichlet conditions once in a certain form and be able to use that
-        # everywhere, but I guess it just does not work ...
-
+    timer.start()
+    bcs = compute_dirichlet_online(dofmap, dirichlet)
+    timer.stop()
+    logger.info(f"Computed Dirichlet bcs in {timer.dt}s.")
     return A, b, bcs
