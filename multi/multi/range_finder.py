@@ -1,44 +1,3 @@
-"""range finder algorithm
-
-use same function to compute snapshots for the
-construction of the empirical basis for
-    (a) random training samples from a gaussian normal distribution
-    (b) random training samples from a multivariate normal distribution
-        with the macroscopic displacement as mean
-
-
-inputs:
-    logger
-    tranfer_problem (weak form, bcs, Γ_out)
-    random_state
-    source_product <-- transfer_problem
-    range_product <-- transfer_problem
-    tol
-    failure_tolerance
-    num_testvecs
-    lambda_min
-    optional: u_macro
-    optional: correlation length
-
-returns:
-    VectorArray (snapshots)
-
-random_state <-- pymor.tools.random.get_random_state (returns numpy R state)
-(a) --> random_state.normal(loc=0.0, scale=1.0, size=None)
-(b) --> random_state.multivariate_normal(mean, cov, size=None, check_valid='warn', tol=1e-8)
-
-
-pymor.vectorarrays.interface._create_random_values might have
-benefit of controlling optional kwargs (like `loc` and `scale` in case of 
-random_state.normal for example)
-
-Questions:
-----------
-1. in case of (b): how are the test vectors generated?
-2. just compute orthonormal basis and decompose afterwards? or does this somehow lessen the quality of the POD edge basis?
-
-"""
-
 import numpy as np
 
 from pymor.algorithms.gram_schmidt import gram_schmidt
@@ -86,8 +45,6 @@ def adaptive_rrf(
 
     Parameters
     ----------
-    logger
-        The logger used by the main program.
     transfer_problem
         The transfer problem associated with a (transfer) |Operator| A.
     random_state
@@ -114,8 +71,9 @@ def adaptive_rrf(
 
     Returns
     -------
-     B
-        |VectorArray| which contains the basis, whose span approximates the range of A.
+     U
+        |VectorArray| which contains the (non-orthonormal) solutions, whose
+        span approximates the range of A.
     """
 
     logger = getLogger("multi.range_finder.adaptive_rrf")
@@ -154,35 +112,11 @@ def adaptive_rrf(
     )
     maxnorm = np.inf
 
-
-    # set of test vectors
-    # FIXME in general don't know what a good testing set is, such that
-    # space is tailored to `u_macro` and gives good approx with few functions
-    # M only controls how many basis functions are added,
-    # add only functions which result in big maxnorm reduction???
-    # test_vector_data = random_state.multivariate_normal(u_macro, Σ_scaled, size=num_testvecs)
-    # R = problem.generate_boundary_data(test_vector_data)
-
-    # TODO implement transfer_problem.generate_random_boundary_data(
-    #                   self, count, distribution, random_state, seed, kwargs
-    #               )
-    # instead of tp.source use tp._bc_dofs_gamma_out
-    # Q: why do I need random state and seed?
-    # wanted behaviour: use the same random_state for one while loop
-
-    # TODO at some point have to create random_state using seed or
-    # get the default random state ...
-    # in pymor this is done with source.random()
-    # --> thus create random state in tp.generate_random_boundary_data
-
-    # TODO it is important to be able to set the seed
-    # for a specific realization of the empirical basis
-    # this can be done by e.g.
-    # rs = pymor.get_random_state(seed=222)
-    # B = adaptive_rrf(logger, prob, rs, ...)
-
     # set of test vectors
     if distribution == "multivariate_normal":
+        # FIXME what is a good testing set in this case?
+        # assumption: only test against macro state such that basis
+        # approximates exactly this state well
         mean = kwargs.get("mean")
         if mean is None:
             raise ValueError
@@ -197,10 +131,13 @@ def adaptive_rrf(
     logger.info(f"{testlimit=}")
 
     B = tp.range.empty()
+    U = tp.range.empty()
     while maxnorm > testlimit:
         basis_length = len(B)
         v = tp.generate_random_boundary_data(1, distribution, random_state, **kwargs)
-        B.append(tp.solve(v))
+        u = tp.solve(v)
+        U.append(u)
+        B.append(u)
 
         gram_schmidt(
             B,
@@ -219,4 +156,4 @@ def adaptive_rrf(
         maxnorm = np.max(norm)
         logger.info(f"{maxnorm=}")
 
-    return B
+    return U
