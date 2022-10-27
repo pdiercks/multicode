@@ -7,6 +7,121 @@ from multi.interpolation import interpolate
 from multi.shapes import NumpyLine
 from multi.product import InnerProduct
 
+"""Dirichlet bcs online
+
+Homogeneous
+-----------
+1. g=0
+- set zero for coarse scale dofs
+- do nothing for fine scale dofs (there should not exist any modes)
+2. g_sub=0
+- set zero for coarse scale dofs
+- do nothing for fine scale dofs (there should exist a number of modes with zero values for sub and non-zero (free) for other; unless user specified incorrect pod config)
+
+Inhomogeneous
+-------------
+3. g=const.=α
+- set α for coarse scale dofs
+- do nothing for fine scale dofs (there should not exist any modes)
+4. g_sub=const.=α
+- set α for coarse scale dofs
+- do nothing for fine scale dofs (there should exist a number of modes with zero values for sub and non-zero (free) for other; unless user specified incorrect pod config)
+5. g=non-zero
+- set value for coarse scale dofs
+- set 1. for fine scale dof (there should exist 1 mode on each boundary edge)
+6. g_sub=non-zero
+- set value for coarse scale dofs
+- set 1. for fine scale dof (there should exist 1 mode on each boundary edge)
+
+
+"""
+
+
+def compute_dirichlet_online(dofmap, dirichlet):
+    grid = dofmap.grid
+    bcs = {}
+    for bc in dirichlet["inhomogeneous"]:
+        locator = bc["boundary"]
+        uD = bc["value"]
+        sub = bc.get("sub")
+
+        # locate entities
+        vertices = grid.locate_entities_boundary(0, locator)
+        edges = grid.locate_entities_boundary(1, locator)
+        # entity coordinates
+        x_verts = grid.get_entity_coordinates(0, vertices)
+
+        if sub is not None:
+            assert sub in (0, 1)
+            # coarse scale dofs
+            coarse_values = interpolate(uD, x_verts)
+            for values, ent in zip(coarse_values, vertices):
+                dofs = dofmap.entity_dofs(0, ent)
+                bcs.update({dofs[sub]: values[sub]})
+
+            # fine scale dofs
+            # g_sub=const.  --> mode_sub=0 but non-zero otherwise
+            # g_sub=anything --> exactly one fine scale mode computed offline
+            for ent in edges:
+                dofs = dofmap.entity_dofs(1, ent)
+                if len(dofs) > 1:
+                    # g_sub=const.
+                    continue
+                try:
+                    bcs.update({dofs[0]: 1.})
+                except IndexError:
+                    # do nothing
+                    assert len(dofs) == 0
+        else:
+            # coarse scale dofs
+            coarse_values = interpolate(uD, x_verts)
+            for values, ent in zip(coarse_values, vertices):
+                dofs = dofmap.entity_dofs(0, ent)
+                for k, v in zip(dofs, values):
+                    bcs.update({k: v})
+
+            # fine scale dofs
+            for ent in edges:
+                dofs = dofmap.entity_dofs(1, ent)
+                assert len(dofs) <= 1
+                try:
+                    bcs.update({dofs[0]: 1.})
+                except IndexError:
+                    # do nothing
+                    assert len(dofs) == 0
+
+    for bc in dirichlet["homogeneous"]:
+        locator = bc["boundary"]
+        uD = bc["value"]
+        sub = bc.get("sub")
+
+        # locate entities
+        vertices = grid.locate_entities_boundary(0, locator)
+        edges = grid.locate_entities_boundary(1, locator)
+
+        if sub is not None:
+            assert sub in (0, 1)
+
+            for ent in vertices:
+                dofs = dofmap.entity_dofs(0, ent)
+                bcs.update({dofs[sub]: 0.0})
+
+            # sanity check
+            for ent in edges:
+                dofs = dofmap.entity_dofs(1, ent)
+                assert dofs
+        else:
+            for ent in vertices:
+                dofs = dofmap.entity_dofs(0, ent)
+                for d in dofs:
+                    bcs.update({d: 0.0})
+
+            # sanity check
+            for ent in edges:
+                dofs = dofmap.entity_dofs(1, ent)
+                assert not dofs
+    return bcs
+
 
 def get_boundary_dofs(V, marker):
     """get dofs on the boundary"""
