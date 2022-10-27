@@ -97,7 +97,7 @@ class BasesLoader(object):
         assert "inner" in cell_sets.keys()
         # sort cell indices in increasing order
         for key, value in cell_sets.items():
-            self._cell_sets[key] = np.sort(value)
+            self._cell_sets[key] = np.sort(list(value))
 
     def _build_bases_config(self):
         """builds logic to read (edge) bases such that a conforming global approx results"""
