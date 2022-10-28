@@ -301,8 +301,6 @@ class BoundaryConditions:
             else:
                 dofs = dolfinx.fem.locate_dofs_geometrical(V, boundary)
 
-            # FIXME passing V if value is a Function raises TypeError
-            # why is this case not covered by the 4th constructor of dirichletbc?
             if isinstance(value, (dolfinx.fem.Constant, np.ndarray, np.float64)):
                 bc = dolfinx.fem.dirichletbc(value, dofs, V)
             else:
