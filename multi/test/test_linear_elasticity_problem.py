@@ -9,6 +9,7 @@ from multi.domain import Domain, RceDomain
 from multi.preprocessing import create_rectangle_grid
 from multi.problems import LinearElasticityProblem
 from multi.misc import x_dofs_VectorFunctionSpace
+from multi.interpolation import interpolate
 
 
 def test():
@@ -49,6 +50,60 @@ def test():
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
     assert matrix[:, :].shape == (Vdim, Vdim)
     assert np.sum(np.abs(u.x.array[:])) > 0.0
+
+
+def test_dirichlet():
+    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    domain.topology.create_connectivity(tdim, fdim)
+
+    # helpers
+    left = plane_at(0.0, "x")
+    right = plane_at(1.0, "x")
+    bottom = plane_at(0.0, "y")
+
+    Ω = Domain(domain, cell_markers=None, facet_markers=None)
+
+    # initialize problem
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
+    problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
+
+    # add two dirichlet bc
+    zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * 2)
+    f_x = 12.3
+    f_y = 0.0
+    f = dolfinx.fem.Constant(domain, (PETSc.ScalarType(f_x), PETSc.ScalarType(f_y)))
+    
+    def u_bottom(x):
+        return (x[0] * f_x, x[1])
+
+    problem.add_dirichlet_bc(zero, left, method="geometrical")
+    problem.add_dirichlet_bc(f, right, method="geometrical")
+    problem.add_dirichlet_bc(u_bottom, bottom, method="geometrical")
+
+    u = problem.solve()
+    vector = problem._vector
+    matrix = problem._matrix
+
+    assert np.sum(vector[:]) > 0
+    Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
+    assert matrix[:, :].shape == (Vdim, Vdim)
+    assert np.sum(np.abs(u.x.array[:])) > 0.0
+
+    # extract values at the bottom
+    bdofs = dolfinx.fem.locate_dofs_geometrical(V, bottom)
+    xdofs = V.tabulate_dof_coordinates()
+    x_bottom = xdofs[bdofs]
+    u_values = interpolate(u, x_bottom)
+    assert np.isclose(np.sum(f_x * np.linspace(0, 1, num=9, endpoint=True)), np.sum(u_values))
+
+    # extract value at the right
+    bdofs = dolfinx.fem.locate_dofs_geometrical(V, right)
+    xdofs = V.tabulate_dof_coordinates()
+    x_right = xdofs[bdofs]
+    u_values = interpolate(u, x_right)
+    assert np.isclose(np.sum(u_values), f_x * 9)
 
 
 def test_with_edges():
@@ -92,4 +147,5 @@ def test_with_edges():
 
 if __name__ == "__main__":
     test()
+    test_dirichlet()
     test_with_edges()
