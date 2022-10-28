@@ -303,10 +303,15 @@ class BoundaryConditions:
 
             # FIXME passing V if value is a Function raises TypeError
             # why is this case not covered by the 4th constructor of dirichletbc?
-            if isinstance(value, dolfinx.fem.Function):
-                bc = dolfinx.fem.dirichletbc(value, dofs)
-            else:
+            if isinstance(value, (dolfinx.fem.Constant, np.ndarray, np.float64)):
                 bc = dolfinx.fem.dirichletbc(value, dofs, V)
+            else:
+                try:
+                    bc = dolfinx.fem.dirichletbc(value, dofs)
+                except AttributeError:
+                    f = dolfinx.fem.Function(V)
+                    f.interpolate(value)
+                    bc = dolfinx.fem.dirichletbc(f, dofs)
             self._bcs.append(bc)
 
     def add_neumann_bc(self, marker, value):
