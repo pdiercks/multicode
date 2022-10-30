@@ -69,9 +69,7 @@ def read_bam_colors():
     return bam_cd
 
 
-def write_local_fields(
-    xdmf_file, multiscale_problem, dofmap, bases, u_rom, u_fom
-):
+def write_local_fields(xdmf_file, multiscale_problem, dofmap, bases, u_rom, u_fom):
     """get local field for each subdomain and write to file"""
 
     output = pathlib.Path(xdmf_file)
@@ -99,7 +97,6 @@ def write_local_fields(
         u_rom = dolfinx.fem.Function(V, name="u_rom")
         u_rom_vec = u_rom.vector
         u_rom_vec.array[:] = basis.T @ u_rom[dofs]
-
 
         # ### absolute error
         aerr = dolfinx.fem.Function(V)
@@ -168,28 +165,39 @@ def compute_error_norms(
             # this does not happen
             breakpoint()
         fom_solutions.append(u_fom_local.vector)
-        fom_arrays.append(u_fom_local.vector.array)
+        # fom_arrays.append(u_fom_local.vector.array)
 
         # ### rom solution for cell
-        dofs = dofmap.cell_dofs(cell_index)
-        basis = bases[cell_index]
-        u_rom_local = dolfinx.fem.Function(V)
-        u_rom_vec = u_rom_local.vector
-        u_rom_vec.array[:] = basis.T @ u_rom[dofs]
-        rom_solutions.append(u_rom_vec)
+        # dofs = dofmap.cell_dofs(cell_index)
+        # basis = bases[cell_index]
+        # u_rom_local = dolfinx.fem.Function(V)
+        # u_rom_vec = u_rom_local.vector
+        # u_rom_vec.array[:] = basis.T @ u_rom[dofs]
+        # rom_solutions.append(u_rom_vec)
 
     W = [f.array for f in fom_solutions]
-    U = np.array(fom_arrays)
+    # U = np.array(fom_arrays)
 
     # FIXME I don't see a reason why there should be NaN
     # in the fom solution, especially with the if statement in line 167
 
+    # NOTE 30.10.2022
+    # just tried investigating only the interpolation of the fom
+    # observation: sometimes W contains Nan, sometimes it does not
+    # I have no idea what is going on.
+    # I am thinking about completely localizing the error computation
+    # (if this weird behaviour is somehow linked to memory)
+    # (and maybe doing subdomain cells in parallel via doit)
+    # --> task_subdomain_error
+
     if np.any(np.isnan(np.array(W))):
         print("why W nan?")
-        # breakpoint()
-    if np.any(np.isnan(U)):
-        print("why U nan?")
-        # breakpoint()
+        breakpoint()
+    # if np.any(np.isnan(U)):
+    #     print("why U nan?")
+    # breakpoint()
+
+    return {"0": 0}
 
     # NOTE this assumes that every rce domain has the
     # same fine scale structure
