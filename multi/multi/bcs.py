@@ -42,8 +42,20 @@ def compute_dirichlet_online(dofmap, dirichlet):
     bcs = {}
     for bc in dirichlet["inhomogeneous"]:
         locator = bc["boundary"]
-        uD = bc["value"]
+        # uD = bc["value"]
         sub = bc.get("sub")
+
+        # TODO uD is required to be a dolfinx.fem.Function
+        # current logic for MultiscaleProblem is to define dirichlet in general
+        # expression form such that it can be used anywhere
+        # provided that a suitable Function is created and the expression is
+        # interpolated into the correct space.
+        #
+        # TODO let MultiscaleProblem have a coarse and fine scale space
+        # --> pass MultiscaleProblem as input
+        W = dolfinx.fem.VectorFunctionSpace(grid.mesh, ("P", 2))
+        uD = dolfinx.fem.Function(W)
+        uD.interpolate(bc["value"])
 
         # locate entities
         vertices = grid.locate_entities_boundary(0, locator)
@@ -68,7 +80,7 @@ def compute_dirichlet_online(dofmap, dirichlet):
                     # g_sub=const.
                     continue
                 try:
-                    bcs.update({dofs[0]: 1.})
+                    bcs.update({dofs[0]: 1.0})
                 except IndexError:
                     # do nothing
                     assert len(dofs) == 0
@@ -85,7 +97,7 @@ def compute_dirichlet_online(dofmap, dirichlet):
                 dofs = dofmap.entity_dofs(1, ent)
                 assert len(dofs) <= 1
                 try:
-                    bcs.update({dofs[0]: 1.})
+                    bcs.update({dofs[0]: 1.0})
                 except IndexError:
                     # do nothing
                     assert len(dofs) == 0
@@ -131,7 +143,7 @@ def get_boundary_dofs(V, marker):
     fdim = tdim - 1
     entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
     dofs = dolfinx.fem.locate_dofs_topological(V, fdim, entities)
-    bc = dolfinx.fem.dirichletbc(np.array((0, ) * gdim, dtype=PETSc.ScalarType), dofs)
+    bc = dolfinx.fem.dirichletbc(np.array((0,) * gdim, dtype=PETSc.ScalarType), dofs)
     dof_indices = bc.dof_indices()[0]
     return dof_indices
 
@@ -149,6 +161,7 @@ class BoundaryDataFactory(object):
     However, for the extension we require a dirichletbc object that
     applies to the entire boundary ∂Ω.
     """
+
     def __init__(self, domain, V):
         self.domain = domain
         self.V = V
@@ -161,7 +174,9 @@ class BoundaryDataFactory(object):
         fdim = tdim - 1
         domain.topology.create_connectivity(fdim, tdim)
         boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-        self.boundary_dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
+        self.boundary_dofs = dolfinx.fem.locate_dofs_topological(
+            V, fdim, boundary_facets
+        )
 
     def create_function_values(self, values, boundary_dofs):
         """create a function and set values
@@ -206,7 +221,6 @@ class BoundaryDataFactory(object):
             addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
         )
         return u
-
 
     def create_bc(self, function):
         """create a bc with value function for the entire boundary
