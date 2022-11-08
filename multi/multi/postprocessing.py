@@ -142,12 +142,12 @@ def compute_error_norms(
         Values are `np.ndarray`s.
     """
 
-    rom_solutions = []
-    fom_solutions = []
-    fom_arrays = []
-
     degree = multiscale_problem.degree
     grid_dir = multiscale_problem.grid_dir
+
+    # NOTE issue can be resolved by deleting the cash
+    # as a consequence, I need to be careful with creating
+    # the same function several times?
 
     num_cells = dofmap.grid.num_cells
     for cell_index in range(num_cells):
@@ -161,83 +161,52 @@ def compute_error_norms(
         # ### fom solution for cell
         u_fom_local = dolfinx.fem.Function(V)
         u_fom_local.interpolate(u_fom)
-        if np.any(np.isnan(u_fom_local.vector.array)):
-            # this does not happen
-            breakpoint()
-        fom_solutions.append(u_fom_local.vector)
-        # fom_arrays.append(u_fom_local.vector.array)
 
         # ### rom solution for cell
-        # dofs = dofmap.cell_dofs(cell_index)
-        # basis = bases[cell_index]
-        # u_rom_local = dolfinx.fem.Function(V)
-        # u_rom_vec = u_rom_local.vector
-        # u_rom_vec.array[:] = basis.T @ u_rom[dofs]
-        # rom_solutions.append(u_rom_vec)
+        dofs = dofmap.cell_dofs(cell_index)
+        basis = bases[cell_index]
+        u_rom_local = dolfinx.fem.Function(V)
+        u_rom_vec = u_rom_local.vector
+        u_rom_vec.array[:] = basis.T @ u_rom[dofs]
 
-    W = [f.array for f in fom_solutions]
-    # U = np.array(fom_arrays)
+        if product == "energy":
+            # instantiate linear elasticity problem
+            material = multiscale_problem.material
+            E = material["Material parameters"]["E"]["value"]
+            NU = material["Material parameters"]["NU"]["value"]
+            plane_stress = material["Constraints"]["plane_stress"]
 
-    # FIXME I don't see a reason why there should be NaN
-    # in the fom solution, especially with the if statement in line 167
+            cell_index = 0
+            subdomain_xdmf = grid_dir / f"offline/subdomain_{cell_index:03}.xdmf"
+            with XDMFFile(MPI.COMM_WORLD, subdomain_xdmf.as_posix(), "r") as xdmf:
+                subdomain = xdmf.read_mesh(name="Grid")
+                ct = xdmf.read_meshtags(subdomain, name="Grid")
 
-    # NOTE 30.10.2022
-    # just tried investigating only the interpolation of the fom
-    # observation: sometimes W contains Nan, sometimes it does not
-    # I have no idea what is going on.
-    # I am thinking about completely localizing the error computation
-    # (if this weird behaviour is somehow linked to memory)
-    # (and maybe doing subdomain cells in parallel via doit)
-    # --> task_subdomain_error
+            Ω = RceDomain(subdomain, cell_markers=ct)
+            V = dolfinx.fem.VectorFunctionSpace(subdomain, ("P", degree))
+            problem = LinearElasticityProblem(
+                Ω, V, E=E, NU=NU, plane_stress=plane_stress
+            )
+            product = problem.get_form_lhs()
 
-    if np.any(np.isnan(np.array(W))):
-        print("why W nan?")
+        inner_product = InnerProduct(V, product, bcs=())
+        matrix = inner_product.assemble_matrix()
+        if matrix is not None:
+            product_op = FenicsxMatrixOperator(matrix, V, V)
+        else:
+            product_op = None
+
+        # ### compute error
+        source = FenicsxVectorSpace(V)
+        fom = source.make_array([u_fom_local.vector])
+        rom = source.make_array([u_rom_vec])
+        err = fom - rom
+
+        err_norm = err.norm(product_op)
+        fom_norm = fom.norm(product_op)
+        rom_norm = rom.norm(product_op)
+
         breakpoint()
-    # if np.any(np.isnan(U)):
-    #     print("why U nan?")
-    # breakpoint()
-
-    return {"0": 0}
-
-    # NOTE this assumes that every rce domain has the
-    # same fine scale structure
-
-    if product == "energy":
-        # instantiate linear elasticity problem
-        material = multiscale_problem.material
-        E = material["Material parameters"]["E"]["value"]
-        NU = material["Material parameters"]["NU"]["value"]
-        plane_stress = material["Constraints"]["plane_stress"]
-
-        cell_index = 0
-        subdomain_xdmf = grid_dir / f"offline/subdomain_{cell_index:03}.xdmf"
-        with XDMFFile(MPI.COMM_WORLD, subdomain_xdmf.as_posix(), "r") as xdmf:
-            subdomain = xdmf.read_mesh(name="Grid")
-            ct = xdmf.read_meshtags(subdomain, name="Grid")
-
-        Ω = RceDomain(subdomain, cell_markers=ct)
-        V = dolfinx.fem.VectorFunctionSpace(subdomain, ("P", degree))
-        problem = LinearElasticityProblem(Ω, V, E=E, NU=NU, plane_stress=plane_stress)
-        product = problem.get_form_lhs()
-
-    inner_product = InnerProduct(V, product, bcs=())
-    matrix = inner_product.assemble_matrix()
-    if matrix is not None:
-        product_op = FenicsxMatrixOperator(matrix, V, V)
-    else:
-        product_op = None
-
-    # ### compute error
-    source = FenicsxVectorSpace(V)
-    fom = source.make_array(fom_solutions)
-    rom = source.make_array(rom_solutions)
-    err = fom - rom
-
-    # FIXME it seems I need to test if FenicsxMatrixOperator
-    # behaves correctly here ...
-    err_norm = err.norm(product_op)
-    fom_norm = fom.norm(product_op)
-    rom_norm = rom.norm(product_op)
 
     return {
         "err": err_norm,

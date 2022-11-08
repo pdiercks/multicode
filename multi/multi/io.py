@@ -1,3 +1,4 @@
+import pathlib
 import numpy as np
 from multi.dofmap import QuadrilateralDofLayout
 
@@ -11,7 +12,7 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
         Each element of ``bases`` is a tuple where the first element is a
         FilePath and the second element is a string specifying which basis
         functions to load. Possible string values are 'phi' (coarse
-        scale functions), and 'bottom', 'right', 'top', 'left' 
+        scale functions), and 'bottom', 'right', 'top', 'left'
         (for respective fine scale functions).
     modes_per_edge : int, optional
         Maximum number of modes per edge for the fine scale bases.
@@ -45,7 +46,9 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
         num_modes[string] = len(basis_functions[string])
 
     dof_layout = QuadrilateralDofLayout()
-    edges = [dof_layout.local_edge_index_map[i] for i in range(dof_layout.num_entities[1])]
+    edges = [
+        dof_layout.local_edge_index_map[i] for i in range(dof_layout.num_entities[1])
+    ]
 
     max_modes_per_edge = modes_per_edge or max([num_modes[edge] for edge in edges])
 
@@ -64,8 +67,9 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
 
 class BasesLoader(object):
     def __init__(self, directory, coarse_grid):
-        assert directory.is_dir()
-        self.dir = directory
+        folder = pathlib.Path(directory)
+        assert folder.is_dir()
+        self.dir = folder
         self.grid = coarse_grid
         self.num_cells = coarse_grid.num_cells
 
