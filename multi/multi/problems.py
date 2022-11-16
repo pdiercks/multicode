@@ -8,7 +8,7 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 from multi.bcs import BoundaryConditions
-from multi.domain import StructuredQuadGrid
+from multi.domain import StructuredQuadGrid, Domain
 from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
 from multi.misc import x_dofs_VectorFunctionSpace
@@ -36,6 +36,16 @@ def _solver_options(
     }
 
 
+# TODO revise this class taking into account dolfinx.fem.LinearProblem
+# cg_problem = LinearProblem(a, L, bcs=bcs,
+# petsc_options={"ksp_type": "cg", "ksp_rtol":1e-6, "ksp_atol":1e-10, "ksp_max_it": 1000})
+# uh = cg_problem.solve()
+# cg_solver = cg_problem.solver
+# viewer = PETSc.Viewer().createASCII("cg_output.txt")
+# cg_solver.view(viewer)
+# solver_output = open("cg_output.txt", "r")
+# for line in solver_output.readlines():
+#     print(line)
 class LinearProblem(object):
 
     """Docstring for LinearProblem."""
@@ -110,8 +120,8 @@ class LinearProblem(object):
     def get_form_rhs(self):
         pass
 
-    def setup_solver(self):
-        """create matrix and vector objects, and setup solver"""
+    def _discretize(self):
+        """create matrix and vector objects"""
         a = self.get_form_lhs()
         L = self.get_form_rhs()
         self._A = dolfinx.fem.form(a)
@@ -119,9 +129,15 @@ class LinearProblem(object):
         self._matrix = dolfinx.fem.petsc.create_matrix(self._A)
         self._vector = dolfinx.fem.petsc.create_vector(self._b)
 
+    def setup_solver(self):
+        """setup a solver"""
+        if not hasattr(self, "_matrix"):
+            self._discretize()
+
         options = self._solver_options
         method = options.get("solver")
         preconditioner = options.get("preconditioner")
+
         solver = PETSc.KSP().create(self.V.mesh.comm)
         solver.setOperators(self._matrix)
         solver.setType(method)
@@ -131,6 +147,9 @@ class LinearProblem(object):
 
     def assemble_matrix(self, bcs=()):
         """assemble matrix and apply boundary conditions"""
+        if not hasattr(self, "_matrix"):
+            self._discretize()
+
         self._matrix.zeroEntries()
         dolfinx.fem.petsc.assemble_matrix(self._matrix, self._A, bcs=bcs)
         self._matrix.assemble()
@@ -139,6 +158,9 @@ class LinearProblem(object):
 
     def assemble_vector(self, bcs=()):
         """assemble vector and apply boundary conditions"""
+        if not hasattr(self, "_vector"):
+            self._discretize()
+
         self._vector.zeroEntries()
         dolfinx.fem.petsc.assemble_vector(self._vector, self._b)
         self._vector.ghostUpdate(
@@ -475,14 +497,20 @@ class TransferProblem(object):
         """discretize inhomogeneous neumann bc(s)"""
         self.problem.clear_bcs(dirichlet=False)
         try:
-            neumann = self.neumann
-            if isinstance(neumann, (list, tuple)):
-                for force in neumann:
-                    # force is dict
-                    self.problem.add_neumann_bc(**force)
+            if isinstance(self.neumann, (list, tuple)):
+                neumann = self.neumann
             else:
-                self.problem.add_neumann_bc(**neumann)
+                neumann = [self.neumann, ]
+            for force in neumann:
+                try:
+                    self.problem.add_neumann_bc(**force)
+                except ufl.log.UFLValueError:
+                    g = dolfinx.fem.Function(self.problem.V)
+                    g.interpolate(force["value"])
+                    force.update({"value": g})
+                    self.problem.add_neumann_bc(**force)
         except AttributeError:
+            # no neumann bcs are defined for this problem
             pass
 
         ufl_rhs = self.problem.get_form_rhs()
@@ -550,9 +578,6 @@ class TransferProblem(object):
         # initialize
         D = np.zeros((count, self.source.dim))  # source.dim is the full space
 
-        # FIXME
-        # there is self._source_gamma = NumpyVectorSpace()
-        # but it cannot create random values for distribution='multivariate_normal'
         bc_dofs = self._bc_dofs_gamma_out  # actual size of the source space
         assert random_state is None or seed is None
         random_state = get_random_state(random_state, seed)
@@ -646,11 +671,23 @@ class TransferProblem(object):
 
 
 class MultiscaleProblem(object):
-    def __init__(self, mshfile):
-        self.mshfile = mshfile
-        domain, ct, ft = gmshio.read_from_msh(mshfile, MPI.COMM_WORLD, gdim=2)
-        self.grid = StructuredQuadGrid(domain, ct, ft)
-        self.grid_dir = pathlib.Path(mshfile).parent
+    def __init__(self, coarse_grid_path, fine_grid_path, boundaries=None):
+        self.coarse_grid_path = pathlib.Path(coarse_grid_path)
+        self.fine_grid_path = pathlib.Path(fine_grid_path)
+        self.boundaries = boundaries
+
+        domain, ct, ft = gmshio.read_from_msh(self.coarse_grid_path.as_posix(), MPI.COMM_WORLD, gdim=2)
+        self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
+
+        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, self.fine_grid_path.as_posix(), "r") as xdmf:
+            fine_domain = xdmf.read_mesh(name="Grid")
+            fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")
+
+        if boundaries is not None:
+            from multi.preprocessing import create_facet_tags
+            # FIXME boundaries are defined by the MultisaleProblem implementation ...
+            fine_ft, marked_boundaries = create_facet_tags(fine_domain, boundaries)
+        self.fine_grid = Domain(fine_domain, cell_markers=fine_ct, facet_markers=fine_ft)
 
     @property
     def material(self):
@@ -669,6 +706,15 @@ class MultiscaleProblem(object):
     @degree.setter
     def degree(self, degree):
         self._degree = int(degree)
+
+    def setup_fe_spaces(self, family="P"):
+        """create FE spaces on coarse and fine grid"""
+        try:
+            degree = self.degree
+        except AttributeError as err:
+            raise err("You need to set the degree of the problem first")
+        self.W = dolfinx.fem.VectorFunctionSpace(self.coarse_grid.mesh, (family, 1))
+        self.V = dolfinx.fem.VectorFunctionSpace(self.fine_grid.mesh, (family, degree))
 
     @property
     def cell_sets(self):
