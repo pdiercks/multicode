@@ -183,5 +183,5 @@ def test_bases_loader_read_bases():
 
 
 if __name__ == "__main__":
-    # test_bases_loader_read_bases()
+    test_bases_loader_read_bases()
     test_zero_modes_boundary()
