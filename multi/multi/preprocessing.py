@@ -7,6 +7,7 @@
 # For parallel input of meshes, first convert .msh to .xdmf using meshio
 # and read the mesh with dolfinx.io.XDMFFile.
 
+import dolfinx
 import gmsh
 import meshio
 import numpy as np
@@ -36,6 +37,43 @@ def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
         points=points, cells={cell_type: cells}, cell_data={name_to_read: [cell_data]}
     )
     return out_mesh
+
+
+def create_facet_tags(mesh, boundaries):
+    """create facet tags for given mesh
+
+    Parameters
+    ----------
+    mesh : dolfinx.mesh.Mesh
+        The grid of the computational domain.
+    boundaries : dict
+        The definition of boundaries given by a name (key) and
+        a tuple of an integer and a function (value).
+
+    Returns
+    -------
+    facet_tags : dolfinx.mesh.MeshTags
+        The mesh tags for the facets/boundary.
+    marked_boundary: dict
+        The name (key) and integer (value) defining the boundary.
+    """
+
+    facet_indices, facet_markers = [], []
+    fdim = mesh.topology.dim - 1
+    marked_boundary = {}
+    for key, (marker, locator) in boundaries.items():
+        facets = dolfinx.mesh.locate_entities(mesh, fdim, locator)
+        facet_indices.append(facets)
+        facet_markers.append(np.full_like(facets, marker))
+        if facets.size > 0:
+            marked_boundary[key] = marker
+    facet_indices = np.hstack(facet_indices).astype(np.int32)
+    facet_markers = np.hstack(facet_markers).astype(np.int32)
+    sorted_facets = np.argsort(facet_indices)
+    facet_tags = dolfinx.mesh.meshtags(
+        mesh, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets]
+    )
+    return facet_tags, marked_boundary
 
 
 def _initialize():
@@ -370,7 +408,7 @@ def create_rce_grid_02(
         (12.561194629950934, 2.7353694913178512, z, 1.6),
     ]
     for xc, yc, zc, radius in aggregates:
-        add_aggregate(xc, yc, zc, radius)
+        add_aggregate(xmin + xc, ymin + yc, zc, radius)
 
     # add the matrix
     add_matrix(xmin, xmax, ymin, ymax, z)
