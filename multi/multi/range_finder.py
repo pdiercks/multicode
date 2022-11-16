@@ -15,7 +15,7 @@ def adaptive_rrf(
     distribution,
     source_product=None,
     range_product=None,
-    tol=1e-4,
+    error_tol=1e-4,
     failure_tolerance=1e-15,
     num_testvecs=20,
     lambda_min=None,
@@ -55,7 +55,7 @@ def adaptive_rrf(
         Inner product |Operator| of the source of A.
     range_product
         Inner product |Operator| of the range of A.
-    tol
+    error_tol
         Error tolerance for the algorithm.
     failure_tolerance
         Maximum failure probability.
@@ -108,7 +108,7 @@ def adaptive_rrf(
     num_source_dofs = len(tp._bc_dofs_gamma_out)
     testfail = failure_tolerance / min(num_source_dofs, tp.range.dim)
     testlimit = (
-        np.sqrt(2.0 * lambda_min) * erfinv(testfail ** (1.0 / num_testvecs)) * tol
+        np.sqrt(2.0 * lambda_min) * erfinv(testfail ** (1.0 / num_testvecs)) * error_tol
     )
     maxnorm = np.inf
 
@@ -121,6 +121,8 @@ def adaptive_rrf(
         if mean is None:
             raise ValueError
         R = tp.generate_boundary_data(mean.reshape(1, -1))
+        if num_testvecs > 1:
+            R.append(tp.generate_random_boundary_data(count=num_testvecs-1, distribution=distribution, random_state=random_state, **kwargs))
     else:
         R = tp.generate_random_boundary_data(
                 count=num_testvecs, distribution=distribution, random_state=random_state
