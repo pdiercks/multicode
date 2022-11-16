@@ -10,46 +10,6 @@ def x_dofs_VectorFunctionSpace(V):
     return x_dofs
 
 
-# TODO this depends on the order in which the basis functions
-# were read from the npz file --> multi.io.read_bases
-def select_modes(basis, modes, max_modes):
-    """select modes according to local dof order in multi.dofmap.DofMap
-
-    Parameters
-    ----------
-    basis : np.ndarray
-        The multiscale basis used.
-    modes : int or list of int
-        Number of modes per edge.
-    max_modes : int or list of int
-        Maximum number of modes per edge.
-
-    Returns
-    -------
-    basis : np.ndarray
-        Subset of the full basis.
-
-    """
-    if isinstance(max_modes, (int, np.integer)):
-        max_modes = [max_modes] * 4
-    if isinstance(modes, (int, np.integer)):
-        modes = [modes] * 4
-
-    # make sure that modes[edge] <= max_modes[edge]
-    assert len(max_modes) == len(modes)
-    for i in range(len(max_modes)):
-        if modes[i] > max_modes[i]:
-            modes[i] = max_modes[i]
-
-    coarse = [i for i in range(8)]
-    offset = len(coarse)
-    mask = coarse
-    for edge in range(4):
-        mask += [offset + i for i in range(modes[edge])]
-        offset += max_modes[edge]
-    return basis[mask]
-
-
 def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
     """returns dofs at coordinates X
 
