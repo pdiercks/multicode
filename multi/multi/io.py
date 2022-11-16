@@ -3,6 +3,62 @@ import numpy as np
 from multi.dofmap import QuadrilateralDofLayout
 
 
+def select_modes(basis, max_modes, active_modes):
+    """select modes according to local dof layout and currently active
+    number of modes
+
+    Parameters
+    ----------
+    basis : np.ndarray
+        The multiscale basis used.
+    max_modes : int or list of int
+        Maximum number of modes per edge.
+    active_modes : int or list of int
+        Number of modes per edge to be used.
+
+    Returns
+    -------
+    basis : np.ndarray
+        Subset of the full basis.
+
+    """
+    if isinstance(max_modes, (int, np.integer)):
+        max_modes = [max_modes] * 4
+    if isinstance(active_modes, (int, np.integer)):
+        active_modes = [active_modes] * 4
+
+    # make sure that active_modes[edge] <= max_modes[edge]
+    assert len(max_modes) == len(active_modes)
+    for i in range(len(max_modes)):
+        if active_modes[i] > max_modes[i]:
+            active_modes[i] = max_modes[i]
+
+    dof_layout = QuadrilateralDofLayout()
+    edges = [
+        dof_layout.local_edge_index_map[i] for i in range(dof_layout.num_entities[1])
+    ]
+
+    gdim = 2  # FIXME better get this from dofmap ...
+    coarse = np.arange(gdim * dof_layout.num_entities[0], dtype=np.int32)
+    offset = coarse.size
+    index_map = {"phi": coarse}
+
+    mask = []
+    mask.append(coarse)
+
+    for edge in edges:
+        index = dof_layout.local_edge_index_map[edge]
+
+        index_map[edge] = np.arange(max_modes[index], dtype=np.int32) + offset
+        offset += index_map[edge].size
+        selected = np.arange(active_modes[index], dtype=np.int32)
+
+        mask.append(index_map[edge][selected])
+
+    mask = np.hstack(mask)
+    return basis[mask]
+
+
 def read_bases(bases, modes_per_edge=None, return_num_modes=False):
     """read basis functions for multiple reduced bases
 
@@ -74,7 +130,8 @@ class BasesLoader(object):
         self.num_cells = coarse_grid.num_cells
 
     def read_bases(self):
-        """read basis and max number of modes for each cell in the coarse grid"""
+        """read basis and max number of modes
+        for each cell in the coarse grid"""
         self._build_bases_config()
 
         bases = []
@@ -104,7 +161,8 @@ class BasesLoader(object):
             self._cell_sets[key] = np.sort(list(value))
 
     def _build_bases_config(self):
-        """builds logic to read (edge) bases such that a conforming global approx results"""
+        """builds logic to read (edge) bases
+        such that a conforming global approx results"""
 
         marked_edges = {}
         self._bases_config = {}
