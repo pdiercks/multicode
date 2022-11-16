@@ -37,8 +37,6 @@ fix_uy = dirichletbc(ScalarType(0), bottom_boundary_dofs_y, V.sub(1))
 """
 
 
-# FIXME fails in parallel
-# need to understand how dof_indices (array) are distributed
 def test_vector_geom():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
@@ -61,7 +59,6 @@ def test_vector_geom():
         ScalarType(0), boundary_facets, sub=0, method="topological", entity_dim=fdim
     )
     # constrain left boundary as well
-    # FIXME does V.sub work really only with method="topological"??
     zero = np.array([0.0, 0.0], dtype=ScalarType)
     bc_handler.add_dirichlet_bc(zero, left, method="geometrical")
 
@@ -71,6 +68,32 @@ def test_vector_geom():
         ndofs += bc.dof_indices()[1]
 
     assert ndofs == 64 + 34
+
+
+def test_vector_geom_component_wise():
+    domain = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
+    )
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+
+    bc_handler = BoundaryConditions(domain, V)
+
+    def left(x):
+        return np.isclose(x[0], 0.0)
+
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    domain.topology.create_connectivity(fdim, tdim)
+
+    zero = ScalarType(0.)
+    bc_handler.add_dirichlet_bc(zero, left, method="geometrical", sub=0, entity_dim=fdim)
+
+    bcs = bc_handler.bcs
+    ndofs = 0
+    for bc in bcs:
+        ndofs += bc.dof_indices()[1]
+
+    assert ndofs == 17
 
 
 def test_scalar_geom():
@@ -121,3 +144,4 @@ if __name__ == "__main__":
     test_scalar_geom()
     test_scalar_topo()
     test_vector_geom()
+    test_vector_geom_component_wise()
