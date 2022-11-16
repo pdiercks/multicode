@@ -11,10 +11,20 @@ def build_nullspace(source, product=None, gdim=2):
     ----------
     source : pymor.bindings.fenicsx.FenicsxVectorSpace
         The FE space.
-    product : optional
+    product : optional, pymor.bindings.fenicsx.FenicsxMatrixOperator
         The inner product wrt which to orthonormalize.
     gdim : optional, int
         The geometric dimension.
+
+    Returns
+    -------
+    B : pymor VectorArray
+        The null space orthonormalized wrt to inner product.
+
+    Note
+    ----
+    The PETSc vectors can be retrieved like e.g.
+        petcs_vecs = [v.real_part.impl for v in B.vectors]
     """
 
     if gdim not in (2, 3):
@@ -65,8 +75,4 @@ def build_nullspace(source, product=None, gdim=2):
 
     gram_schmidt(B, product, atol=0.0, rtol=0.0, copy=False)
 
-    # return value?
-    # --> to remove the kernel I need the pymor VectorArray
-    # --> for use in an iterative solver need the vectors `ns`
-    # return PETSc.NullSpace().create(vectors=ns)
     return B
