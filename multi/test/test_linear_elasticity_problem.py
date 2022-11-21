@@ -42,14 +42,22 @@ def test():
     )
     problem.add_neumann_bc(marker_value, f_ext)
 
-    u = problem.solve()
-    vector = problem._vector
-    matrix = problem._matrix
+    problem.compile()
+    bcs = problem.get_dirichlet_bcs()
+    matrix = problem.assemble_matrix(bcs)
+    vector = problem.assemble_vector(bcs)
+    solver = problem.setup_solver(matrix)
+    u = dolfinx.fem.Function(V)
+    solver.solve(vector, u.vector)
 
     assert np.isclose(np.sum(vector[:]), 1000.0)
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
     assert matrix[:, :].shape == (Vdim, Vdim)
     assert np.sum(np.abs(u.x.array[:])) > 0.0
+
+    # high level solve
+    other = problem.solve()
+    assert np.allclose(other.vector.array[:], u.vector.array[:])
 
 
 def test_dirichlet():
@@ -74,7 +82,7 @@ def test_dirichlet():
     f_x = 12.3
     f_y = 0.0
     f = dolfinx.fem.Constant(domain, (PETSc.ScalarType(f_x), PETSc.ScalarType(f_y)))
-    
+
     def u_bottom(x):
         return (x[0] * f_x, x[1])
 
@@ -82,9 +90,13 @@ def test_dirichlet():
     problem.add_dirichlet_bc(f, right, method="geometrical")
     problem.add_dirichlet_bc(u_bottom, bottom, method="geometrical")
 
-    u = problem.solve()
-    vector = problem._vector
-    matrix = problem._matrix
+    problem.compile()
+    bcs = problem.get_dirichlet_bcs()
+    matrix = problem.assemble_matrix(bcs)
+    vector = problem.assemble_vector(bcs)
+    solver = problem.setup_solver(matrix)
+    u = dolfinx.fem.Function(V)
+    solver.solve(vector, u.vector)
 
     assert np.sum(vector[:]) > 0
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
@@ -137,11 +149,17 @@ def test_with_edges():
     T = dolfinx.fem.Constant(domain, PETSc.ScalarType((1000.0, 0.0)))
     problem.add_neumann_bc(3, T)
 
-    u = problem.solve()
+    problem.compile()
+    bcs = problem.get_dirichlet_bcs()
+    matrix = problem.assemble_matrix(bcs)
+    vector = problem.assemble_vector(bcs)
+    solver = problem.setup_solver(matrix)
+    u = dolfinx.fem.Function(V)
+    solver.solve(vector, u.vector)
 
     Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
-    assert np.sum(problem._vector[:]) > 0.0
-    assert problem._matrix[:, :].shape == (Vdim, Vdim)
+    assert np.sum(vector[:]) > 0.0
+    assert matrix[:, :].shape == (Vdim, Vdim)
     assert np.sum(np.abs(u.vector.array[:])) > 0.0
 
 

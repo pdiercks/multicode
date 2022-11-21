@@ -98,8 +98,6 @@ def extend(problem, boundary_data):
     tdim = domain.topology.dim
     fdim = tdim - 1
 
-    solver = problem.setup_solver()
-
     # assemble matrix once before the loop
     zero_fun = dolfinx.fem.Function(V)
     zero_fun.vector.zeroEntries()
@@ -108,8 +106,11 @@ def extend(problem, boundary_data):
         zero_fun, boundary_facets, method="topological", entity_dim=fdim
     )
     bcs = problem.get_dirichlet_bcs()
-    problem.assemble_matrix(bcs)
+    problem.compile()
+    matrix = problem.assemble_matrix(bcs)
     problem.clear_bcs()
+
+    solver = problem.setup_solver(matrix)
 
     # define all extensions that should be computed
     assert all(
