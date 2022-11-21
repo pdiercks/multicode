@@ -200,16 +200,20 @@ class StructuredQuadGrid(object):
 
     @fine_grid_method.setter
     def fine_grid_method(self, methods):
-        """set methods to create fine grid for each coarse grid cell"""
-        try:
-            num = len(methods)
-            if not num == self.num_cells:
-                raise ValueError
-        except TypeError:
-            # set same method for every cell
-            methods = [
-                methods,
-            ] * self.num_cells
+        """set methods to create fine grid for each coarse grid cell
+
+        Parameters
+        ----------
+        methods : list of str or list of callable
+            The method can either be a function with an appropriate
+            signature (see e.g. multi.preprocessing.create_rectangle_grid)
+            or a `str`, i.e. the filepath to a reference mesh
+            that should be duplicated for the respective coarse grid cell.
+            If the length of list is 1, the same 'method' is used for 
+            each coarse grid cell.
+        """
+        if len(methods) < 2:
+            methods *= self.num_cells
         self._fine_grid_method = methods
 
     def create_fine_grid(self, cells, output, cell_type="triangle", **kwargs):
@@ -235,7 +239,7 @@ class StructuredQuadGrid(object):
         facet_cell_type = "line"
 
         tdim = self.tdim
-        num_cells = kwargs.get("num_cells", 10)
+        num_cells = kwargs.get("num_cells")
 
         # initialize
         subdomains = []
@@ -243,7 +247,10 @@ class StructuredQuadGrid(object):
         cells = np.array(cells)
         assert cells.size > 0
         active_cells = self.cells[cells]
-        create_facets = cells.size < 2
+        if active_cells.size > 1:
+            create_facets = False
+        else:
+            create_facets = True
 
         for cell in active_cells:
             vertices = self.get_entities(0, cell)
@@ -254,31 +261,39 @@ class StructuredQuadGrid(object):
             assert xmin < xmax
             assert ymin < ymax
 
-            # create msh file using self._fine_grid_method
+            fine_grid_method = self.fine_grid_method[cell]
+
+            # ### Subdomain instantiation
             with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tf:
                 subdomains.append(tf.name)
-                create_fine_grid = self.fine_grid_method[cell]
-                create_fine_grid(
-                    xmin,
-                    xmax,
-                    ymin,
-                    ymax,
-                    num_cells=num_cells,
-                    facets=create_facets,
-                    out_file=tf.name,
-                )
+
+                if isinstance(fine_grid_method, str):
+                    # read msh file and translate, then save to msh again
+                    subdomain_mesh = meshio.read(fine_grid_method)
+                    subdomain_mesh.points += dx[0]
+                    meshio.write(tf.name, subdomain_mesh, file_format="gmsh")
+                else:
+                    # create msh via method
+                    fine_grid_method(
+                        xmin,
+                        xmax,
+                        ymin,
+                        ymax,
+                        num_cells=num_cells,
+                        facets=create_facets,
+                        out_file=tf.name,
+                    )
 
         # merge subdomains
         gmsh.initialize()
-        gmsh.clear()
         gmsh.model.add("fine_grid")
         gmsh.option.setNumber("General.Verbosity", 0)  # silent except for fatal errors
+        gmsh.option.setNumber("Mesh.MshFileVersion", 4.1)
+        gmsh.option.setNumber("Geometry.AutoCoherence", 2)
 
         for msh_file in subdomains:
             gmsh.merge(msh_file)
 
-        gmsh.model.geo.remove_all_duplicates()
-        gmsh.model.geo.synchronize()
         gmsh.model.mesh.remove_duplicate_nodes()
         gmsh.model.mesh.remove_duplicate_elements()
 
