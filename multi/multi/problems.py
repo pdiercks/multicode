@@ -456,7 +456,7 @@ class TransferProblem(object):
         """discretize the operator"""
         V = self.source.V
         Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
-        self.logger.info(f"Discretizing left hand side of the problem (size={Vdim}).")
+        self.logger.debug(f"Discretizing left hand side of the problem (size={Vdim}).")
         ufl_lhs = self.problem.get_form_lhs()
         compiled_form = dolfinx.fem.form(ufl_lhs)
 
