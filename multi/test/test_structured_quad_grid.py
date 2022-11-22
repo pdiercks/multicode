@@ -46,7 +46,7 @@ def test_fine_grid_creation():
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     grid = StructuredQuadGrid(domain)
-    grid.fine_grid_method = create_rce_grid_01
+    grid.fine_grid_method = [create_rce_grid_01]
 
     with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
         grid.create_fine_grid(
