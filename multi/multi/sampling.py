@@ -100,4 +100,5 @@ def correlation_matrix(points, correlation_length, mean, distance_metric="euclid
     # scaling of the covariance
     W = np.diag(mean)
     Σ_scaled = np.dot(W, np.dot(Σ_exp, W))
+    # Σ_scaled = W + Σ_exp
     return Σ_scaled
