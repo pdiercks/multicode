@@ -75,26 +75,7 @@ class RceDomain(Domain):
         xmin, ymin, zmin = self.xmin
         xmax, ymax, zmax = self.xmax
 
-        # FIXME sadly cannot use dolfinx.mesh.create_submesh
-        # see test/test_edge_spaces.py
-
-        # def bottom(x):
-        #     return np.isclose(x[1], ymin)
-
-        # def right(x):
-        #     return np.isclose(x[0], xmax)
-
-        # def top(x):
-        #     return np.isclose(x[1], ymax)
-
-        # def left(x):
-        #     return np.isclose(x[0], xmin)
-
         edges = {}
-        # markers = {"bottom": bottom, "right": right, "top": top, "left": left}
-        # for key, marker in markers.items():
-        #     facets = dolfinx.mesh.locate_entities_boundary(parent, fdim, marker)
-        #     edges[key] = dolfinx.mesh.create_submesh(parent, fdim, facets)
         points = {
                 "bottom": ([xmin, ymin, 0.], [xmax, ymin, 0.]),
                 "left": ([xmin, ymin, 0.], [xmin, ymax, 0.]),

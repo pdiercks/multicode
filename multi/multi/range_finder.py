@@ -3,6 +3,7 @@ import numpy as np
 from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.core.logger import getLogger
 from pymor.operators.interface import Operator
+from pymor.tools.timing import Timer
 
 from scipy.linalg import eigh
 from scipy.sparse.linalg import eigsh, LinearOperator
@@ -26,6 +27,7 @@ def nested_adaptive_rrf(
     r"""Adaptive randomized range approximation of `A`.
     """
 
+    timer = Timer("nested_rrf")
     logger = getLogger("multi.range_finder.adaptive_rrf", level="DEBUG")
     tp = transfer_problem
 
@@ -66,27 +68,54 @@ def nested_adaptive_rrf(
     mean = kwargs.get("mean")
     D = np.diag(mean)
 
-    def compute_covariance(distance, lc, rtol=0.1):
+    def compute_covariance(distance, lc, rtol=0.05):
         Σ_exp = correlation_function(distance, lc, function_type="exponential")
         Σ = np.dot(D, np.dot(Σ_exp, D))
         eigvals = eigh(Σ, eigvals_only=True, turbo=True)
         eigvals = eigvals[::-1]
-        eigvals /= eigvals[0]
-        mask = eigvals > rtol
-        n = eigvals[mask].size
+
+        tol = rtol * eigvals[0]
+        above_tol = np.where(eigvals >= tol)[0]
+        n = above_tol[-1] + 1
         return Σ, n
 
 
-    # initial correlation length and covariance
+    # ### build covariances
     lc = correlation_length
-    Σ, n_eigvals = compute_covariance(distance, lc)
-    options = {"mean": mean, "cov": Σ}
+    max_num_samples = 100
+    covariances, num_eigvals = [], []
+    training_set = tp.source.empty()
+    timer.start()
+    while int(np.sum(num_eigvals)) < max_num_samples:
+        Δ = max_num_samples - int(np.sum(num_eigvals))
+        Σ, n_eigvals = compute_covariance(distance, lc)
+        covariances.append(Σ)
+        num_eigvals.append(n_eigvals)
+        n_train = min(n_eigvals, Δ)
+        training_set.append(tp.generate_random_boundary_data(
+            count=n_train, distribution="multivariate_normal",
+            random_state=random_state, mean=mean, cov=Σ
+            ))
+        lc /= 2
+    timer.stop()
+    logger.debug(f"Building covariance matrices took t={timer.dt}s.")
+    assert len(training_set) == max_num_samples
 
     # global test set
-    R = tp.generate_random_boundary_data(
-            count=n_eigvals, distribution="multivariate_normal", random_state=random_state, **options
-            )
+    R = tp.source.empty()
+    counter = 0
+    it = 0
+    while counter < num_testvecs:
+        delta = num_testvecs - counter
+        count = min(num_eigvals[it], delta)
+        R.append(tp.generate_random_boundary_data(
+                count=count, distribution="multivariate_normal",
+                random_state=random_state, mean=mean, cov=covariances[it]
+                ))
+        counter += num_eigvals[it]
+        it += 1
     M = tp.solve(R)
+    assert len(M) == num_testvecs
 
     logger.info(f"{lambda_min=}")
     logger.info(f"{testlimit=}")
@@ -94,29 +123,10 @@ def nested_adaptive_rrf(
     B = tp.range.empty()
     U = tp.range.empty()
 
-    generated_with = []
-
-    # how to compute/choose testlimit if M is build iteratively?
     while maxnorm > testlimit:
         basis_length = len(B)
 
-        logger.debug(f"{basis_length=}")
-        logger.debug(f"{lc=}")
-        logger.debug(f"{n_eigvals=}")
-
-        if not basis_length < n_eigvals:
-            # decrease correlation length and update covariance
-            lc /= 2
-            Σ, n_eigvals = compute_covariance(distance, lc)
-            options = {"mean": mean, "cov": Σ}
-            # extend testing set 
-            M.append(tp.solve(tp.generate_random_boundary_data(
-                count=n_eigvals, distribution="multivariate_normal", random_state=random_state, **options)))
-            n_eigvals += basis_length
-
-        generated_with.append(lc)
-        v = tp.generate_random_boundary_data(1, distribution="multivariate_normal", random_state=random_state, **options)
-
+        v = training_set[basis_length]
         u = tp.solve(v)
         U.append(u)
         B.append(u)
@@ -137,7 +147,6 @@ def nested_adaptive_rrf(
             breakpoint()
         maxnorm = np.max(norm)
         logger.info(f"{maxnorm=}")
-    logger.debug(f"{generated_with=}")
 
     return U
 
