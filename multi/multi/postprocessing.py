@@ -69,6 +69,12 @@ def read_bam_colors():
     return bam_cd
 
 
+def read_bam_colormap():
+    infile = pathlib.Path(__file__).parent / "bam-RdBu.npy"
+    cmap = np.load(infile.as_posix())
+    return cmap
+
+
 def write_local_fields(xdmf_file, multiscale_problem, dofmap, bases, u_rom, u_fom):
     """get local field for each subdomain and write to file"""
 
