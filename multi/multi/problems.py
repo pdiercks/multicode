@@ -550,13 +550,6 @@ class TransferProblem(object):
 
         return self.source.from_numpy(rhs_array)
 
-    def get_correlation_matrix(self, clength, mean, metric="euclidean"):
-        """get the correlation matrix"""
-        V = self.source.V
-        x = x_dofs_VectorFunctionSpace(V)
-        sigma = correlation_matrix(x, clength, mean, distance_metric=metric)
-        return sigma
-
     def generate_boundary_data(self, values):
         """generate boundary data g in V with ``values`` on Γ_out and zero elsewhere"""
         bc_dofs = self._bc_dofs_gamma_out
