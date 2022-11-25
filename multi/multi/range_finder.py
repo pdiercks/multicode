@@ -63,6 +63,7 @@ def nested_adaptive_rrf(
         np.sqrt(2.0 * lambda_min) * erfinv(testfail ** (1.0 / num_testvecs)) * error_tol
     )
     maxnorm = np.inf
+    logger.debug(f"{error_tol=}")
 
     distance = kwargs.get("distance")
     mean = kwargs.get("mean")
