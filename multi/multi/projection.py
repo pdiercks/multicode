@@ -4,6 +4,7 @@
 # Authorship: the pyMOR developers
 # the original code is part of the pymor tutorial https://docs.pymor.org/2020.2.0/tutorial_basis_generation.html
 import numpy as np
+from dolfinx.fem import Function
 
 
 def compute_proj_errors(basis, V, product, relative=True):
@@ -65,3 +66,41 @@ def compute_proj_errors_orth_basis(basis, V, product, relative=True):
             err /= alpha
         errors.append(np.max(err))
     return errors
+
+
+def fine_scale_part(u, coarse_space, in_place=False):
+    """returns fine scale part u_f = u - u_c
+
+    Parameters
+    ----------
+    u : dolfinx.fem.Function
+        The function whose fine scale part is computed.
+    coarse_space : dolfinx.fem.FunctionSpace
+        The coarse FE space W (u_c in W).
+    in_place : optional, bool
+        If True, modify u in-place.
+
+    Returns
+    -------
+    u_f: dolfinx.fem.Function or None if `in_place==True`.
+
+    Note
+    ----
+    u.function_space.mesh and coarse_space.mesh need to be
+    partitions of the same domain Ω.
+    """
+
+    V = u.function_space
+    u_c = Function(V)
+    w = Function(coarse_space)
+
+    w.interpolate(u)
+    u_c.interpolate(w)
+
+    if in_place:
+        u.vector.axpy(-1, u_c.vector)
+    else:
+        u_f = Function(V)
+        u_f.vector.axpy(1.0, u.vector)
+        u_f.vector.axpy(-1.0, u_c.vector)
+        return u_f
