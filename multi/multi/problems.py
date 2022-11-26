@@ -68,7 +68,7 @@ class LinearProblem(object):
         self.V = V
         self.u = ufl.TrialFunction(V)
         self.v = ufl.TestFunction(V)
-        self._bc_handler = BoundaryConditions(domain.mesh, V, domain.facet_markers)
+        self._bc_handler = BoundaryConditions(domain.grid, V, domain.facet_markers)
         self._solver_options = solver_options or _solver_options()
 
     def add_dirichlet_bc(
@@ -247,12 +247,20 @@ class LinearElasticityProblem(LinearProblem):
             LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
             for e, nu in zip(E, NU)
         ]
-        if hasattr(domain, "edges"):
-            if domain.edges:
-                self._init_edge_spaces()
 
-    def _init_edge_spaces(self):
-        edge_meshes = self.domain.edges
+    def setup_edge_spaces(self):
+
+        edge_meshes = {}
+        try:
+            edge_meshes["fine"] = self.domain.fine_edge_grid
+        except AttributeError:
+            pass
+
+        try:
+            edge_meshes["coarse"] = self.domain.coarse_edge_grid
+        except AttributeError:
+            pass
+
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
@@ -263,15 +271,42 @@ class LinearElasticityProblem(LinearProblem):
         # Therefore, _init_edge_spaces was moved to here and VectorFunctionSpace
         # is used to create edge spaces.
 
+        # V_to_L = {}
+        edge_spaces = {}
+        for scale, data in edge_meshes.items():
+            edge_spaces[scale] = {}
+            if scale == "fine":
+                fe = (family_name, degree)
+            else:
+                fe = (family_name, 1)
+            for edge, grid in data.items():
+                space = dolfinx.fem.VectorFunctionSpace(grid, fe)
+                edge_spaces[scale][edge] = space
+
+        self.edge_spaces = edge_spaces
+
+    def setup_coarse_space(self):
+        try:
+            coarse_grid = self.domain.coarse_grid
+        except AttributeError:
+            pass
+        V = self.V
+        ufl_element = V.ufl_element()
+        family_name = ufl_element.family_name
+        self.W = dolfinx.fem.VectorFunctionSpace(coarse_grid, (family_name, 1))
+
+    def create_map_from_V_to_L(self):
+        try:
+            edge_spaces = self.edge_spaces
+        except AttributeError:
+            self.setup_edge_spaces()
+            edge_spaces = self.edge_spaces
+
+        V = self.V
         V_to_L = {}
-        Lambda = {}
-        for key, facet_mesh in edge_meshes.items():
-            # facet_element = ufl_element.reconstruct(cell=facet_mesh.ufl_cell())
-            L = dolfinx.fem.VectorFunctionSpace(facet_mesh, (family_name, degree))
-            Lambda[key] = L
-            V_to_L[key] = make_mapping(L, V)
+        for edge, L in edge_spaces["fine"].items():
+            V_to_L[edge] = make_mapping(L, V)
         self.V_to_L = V_to_L
-        self.edge_spaces = Lambda
 
     def get_form_lhs(self):
         """get bilinear form a(u, v) of the problem"""

@@ -18,7 +18,7 @@ class PoissonProblem(LinearProblem):
         return ufl.dot(ufl.grad(u), ufl.grad(v)) * self.dx
 
     def get_form_rhs(self):
-        f = dolfinx.fem.Constant(self.domain.mesh, ScalarType(-6))
+        f = dolfinx.fem.Constant(self.domain.grid, ScalarType(-6))
         return f * self.v * self.dx
 
 

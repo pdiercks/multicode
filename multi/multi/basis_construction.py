@@ -5,7 +5,7 @@ import numpy as np
 import yaml
 
 from multi.problems import LinearElasticityProblem
-from multi.domain import RceDomain
+from multi.domain import RectangularDomain
 from multi.bcs import BoundaryDataFactory
 from multi.extension import extend
 
@@ -109,7 +109,7 @@ def compute_phi(problem, nodes):
     quadrilateral = NumpyQuad(nodes)
     shape_functions = quadrilateral.interpolate(V)
 
-    data_factory = BoundaryDataFactory(problem.domain.mesh, V)
+    data_factory = BoundaryDataFactory(problem.domain.grid, V)
 
     boundary_data = []
     for shape in shape_functions:
@@ -140,7 +140,7 @@ def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
     domain, cell_marker, facet_marker = gmshio.read_from_msh(
         rce_grid, MPI.COMM_WORLD, gdim=2
     )
-    omega = RceDomain(domain, cell_marker, facet_marker, index=0)
+    omega = RectangularDomain(domain, cell_marker, facet_marker, index=0)
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree))
 
     # FIXME define nodes via multi.dofmap.QuadrilateralDofLayout ?

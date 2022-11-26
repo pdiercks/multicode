@@ -7,7 +7,7 @@ from dolfinx.io import XDMFFile
 import matplotlib.pyplot as plt
 from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
 
-from multi.domain import RceDomain
+from multi.domain import RectangularDomain
 from multi.problems import LinearElasticityProblem
 from multi.product import InnerProduct
 
@@ -188,7 +188,7 @@ def compute_error_norms(
                 subdomain = xdmf.read_mesh(name="Grid")
                 ct = xdmf.read_meshtags(subdomain, name="Grid")
 
-            Ω = RceDomain(subdomain, cell_markers=ct)
+            Ω = RectangularDomain(subdomain, cell_markers=ct)
             V = dolfinx.fem.VectorFunctionSpace(subdomain, ("P", degree))
             problem = LinearElasticityProblem(
                 Ω, V, E=E, NU=NU, plane_stress=plane_stress

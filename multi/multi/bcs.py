@@ -251,155 +251,156 @@ class BoundaryConditions:
         return r
 
 
-def compute_multiscale_bcs(
-    problem, cell_index, edge, boundary_data, dofmap, chi=None, product=None, orth=False
-):
-    """compute multiscale bcs from given boundary data
+# deprecated
+# def compute_multiscale_bcs(
+#     problem, cell_index, edge, boundary_data, dofmap, chi=None, product=None, orth=False
+# ):
+#     """compute multiscale bcs from given boundary data
 
-    The coarse scale basis functions are assumed to be linear functions
-    with value 1 or 0 at the endpoints of the edge mesh.
-    The dof values for the fine scale edge basis are computed
-    via projection of the boundary data onto the fine scale basis.
-    If `chi` is None, or the number of dofs per edge (dofmap) is
-    < 1, then only the coarse dof values are computed.
+#     The coarse scale basis functions are assumed to be linear functions
+#     with value 1 or 0 at the endpoints of the edge mesh.
+#     The dof values for the fine scale edge basis are computed
+#     via projection of the boundary data onto the fine scale basis.
+#     If `chi` is None, or the number of dofs per edge (dofmap) is
+#     < 1, then only the coarse dof values are computed.
 
-    Parameters
-    ----------
-    problem : multi.problems.LinearProblem
-        The linear problem.
-    cell_index : int
-        The cell index with respect to the coarse grid.
-    edge : str
-        The boundary edge.
-    boundary_data : dolfinx.fem.Function
-        The (total) displacement value on the boundary.
-        Will be projected onto the edge space.
-    dofmap : multi.dofmap.DofMap
-        The dofmap of the reduced order model.
-    chi : optional, np.ndarray
-        The fine scale edge basis. ``chi.shape`` has to agree
-        with number of dofs for current coarse grid cell.
-    product : str or ufl.form.Form, optional
-        The inner product wrt which chi was orthonormalized.
-    orth : bool, optional
-        If True, assume orthonormal basis.
+#     Parameters
+#     ----------
+#     problem : multi.problems.LinearProblem
+#         The linear problem.
+#     cell_index : int
+#         The cell index with respect to the coarse grid.
+#     edge : str
+#         The boundary edge.
+#     boundary_data : dolfinx.fem.Function
+#         The (total) displacement value on the boundary.
+#         Will be projected onto the edge space.
+#     dofmap : multi.dofmap.DofMap
+#         The dofmap of the reduced order model.
+#     chi : optional, np.ndarray
+#         The fine scale edge basis. ``chi.shape`` has to agree
+#         with number of dofs for current coarse grid cell.
+#     product : str or ufl.form.Form, optional
+#         The inner product wrt which chi was orthonormalized.
+#     orth : bool, optional
+#         If True, assume orthonormal basis.
 
 
-    Returns
-    -------
-    bcs : dict
-        The dofs (dict.keys()) and values (dict.values()) of the
-        projected boundary conditions.
+#     Returns
+#     -------
+#     bcs : dict
+#         The dofs (dict.keys()) and values (dict.values()) of the
+#         projected boundary conditions.
 
-    """
-    assert edge in ("bottom", "right", "top", "left")
-    local_edge_index = dofmap.dof_layout.local_edge_index_map[edge]
-    local_vertices = dofmap.dof_layout.topology[1][local_edge_index]
+#     """
+#     assert edge in ("bottom", "right", "top", "left")
+#     local_edge_index = dofmap.dof_layout.local_edge_index_map[edge]
+#     local_vertices = dofmap.dof_layout.topology[1][local_edge_index]
 
-    edge_space = problem.edge_spaces[edge]
-    source = FenicsxVectorSpace(edge_space)
+#     edge_space = problem.edge_spaces[edge]
+#     source = FenicsxVectorSpace(edge_space)
 
-    dofs_per_edge = dofmap.dofs_per_edge
-    if isinstance(dofs_per_edge, (int, np.integer)):
-        add_fine_bcs = dofs_per_edge > 0
-        edge_basis_length = dofs_per_edge
-    else:
-        assert dofs_per_edge.shape == (dofmap.num_cells, 4)
-        dofs_per_edge = dofs_per_edge[cell_index]
-        add_fine_bcs = np.sum(dofs_per_edge) > 0
-        edge_basis_length = dofs_per_edge[local_edge_index]
+#     dofs_per_edge = dofmap.dofs_per_edge
+#     if isinstance(dofs_per_edge, (int, np.integer)):
+#         add_fine_bcs = dofs_per_edge > 0
+#         edge_basis_length = dofs_per_edge
+#     else:
+#         assert dofs_per_edge.shape == (dofmap.num_cells, 4)
+#         dofs_per_edge = dofs_per_edge[cell_index]
+#         add_fine_bcs = np.sum(dofs_per_edge) > 0
+#         edge_basis_length = dofs_per_edge[local_edge_index]
 
-    if edge == "bottom":
-        component = 0
-    elif edge == "top":
-        component = 0
-    elif edge == "left":
-        component = 1
-    elif edge == "right":
-        component = 1
-    else:
-        raise NotImplementedError
+#     if edge == "bottom":
+#         component = 0
+#     elif edge == "top":
+#         component = 0
+#     elif edge == "left":
+#         component = 1
+#     elif edge == "right":
+#         component = 1
+#     else:
+#         raise NotImplementedError
 
-    # need to know entities wrt the global coarse grid
-    # to determine the dof indices of the global problem
-    vertices_coarse_cell = dofmap.conn[0].links(cell_index)
-    edges_coarse_cell = dofmap.conn[1].links(cell_index)
+#     # need to know entities wrt the global coarse grid
+#     # to determine the dof indices of the global problem
+#     vertices_coarse_cell = dofmap.conn[0].links(cell_index)
+#     edges_coarse_cell = dofmap.conn[1].links(cell_index)
 
-    boundary_vertices = vertices_coarse_cell[local_vertices]
-    boundary_nodes = dolfinx.mesh.compute_midpoints(
-        dofmap.grid.mesh, 0, boundary_vertices
-    )
-    # make sure points are withing problem.domain
-    boundary_nodes = np.around(boundary_nodes, decimals=3)
+#     boundary_vertices = vertices_coarse_cell[local_vertices]
+#     boundary_nodes = dolfinx.mesh.compute_midpoints(
+#         dofmap.grid.mesh, 0, boundary_vertices
+#     )
+#     # make sure points are withing problem.domain
+#     boundary_nodes = np.around(boundary_nodes, decimals=3)
 
-    coarse_values = interpolate(boundary_data, boundary_nodes)
-    coarse_dofs = []
-    for vertex in boundary_vertices:
-        coarse_dofs += dofmap.entity_dofs(0, vertex)
+#     coarse_values = interpolate(boundary_data, boundary_nodes)
+#     coarse_dofs = []
+#     for vertex in boundary_vertices:
+#         coarse_dofs += dofmap.entity_dofs(0, vertex)
 
-    if not len(coarse_dofs) == coarse_values.size:
-        breakpoint()
+#     if not len(coarse_dofs) == coarse_values.size:
+#         breakpoint()
 
-    # initialize return value
-    bcs = {}  # dofs are keys, bc_values are values
-    for dof, val in zip(coarse_dofs, coarse_values.flatten()):
-        bcs.update({dof: val})
+#     # initialize return value
+#     bcs = {}  # dofs are keys, bc_values are values
+#     for dof, val in zip(coarse_dofs, coarse_values.flatten()):
+#         bcs.update({dof: val})
 
-    if add_fine_bcs:
-        assert chi is not None
-        # ### subtract coarse scale part from boundary data
-        # FIXME interpolation for different meshes not supported (yet) in dolfinx
-        x_dofs = edge_space.tabulate_dof_coordinates()
-        g = interpolate(boundary_data, x_dofs)
-        G = source.from_numpy(g.reshape(1, source.dim))
+#     if add_fine_bcs:
+#         assert chi is not None
+#         # ### subtract coarse scale part from boundary data
+#         # FIXME interpolation for different meshes not supported (yet) in dolfinx
+#         x_dofs = edge_space.tabulate_dof_coordinates()
+#         g = interpolate(boundary_data, x_dofs)
+#         G = source.from_numpy(g.reshape(1, source.dim))
 
-        def boundary(x):
-            start = np.isclose(x[component], boundary_nodes[:, component][0])
-            end = np.isclose(x[component], boundary_nodes[:, component][1])
-            return np.logical_or(start, end)
+#         def boundary(x):
+#             start = np.isclose(x[component], boundary_nodes[:, component][0])
+#             end = np.isclose(x[component], boundary_nodes[:, component][1])
+#             return np.logical_or(start, end)
 
-        line = NumpyLine(boundary_nodes[:, component])
-        phi_array = line.interpolate(edge_space, component)
-        phi = source.from_numpy(phi_array)
-        Gfine = G - phi.lincomb(coarse_values.flatten())
+#         line = NumpyLine(boundary_nodes[:, component])
+#         phi_array = line.interpolate(edge_space, component)
+#         phi = source.from_numpy(phi_array)
+#         Gfine = G - phi.lincomb(coarse_values.flatten())
 
-        # ### build inner product for edge space
-        boundary_dofs = dolfinx.fem.locate_dofs_geometrical(edge_space, boundary)
-        zero = dolfinx.fem.Function(edge_space)
-        zero.x.set(0.0)
-        product_bc = dolfinx.fem.dirichletbc(zero, boundary_dofs)
-        inner_product = InnerProduct(edge_space, product, bcs=(product_bc,))
-        matrix = inner_product.assemble_matrix()
-        if matrix is not None:
-            product = FenicsxMatrixOperator(matrix, edge_space, edge_space)
-        else:
-            product = None
+#         # ### build inner product for edge space
+#         boundary_dofs = dolfinx.fem.locate_dofs_geometrical(edge_space, boundary)
+#         zero = dolfinx.fem.Function(edge_space)
+#         zero.x.set(0.0)
+#         product_bc = dolfinx.fem.dirichletbc(zero, boundary_dofs)
+#         inner_product = InnerProduct(edge_space, product, bcs=(product_bc,))
+#         matrix = inner_product.assemble_matrix()
+#         if matrix is not None:
+#             product = FenicsxMatrixOperator(matrix, edge_space, edge_space)
+#         else:
+#             product = None
 
-        edge_basis = source.from_numpy(chi)
-        edge_basis = edge_basis[:edge_basis_length]
-        if orth:
-            coeff = Gfine.inner(edge_basis, product=product)
-        else:
-            Gramian = edge_basis.gramian(product=product)
-            R = edge_basis.inner(Gfine, product=product)
-            coeff = np.linalg.solve(Gramian, R)
+#         edge_basis = source.from_numpy(chi)
+#         edge_basis = edge_basis[:edge_basis_length]
+#         if orth:
+#             coeff = Gfine.inner(edge_basis, product=product)
+#         else:
+#             Gramian = edge_basis.gramian(product=product)
+#             R = edge_basis.inner(Gfine, product=product)
+#             coeff = np.linalg.solve(Gramian, R)
 
-        # determine entity tag for the edge of the coarse grid cell
-        edges_coarse_cell = dofmap.conn[1].links(cell_index)
-        edge_tag = edges_coarse_cell[local_edge_index]
-        fine_dofs = np.array(dofmap.entity_dofs(1, edge_tag))
+#         # determine entity tag for the edge of the coarse grid cell
+#         edges_coarse_cell = dofmap.conn[1].links(cell_index)
+#         edge_tag = edges_coarse_cell[local_edge_index]
+#         fine_dofs = np.array(dofmap.entity_dofs(1, edge_tag))
 
-        try:
-            coeff = coeff.reshape(fine_dofs.shape)
-        except ValueError as verr:
-            raise ValueError(
-                "Number of modes per edge (dofmap) and the number of modes of the edge basis do not agree!"
-            ) from verr
+#         try:
+#             coeff = coeff.reshape(fine_dofs.shape)
+#         except ValueError as verr:
+#             raise ValueError(
+#                 "Number of modes per edge (dofmap) and the number of modes of the edge basis do not agree!"
+#             ) from verr
 
-        for dof, val in zip(fine_dofs, coeff):
-            bcs.update({dof: val})
+#         for dof, val in zip(fine_dofs, coeff):
+#             bcs.update({dof: val})
 
-    return bcs
+#     return bcs
 
 
 def apply_bcs(lhs, rhs, bc_indices, bc_values):

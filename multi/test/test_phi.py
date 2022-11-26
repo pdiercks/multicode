@@ -1,7 +1,7 @@
 import dolfinx
 import numpy as np
 from mpi4py import MPI
-from multi.domain import RceDomain
+from multi.domain import RectangularDomain
 from multi.problems import LinearElasticityProblem
 from multi.basis_construction import compute_phi
 from multi.misc import locate_dofs
@@ -19,7 +19,7 @@ def xdofs_VectorFunctionSpace(V):
 #     n = 20
 #     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
 #     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
-#     rce = RceDomain(domain)
+#     rce = RectangularDomain(domain)
 #     rce.create_edge_meshes(20)
 #     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
 #     phi = compute_phi(problem)
@@ -40,7 +40,7 @@ def test_nodes():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
-    rce = RceDomain(domain)
+    rce = RectangularDomain(domain)
     rce.create_edge_meshes(20)
     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
 

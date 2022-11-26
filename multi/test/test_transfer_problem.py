@@ -7,7 +7,7 @@ import dolfinx
 from dolfinx.io import gmshio
 from mpi4py import MPI
 from petsc4py import PETSc
-from multi.domain import RceDomain
+from multi.domain import RectangularDomain
 from multi.problems import LinearElasticityProblem, TransferProblem
 from multi.boundary import plane_at, within_range
 from multi.preprocessing import create_rectangle_grid
@@ -76,14 +76,14 @@ def test_dirichlet_neumann():
         )
     V = dolfinx.fem.VectorFunctionSpace(square, ("Lagrange", 1))
 
-    domain = RceDomain(square, cell_markers=None, facet_markers=facet_markers)
+    domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
     # subdomain problem
-    cells_submesh = dolfinx.mesh.locate_entities(domain.mesh, 2, target_subdomain)
-    submesh = dolfinx.mesh.create_submesh(domain.mesh, 2, cells_submesh)[0]
+    cells_submesh = dolfinx.mesh.locate_entities(domain.grid, 2, target_subdomain)
+    submesh = dolfinx.mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
     Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
 
-    subdomain = RceDomain(submesh)
+    subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
 
     # marker=1 points to bottom
@@ -154,14 +154,14 @@ def test_neumann():
         )
     V = dolfinx.fem.VectorFunctionSpace(square, ("Lagrange", 1))
 
-    domain = RceDomain(square, cell_markers=None, facet_markers=facet_markers)
+    domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
     # subdomain problem
-    cells_submesh = dolfinx.mesh.locate_entities(domain.mesh, 2, target_subdomain)
-    submesh = dolfinx.mesh.create_submesh(domain.mesh, 2, cells_submesh)[0]
+    cells_submesh = dolfinx.mesh.locate_entities(domain.grid, 2, target_subdomain)
+    submesh = dolfinx.mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
     Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
 
-    subdomain = RceDomain(submesh)
+    subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
 
     traction = dolfinx.fem.Constant(

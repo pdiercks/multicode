@@ -98,7 +98,7 @@ class DofMap:
 
         # create connectivities
         self.conn = []
-        domain = grid.mesh
+        domain = grid.grid
         for dim in range(len(self.dof_layout.num_entities)):
             domain.topology.create_connectivity(2, dim)
             self.conn.append(domain.topology.connectivity(2, dim))

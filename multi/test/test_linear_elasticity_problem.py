@@ -5,7 +5,7 @@ import numpy as np
 from mpi4py import MPI
 from petsc4py import PETSc
 from multi.boundary import plane_at
-from multi.domain import Domain, RceDomain
+from multi.domain import Domain, RectangularDomain
 from multi.preprocessing import create_rectangle_grid
 from multi.problems import LinearElasticityProblem
 from multi.misc import x_dofs_VectorFunctionSpace
@@ -131,10 +131,13 @@ def test_with_edges():
             out_file=tf.name,
         )
         domain, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    Ω = RceDomain(domain, None, ft)
+    Ω = RectangularDomain(domain, None, ft)
     Ω.create_edge_meshes(10)
-    V = dolfinx.fem.VectorFunctionSpace(Ω.mesh, ("Lagrange", 1))
+    V = dolfinx.fem.VectorFunctionSpace(Ω.grid, ("Lagrange", 1))
+
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
+    problem.setup_edge_spaces()
+    problem.create_map_from_V_to_L()
 
     x_dofs = x_dofs_VectorFunctionSpace(problem.V)
     bottom = x_dofs[problem.V_to_L["bottom"]]

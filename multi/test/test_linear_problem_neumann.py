@@ -13,7 +13,7 @@ class TestProblem(LinearProblem):
         super().__init__(domain, V, solver_options)
 
     def get_form_rhs(self):
-        domain = self.domain.mesh
+        domain = self.domain.grid
         v = self.v
         f = dolfinx.fem.Constant(domain, PETSc.ScalarType(-6))
         rhs = f * v * ufl.dx
