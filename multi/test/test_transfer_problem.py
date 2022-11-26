@@ -83,6 +83,9 @@ def test_dirichlet_neumann():
     submesh = dolfinx.mesh.create_submesh(domain.mesh, 2, cells_submesh)[0]
     Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
 
+    subdomain = RceDomain(submesh)
+    subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
+
     # marker=1 points to bottom
     traction = dolfinx.fem.Constant(
         square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3))
@@ -94,7 +97,7 @@ def test_dirichlet_neumann():
     gamma_out = plane_at(0.0, "x")  # left
 
     tp = TransferProblem(
-        problem, Vsub, gamma_out, dirichlet=dirichlet_bc
+        problem, subproblem, gamma_out, dirichlet=dirichlet_bc
     )
     tp.neumann = neumann_bc
     # generate boundary data
@@ -158,6 +161,9 @@ def test_neumann():
     submesh = dolfinx.mesh.create_submesh(domain.mesh, 2, cells_submesh)[0]
     Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
 
+    subdomain = RceDomain(submesh)
+    subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
+
     traction = dolfinx.fem.Constant(
         square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3))
     )
@@ -179,7 +185,7 @@ def test_neumann():
     )
 
     tp = TransferProblem(
-        problem, Vsub, gamma_out, dirichlet=dirichlet_bc
+        problem, subproblem, gamma_out, dirichlet=dirichlet_bc
     )
     tp.neumann = neumann_bc
     # generate boundary data

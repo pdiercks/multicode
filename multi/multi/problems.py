@@ -11,10 +11,9 @@ from multi.bcs import BoundaryConditions
 from multi.domain import StructuredQuadGrid, Domain
 from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
-from multi.misc import x_dofs_VectorFunctionSpace
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
-from multi.sampling import correlation_matrix, _create_random_values
+from multi.sampling import _create_random_values
 from multi.solver import build_nullspace
 
 from pymor.core.logger import getLogger
@@ -340,8 +339,8 @@ class TransferProblem(object):
     ----------
     problem : multi.problems.LinearProblem
         The problem defined on the oversampling domain Ω.
-    subdomain_space : dolfinx.fem.FunctionSpace
-        The range space defined on the target subdomain Ω_in.
+    subdomain_problem : multi.problem.LinearProblem
+        The problem defined on the target subdomain.
     gamma_out : callable
         A function that defines facets of Γ_out geometrically.
         `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
@@ -368,7 +367,7 @@ class TransferProblem(object):
     def __init__(
         self,
         problem,
-        subdomain_space,
+        subdomain_problem,
         gamma_out,
         dirichlet=None,
         source_product=None,
@@ -378,9 +377,9 @@ class TransferProblem(object):
     ):
         self.logger = getLogger("multi.problems.TransferProblem")
         self.problem = problem
-        self.subdomain_space = subdomain_space
+        self.subproblem = subdomain_problem
         self.source = FenicsxVectorSpace(problem.V)
-        self.range = FenicsxVectorSpace(subdomain_space)
+        self.range = FenicsxVectorSpace(subdomain_problem.V)
         self.gamma_out = gamma_out
         self.remove_kernel = remove_kernel
         self.solver_options = solver_options or {"inverse": _solver_options()}
