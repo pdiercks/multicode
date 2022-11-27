@@ -19,8 +19,10 @@ def test_nodes():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+
     rce = RectangularDomain(domain)
     rce.create_edge_grids(20)
+
     problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
 
     vertices = np.array(
@@ -34,7 +36,7 @@ def test_nodes():
     nodal_values = B.dofs(vertex_dofs)
 
     assert len(B) == 8
-    assert np.sum(nodal_values) == 8
+    assert np.isclose(np.sum(nodal_values), 8)
 
 
 if __name__ == "__main__":

@@ -11,25 +11,13 @@ from multi.domain import RectangularDomain
 from multi.problems import LinearElasticityProblem, TransferProblem
 from multi.boundary import plane_at, within_range
 from multi.preprocessing import create_rectangle_grid
+from multi.projection import orthogonal_part
 
 
-def target_subdomain(x):
-    tol = 1e-4
-    a = x[0] >= 0.5 - tol
-    b = x[1] <= 0.5 + tol
-    return np.logical_and(a, b)
-
-
-def exact_solution(problem, neumann_bc, dirichlet_bc, Vsub):
+def exact_solution(problem, dirichlet_bc, Vsub):
     """exact solution in full space"""
     problem.clear_bcs()
 
-    if neumann_bc is not None:
-        if isinstance(neumann_bc, list):
-            for force in neumann_bc:
-                problem.add_neumann_bc(**force)
-        else:
-            problem.add_neumann_bc(**neumann_bc)
     if dirichlet_bc is not None:
         if isinstance(dirichlet_bc, list):
             for bc in dirichlet_bc:
@@ -48,16 +36,20 @@ def exact_solution(problem, neumann_bc, dirichlet_bc, Vsub):
     return u_in.vector.array
 
 
-def test_dirichlet_neumann():
+def test_dirichlet_hom():
     """Topology
 
     Ω = (0, 1) x (0, 1)
     Ω_in = (0.5, 1) x (0, 0.5)
     Γ_out = left boundary
-    Σ_N_inhom = bottom boundary
-    Σ_N_hom = top boundary
     Σ_D_hom = right boundary
     """
+
+    def target_subdomain(x):
+        tol = 1e-4
+        a = x[0] >= 0.5 - tol
+        b = x[1] <= 0.5 + tol
+        return np.logical_and(a, b)
 
     n = 20
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
@@ -86,12 +78,7 @@ def test_dirichlet_neumann():
     subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
 
-    # marker=1 points to bottom
-    traction = dolfinx.fem.Constant(
-        square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3))
-    )
     zero = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(0.0)))
-    neumann_bc = {"marker": 1, "value": traction}
     right = plane_at(1.0, "x")
     dirichlet_bc = {"boundary": right, "value": zero, "method": "geometrical"}
     gamma_out = plane_at(0.0, "x")  # left
@@ -99,7 +86,6 @@ def test_dirichlet_neumann():
     tp = TransferProblem(
         problem, subproblem, gamma_out, dirichlet=dirichlet_bc
     )
-    tp.neumann = neumann_bc
     # generate boundary data
     randomState = np.random.RandomState(seed=6)
     D = tp.generate_random_boundary_data(2, random_state=randomState)
@@ -108,17 +94,18 @@ def test_dirichlet_neumann():
 
     # compute reference solutions
     u_ex = np.zeros_like(u_arr)
-    for i, vector in enumerate(D.to_numpy()):
+    dof_indices = tp.bc_dofs_gamma_out
+    for i, vector in enumerate(D):
         boundary_function = dolfinx.fem.Function(V)
         boundary_vector = boundary_function.vector
-        boundary_vector.array[:] = vector
+        boundary_vector.array[dof_indices] = vector
 
         bc_gamma_out = {
             "boundary": gamma_out,
             "value": boundary_function,
             "method": "geometrical",
         }
-        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc], Vsub)
+        u_exact = exact_solution(problem, [bc_gamma_out, dirichlet_bc], Vsub)
         u_ex[i, :] = u_exact
 
     error = u_ex - u_arr
@@ -127,23 +114,23 @@ def test_dirichlet_neumann():
     assert np.linalg.norm(error) < 1e-12
 
 
-def test_neumann():
+def test_remove_kernel():
     """Topology
 
-    Ω = (0, 1) x (0, 1)
-    Ω_in = (0.5, 1) x (0, 0.5)
-    Γ_out = union of left and top boundary
-    Σ_N_inhom = bottom boundary
-    Σ_N_hom = right boundary
+    Ω = (0, 3) x (0, 3)
+    Ω_in = (1, 1) x (2, 2)
+    Γ_out = ∂Ω
     """
 
-    n = 20
+    target_subdomain = within_range([1, 1, 0], [2, 2, 0])
+
+    n = 60
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle_grid(
             0.0,
-            1.0,
+            3.0,
             0.0,
-            1.0,
+            3.0,
             num_cells=(n, n),
             facets=True,
             recombine=True,
@@ -164,42 +151,28 @@ def test_neumann():
     subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
 
-    traction = dolfinx.fem.Constant(
-        square, (PETSc.ScalarType(0.0), PETSc.ScalarType(6e3))
-    )
-    neumann_bc = {"marker": 1, "value": traction}
-    zero = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(0.0)))
-    right = plane_at(1.0, "x")
-    dirichlet_bc = {"boundary": right, "value": zero, "method": "geometrical"}
-
-    def get_gamma_out(n):
-        # mark the top and left boundary excluding points on bottom and right boundary
-        Δx = Δy = 1.0 / (n + 1)  # must be smaller than cell size
-        gamma_out = within_range([0.0, 0.0 + Δy, 0.0], [1.0 - Δx, 1.0, 0.0])
-        return gamma_out
-
-    gamma_out = get_gamma_out(n)
+    gamma_out = lambda x: np.full(x[0].shape, True, dtype=bool)  # noqa: E731
 
     facets_gamma_out = dolfinx.mesh.locate_entities_boundary(
         V.mesh, 1, gamma_out
     )
 
     tp = TransferProblem(
-        problem, subproblem, gamma_out, dirichlet=dirichlet_bc
+        problem, subproblem, gamma_out, dirichlet=[], remove_kernel=True
     )
-    tp.neumann = neumann_bc
     # generate boundary data
     randomState = np.random.RandomState(seed=13)
-    D = tp.generate_random_boundary_data(1, random_state=randomState)
+    D = tp.generate_random_boundary_data(10, random_state=randomState)
     U = tp.solve(D)
     u_arr = U.to_numpy()
 
     # compute reference solutions
     u_ex = np.zeros_like(u_arr)
-    for i, vector in enumerate(D.to_numpy()):
+    dof_indices = tp.bc_dofs_gamma_out
+    for i, vector in enumerate(D):
         boundary_function = dolfinx.fem.Function(V)
         boundary_vector = boundary_function.vector
-        boundary_vector.array[:] = vector
+        boundary_vector.array[dof_indices] = vector
 
         bc_gamma_out = {
             "boundary": facets_gamma_out,
@@ -207,9 +180,14 @@ def test_neumann():
             "method": "topological",
             "entity_dim": 1,
         }
-        u_exact = exact_solution(problem, neumann_bc, [bc_gamma_out, dirichlet_bc], Vsub)
+        u_exact = exact_solution(problem, [bc_gamma_out], Vsub)
         u_ex[i, :] = u_exact
 
+    # remove kernel of exact solution
+    UEX = tp.range.from_numpy(u_ex)
+    U_proj = orthogonal_part(tp.kernel, UEX, tp.range_l2_product, orth=True)
+
+    u_ex = U_proj.to_numpy()
     error = u_ex - u_arr
     norm = np.linalg.norm(error)
     print(norm)
@@ -217,5 +195,5 @@ def test_neumann():
 
 
 if __name__ == "__main__":
-    test_dirichlet_neumann()
-    test_neumann()
+    test_dirichlet_hom()
+    test_remove_kernel()

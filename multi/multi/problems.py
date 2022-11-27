@@ -347,10 +347,6 @@ class TransferProblem(object):
         the key `product` and optionally `bcs` and `product_name`.
     remove_kernel : bool, optional
         If True, remove kernel (rigid body modes) from solution.
-    solver_options : dict, optional
-        The user is required to use pymor style options ({'inverse': options}),
-        because the value of solver_options is directly passed to FenicsxMatrixOperator.
-        See https://github.com/pymor/pymor/blob/main/src/pymor/operators/interface.py#L32-#L41
 
     """
 
@@ -364,7 +360,6 @@ class TransferProblem(object):
         source_product=None,
         range_product=None,
         remove_kernel=False,
-        solver_options=None,
     ):
         self.logger = getLogger("multi.problems.TransferProblem")
         self.problem = problem
@@ -378,7 +373,7 @@ class TransferProblem(object):
         self._init_bc_gamma_out()
         self._S_to_R = self._make_mapping()
 
-        # initialize fixed set of dirichlet boundary conditions on Γ_D (using self.problem)
+        # initialize fixed set of dirichlet boundary conditions on Γ_D
         if dirichlet is not None:
             if isinstance(dirichlet, (list, tuple)):
                 for dirichlet_bc in dirichlet:
@@ -386,7 +381,7 @@ class TransferProblem(object):
             else:
                 problem.add_dirichlet_bc(**dirichlet)
             dirichlet = problem.get_dirichlet_bcs()
-        self.dirichlet_bcs = dirichlet or []
+        self._bc_hom = dirichlet or []
 
         # ### inner products
         default_product = {"product": None, "bcs": (), "product_name": None}
@@ -402,21 +397,6 @@ class TransferProblem(object):
             self.range_l2_product = l2_product
             self.kernel = build_nullspace(self.range, product=l2_product, gdim=2)
 
-    @property
-    def neumann(self):
-        return self._neumann
-
-    @neumann.setter
-    def neumann(self, neumann):
-        """
-        Parameters
-        ----------
-        neumann : list of dict or dict, optional
-            Inhomogeneous neumann boundary conditions or source terms.
-            See multi.bcs.BoundaryConditions.add_neumann_bc for suitable values.
-        """
-        self._neumann = neumann
-
     @Timer("_init_bc_gamma_out")
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -426,17 +406,44 @@ class TransferProblem(object):
         dummy = dolfinx.fem.Function(V)
 
         # determine boundary facets of Γ_out
-        boundary_facets = dolfinx.mesh.locate_entities_boundary(
+        facets_Γ_out = dolfinx.mesh.locate_entities_boundary(
             V.mesh, fdim, self.gamma_out
         )
         # determine dofs on Γ_out
-        _dofs = dolfinx.fem.locate_dofs_topological(V, fdim, boundary_facets)
+        _dofs = dolfinx.fem.locate_dofs_topological(V, fdim, facets_Γ_out)
         bc = dolfinx.fem.dirichletbc(dummy, _dofs)
+
+        # only internal use
+        self._facets_Γ_out = facets_Γ_out
+        self._fdim = fdim
+        self._dummy_bc_gamma_out = bc
+        self._dofs_Γ_out = _dofs
+
+        # quantities that might be used --> property
         dofs = bc.dof_indices()[0]
-        self._bc_gamma_out = bc
         self._bc_dofs_gamma_out = dofs
         # source space restricted to Γ_out
         self._source_gamma = NumpyVectorSpace(dofs.size)
+
+    @property
+    def bc_hom(self):
+        """homogeneous Dirichlet bcs on Γ_D"""
+        return self._bc_hom
+
+    @property
+    def bc_dofs_gamma_out(self):
+        """dof indices associated with Γ_out"""
+        return self._bc_dofs_gamma_out
+
+    @property
+    def source_gamma_out(self):
+        """NumpyVectorSpace of dim `self.bc_dofs_gamma_out.size`"""
+        return self._source_gamma
+
+    @property
+    def S_to_R(self):
+        """map from source to range space"""
+        return self._S_to_R
 
     @Timer("_make_mapping")
     def _make_mapping(self):
@@ -445,161 +452,126 @@ class TransferProblem(object):
 
     @Timer("discretize_operator")
     def discretize_operator(self):
-        """discretize the operator"""
+        """discretize the operator A of the oversampling problem"""
         V = self.source.V
         Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
         self.logger.debug(f"Discretizing left hand side of the problem (size={Vdim}).")
-        ufl_lhs = self.problem.get_form_lhs()
-        compiled_form = dolfinx.fem.form(ufl_lhs)
 
-        # A refers to full operator without bcs applied
-        # which is used to construct rhs (apply lifting)
-        A = dolfinx.fem.petsc.create_matrix(compiled_form)
-        A.zeroEntries()
-        dolfinx.fem.petsc.assemble_matrix(A, compiled_form)
-        A.assemble()
-        self._A = FenicsxMatrixOperator(
-            A, V, V, solver_options=self.solver_options, name="A"
-        )
+        p = self.problem
+        # need to add u=g on Γ_D and u=r on Γ_out such that
+        # rows and columns are correctly modified
+        bc_hom = self.bc_hom
+        bc_inhom = self._dummy_bc_gamma_out
+        bcs = [bc_inhom] + bc_hom
 
-        # A_0 refers to operator with bcs applied
-        bcs = [self._bc_gamma_out] + self.dirichlet_bcs  # list of dirichletbc
-        A_0 = dolfinx.fem.petsc.create_matrix(compiled_form)
-        A_0.zeroEntries()
-        dolfinx.fem.petsc.assemble_matrix(A_0, compiled_form, bcs=bcs)
-        A_0.assemble()
-
-        self.operator = FenicsxMatrixOperator(
-            A_0, V, V, solver_options=self.solver_options, name="A_0"
-        )
-
-    @Timer("discretize_neumann")
-    def discretize_neumann(self):
-        # FIXME handling of volume forces not possible
-        # BoundaryConditinos only handles traction forces
-        # each LinearProblem handles volume forces via .get_form_rhs,
-        # but I cannot assume same interface here, or should I?
-        # --> maybe LinearProblem needs a method to set evtl. source term
-        # instead of passing 'body_forces' or so to .get_form_rhs
-        """discretize inhomogeneous neumann bc(s)"""
-        self.problem.clear_bcs(dirichlet=False)
-        try:
-            if isinstance(self.neumann, (list, tuple)):
-                neumann = self.neumann
-            else:
-                neumann = [
-                    self.neumann,
-                ]
-            for force in neumann:
-                try:
-                    self.problem.add_neumann_bc(**force)
-                except ufl.log.UFLValueError:
-                    g = dolfinx.fem.Function(self.problem.V)
-                    g.interpolate(force["value"])
-                    force.update({"value": g})
-                    self.problem.add_neumann_bc(**force)
-        except AttributeError:
-            # no neumann bcs are defined for this problem
-            pass
-
-        ufl_rhs = self.problem.get_form_rhs()
-        compiled_form = dolfinx.fem.form(ufl_rhs)
-        rhs_vector = dolfinx.fem.petsc.create_vector(compiled_form)
-        rhs_vector.zeroEntries()
-        dolfinx.fem.petsc.assemble_vector(rhs_vector, compiled_form)
-        rhs_vector.ghostUpdate(
-            addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE
-        )
-        rhs = self.source.make_array([rhs_vector])
-        self._f_ext = rhs
+        petsc_options = {
+            "ksp_type": "preonly",
+            "pc_type": "lu",
+            "pc_factor_mat_solver_type": "mumps",
+        }
+        p.setup_solver(petsc_options=petsc_options)
+        p.assemble_matrix(bcs=bcs)
+        # now p.solver is setup with matrix p.A
+        # and p.a should be used to modify rhs (apply lifting)
 
     @Timer("discretize_rhs")
-    def discretize_rhs(self, boundary_data):
-        """discretize the right hand side"""
-        R = boundary_data
-        assert R in self.source
+    def discretize_rhs(self, boundary_values):
+        """discretize the right hand side
 
-        if not hasattr(self, "_A"):
-            self.discretize_operator()
+        Parameters
+        ----------
+        boundary_values : np.ndarray
+            The values to prescribe on Γ_out.
 
-        if not hasattr(self, "_f_ext"):
-            # assemble external force only once
-            self.discretize_neumann()
-        rhs = self._f_ext
+        """
 
-        # subtract g(x_i) times the i-th column of A from the rhs
-        # rhs = rhs - self._A.apply(R)
-        AR = self._A.apply(R)
-        AR.axpy(-1, rhs)
-        rhs = -AR
+        # boundary data defines values on Γ_out
+        # zero values on Γ_D if present are added here without the user
+        # having to care about this
 
-        # set g(x_i) for i-th dof in rhs
-        bcs = [self._bc_gamma_out] + self.dirichlet_bcs
-        bc_dofs = np.array([], dtype=np.intc)
-        for bc in bcs:
-            dofs = bc.dof_indices()[0]
-            bc_dofs = np.append(bc_dofs, dofs)
-        bc_vals = R.dofs(bc_dofs)
-        # FIXME workaround
-        rhs_array = rhs.to_numpy()
-        rhs_array[:, bc_dofs] = bc_vals
+        # ddd = dolfinx.fem.locate_dofs_topological(tp.source.V, tp.fdim, tp.facets_Γ_out)
+        # bc_inhom = dolfinx.fem.dirichletbc(array, ddd, tp.source.V) # most likely
+        # because random values are created using numpy
 
-        return self.source.from_numpy(rhs_array)
+        dofs = self.bc_dofs_gamma_out
+        _dofs = self._dofs_Γ_out
+        p = self.problem
+        f = dolfinx.fem.Function(p.V)
+        f.x.array[dofs] = boundary_values
+        bc_inhom = dolfinx.fem.dirichletbc(f, _dofs)
 
-    @Timer("generate_boundary_data")
-    def generate_boundary_data(self, values):
-        """generate boundary data g in V with ``values`` on Γ_out and zero elsewhere"""
-        bc_dofs = self._bc_dofs_gamma_out
-        assert values.shape[1] == len(bc_dofs)
-        D = np.zeros((len(values), self.source.dim))
-        D[:, bc_dofs] = values
-        return self.source.from_numpy(D)
+        p.assemble_vector(bcs=[bc_inhom])
+
+    # @Timer("generate_boundary_data")
+    # def generate_boundary_data(self, values):
+    #     """generate boundary data g in V(Γ_out)"""
+    #     bc_dofs = self.bc_dofs_gamma_out
+    #     assert values.shape[1] == len(bc_dofs)
+    #     D = np.zeros((len(values), self.source.dim))
+    #     D[:, bc_dofs] = values
+    #     return self.source.from_numpy(D)
 
     @Timer("generate_random_boundary_data")
     def generate_random_boundary_data(
         self, count, distribution="normal", random_state=None, seed=None, **kwargs
     ):
-        """generate random boundary data g in V with random values on Γ_out and zero elsewhere"""
-        # initialize
-        D = np.zeros((count, self.source.dim))  # source.dim is the full space
+        """generate random values shape (count, num_dofs_Γ_out)"""
 
-        bc_dofs = self._bc_dofs_gamma_out  # actual size of the source space
+        bc_dofs = self.bc_dofs_gamma_out  # actual size of the source space
         assert random_state is None or seed is None
         random_state = get_random_state(random_state, seed)
         values = _create_random_values(
             (count, bc_dofs.size), distribution, random_state, **kwargs
         )
 
-        # set random data at boundary dofs
-        D[:, bc_dofs] = values
-        return self.source.from_numpy(D)
+        return values
 
     @Timer("TransferProblem.solve")
-    def solve(self, boundary_data):
+    def solve(self, boundary_values):
         """solve the problem for boundary_data
 
         Parameters
         ----------
-        boundary_data : VectorArray
-            Vectors in FenicsxVectorSpace(problem.V) with DoF entries holding
-            values of boundary data on Γ_out and zero elsewhere.
+        boundary_values : np.ndarray
+            The values to prescribe on Γ_out.
 
         Returns
         -------
         U_in : VectorArray
             The solutions in the range space.
         """
-        if not hasattr(self, "operator"):
+
+
+        self.logger.info(f"Solving TransferProblem for {len(boundary_values)} vectors.")
+
+        p = self.problem
+        try:
+            solver = p.solver
+        except AttributeError:
             self.discretize_operator()
+            solver = p.solver
+
+        rhs = p.b
+
+        # solution
+        u = dolfinx.fem.Function(p.V)  # full space
+        u_in = dolfinx.fem.Function(self.range.V)  # target subdomain
+        U = self.range.empty()  # VectorArray to store u_in
+
         # construct rhs from boundary data
-        rhs = self.discretize_rhs(boundary_data)
-        self.logger.info(f"Solving TransferProblem for {len(rhs)} vectors.")
-        U = self.operator.apply_inverse(rhs)
-        U_in = self.range.from_numpy(U.dofs(self._S_to_R))
+        for array in boundary_values:
+            self.discretize_rhs(array)
+            solver.solve(rhs, u.vector)
+            u.x.scatter_forward()
+
+            # restrict full solution to target subdomain
+            u_in.interpolate(u)
+            U.append(self.range.make_array([u_in.vector.copy()]))
+
         if self.remove_kernel:
-            return orthogonal_part(self.kernel, U_in, self.range_l2_product, orth=True)
+            return orthogonal_part(self.kernel, U, self.range_l2_product, orth=True)
         else:
-            return U_in
+            return U
 
     @Timer("_get_source_product")
     def _get_source_product(self, product=None, bcs=(), product_name=None):
@@ -626,7 +598,7 @@ class TransferProblem(object):
             # FIXME figure out how to do this with PETSc.Mat and
             # use FenicsxMatrixOperator instead of NumpyMatrixOperator
             full_matrix = csc_matrix(M.getValuesCSR()[::-1], shape=M.size)
-            dofs = self._bc_dofs_gamma_out
+            dofs = self.bc_dofs_gamma_out
             source_matrix = full_matrix[dofs, :][:, dofs]
             source_product = NumpyMatrixOperator(source_matrix, name=product_name)
             return source_product
