@@ -36,7 +36,9 @@ def test_nodes():
     nodal_values = B.dofs(vertex_dofs)
 
     assert len(B) == 8
+    barr = B.to_numpy()
     assert np.isclose(np.sum(nodal_values), 8)
+    assert not np.allclose(barr[0], barr[1])
 
 
 if __name__ == "__main__":

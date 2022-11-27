@@ -546,14 +546,14 @@ def adaptive_edge_rrf(
         test_cvals = test_set[edge].dofs(edge_boundary_dofs[edge])
         test_set[edge] -= N.lincomb(test_cvals)
 
-        # ### pod bases
-        pod_bases[edge] = range_spaces[edge].empty()
-
         # ### initialize maxnorm
         if edge in active_edges:
             maxnorm = np.append(maxnorm, np.inf)
+            # ### pod bases
+            pod_bases[edge] = range_spaces[edge].empty()
         else:
             maxnorm = np.append(maxnorm, 0.0)
+
     timer.stop()
     logger.debug(f"Preparing stuff took t={timer.dt}s.")
 

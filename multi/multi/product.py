@@ -62,8 +62,6 @@ class InnerProduct(object):
             # when using pymor code
             return None
         else:
-            # TODO pass `form_compiler_params` and `jit_params`?
-            # create dolfinx.fem.form.Form from ufl form
             compiled_form = fem.form(ufl_form)
             A = fem.petsc.create_matrix(compiled_form)
             fem.petsc.assemble_matrix(A, compiled_form, bcs=self.bcs)

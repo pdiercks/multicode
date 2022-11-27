@@ -34,6 +34,11 @@ def test():
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 
+    # import ufl
+    # r = ufl.rank(problem.form_lhs)
+    # print(r)
+    # breakpoint()
+
     # add dirichlet and neumann bc
     zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * 2)
     problem.add_dirichlet_bc(zero, left, method="geometrical")

@@ -115,7 +115,7 @@ def compute_phi(problem, nodes):
     g = dolfinx.fem.Function(V)
     for shape in shape_functions:
         g.x.array[:] = shape
-        boundary_data.append([data_factory.create_bc(g)])
+        boundary_data.append([data_factory.create_bc(g.copy())])
 
     petsc_options = {
         "ksp_type": "preonly",

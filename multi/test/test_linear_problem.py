@@ -51,7 +51,13 @@ def test_poisson():
     }
     problem.setup_solver(petsc_options=petsc_options)
 
-    uh = problem.solve()
+    bcs = problem.get_dirichlet_bcs()
+    problem.assemble_matrix(bcs)
+    problem.assemble_vector(bcs)
+    uh = dolfinx.fem.Function(V)
+    solver = problem.solver
+    solver.solve(problem.b, uh.vector)
+    uh.x.scatter_forward()
 
     error_max = np.max(np.abs(uD.x.array - uh.x.array))
     assert error_max < 1e-12
