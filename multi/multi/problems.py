@@ -27,33 +27,43 @@ from pymor.tools.timing import Timer
 from scipy.sparse import csc_matrix
 
 
-def _solver_options(
-    solver=PETSc.KSP.Type.PREONLY, preconditioner=PETSc.PC.Type.LU, keep_solver=True
-):
-    return {
-        "solver": solver,
-        "preconditioner": preconditioner,
-        "keep_solver": keep_solver,
-    }
+# Design
+# p = LinearProblem(domain, V)
+# set bcs unique to this problem
+# p.add_dirichlet_bc(...)
+# p.add_neumann_bc(...)
+# make sure that p.get_form_lhs() and p.get_form_rhs() are implemented ...
+# p.setup_solver(petsc_options, form_compiler_options, jit_options)
+# now with the solver setup there are different use cases
+# (1) solve the problem once and be done for today
+# p.solve() # will call super.solve(), i.e. solve() does not need to be implemented here
+# (2) we want to solve the same problem many times with different rhs
+# solver = p.solver # first get the solver we did setup
+# p.assemble_matrix(bcs) # assemble matrix once for specific set of bcs, this
+# modifies self._A
+# now we only need to define the rhs for which we want to solve
+# one option is to assemble the vector based on p.get_form_rhs()
+# p.assemble_vector(bcs) # let assemble vector always modify p.b, but with possibly new form?
+# rhs = p.b
+# solution = dolfinx.fem.Function(p.V)
+# solver.solve(rhs, solution.vector)
+# solution.x.scatter_forward()
+# another option could be to create a function and set some values to it
+# rhs = dolfinx.fem.Function(p.V)
+# with rhs.vector.localForm() as rhs_loc:
+#     rhs_loc.set(0)
+# assemble_vector(rhs.vector, some_compiled_form) or skip this
+# apply_lifting(rhs.vector, [p.a], bcs=[p.get_dirichlet_bcs()])
+# rhs.vector.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+# set_bc(rhs.vector, p.get_dirichlet_bcs())
+# solver.solve(rhs.vector, solution.vector)
+# solution.x.scatter_forward()
+class LinearProblem(dolfinx.fem.petsc.LinearProblem):
 
+    """Class for solving a linear variational problem"""
 
-# TODO revise this class taking into account dolfinx.fem.LinearProblem
-# cg_problem = LinearProblem(a, L, bcs=bcs,
-# petsc_options={"ksp_type": "cg", "ksp_rtol":1e-6, "ksp_atol":1e-10, "ksp_max_it": 1000})
-# uh = cg_problem.solve()
-# cg_solver = cg_problem.solver
-# viewer = PETSc.Viewer().createASCII("cg_output.txt")
-# cg_solver.view(viewer)
-# solver_output = open("cg_output.txt", "r")
-# for line in solver_output.readlines():
-#     print(line)
-class LinearProblem(object):
-
-    """Docstring for LinearProblem."""
-
-    # TODO add jit params
-    def __init__(self, domain, V, solver_options=None):
-        """TODO: to be defined.
+    def __init__(self, domain, V):
+        """Initialize domain and FE space
 
         Parameters
         ----------
@@ -61,8 +71,6 @@ class LinearProblem(object):
             The computational domain.
         V : dolfinx.fem.FunctionSpace
             The FE space.
-        solver_options : optional
-            The solver options.
 
         """
         self.logger = getLogger("multi.problems.LinearProblem")
@@ -71,130 +79,88 @@ class LinearProblem(object):
         self.u = ufl.TrialFunction(V)
         self.v = ufl.TestFunction(V)
         self._bc_handler = BoundaryConditions(domain.grid, V, domain.facet_markers)
-        self._solver_options = solver_options or _solver_options()
 
     def add_dirichlet_bc(
         self, value, boundary=None, sub=None, method="topological", entity_dim=None
     ):
+        """see multi.bcs.BoundaryConditions.add_dirichletb_bc"""
         self._bc_handler.add_dirichlet_bc(
             value, boundary=boundary, sub=sub, method=method, entity_dim=entity_dim
         )
 
     def add_neumann_bc(self, marker, value):
+        """see multi.bcs.BoundaryConditions.add_neumann_bc"""
         self._bc_handler.add_neumann_bc(marker, value)
 
     def clear_bcs(self, dirichlet=True, neumann=True):
-        """remove all dirichlet and neumann bcs"""
+        """remove all Dirichlet and Neumann bcs"""
         self._bc_handler.clear(dirichlet=dirichlet, neumann=neumann)
 
     def get_dirichlet_bcs(self):
+        """The Dirichlet bcs"""
+        # NOTE instance of dolfinx.fem.petsc.LinearProblem has attribute bcs
         return self._bc_handler.bcs
 
-    def discretize_product(self, product, bcs=False, product_name=None):
-        """discretize inner product
+    @property
+    def form_lhs(self):
+        """The ufl form of the left hand side"""
+        raise NotImplementedError
 
-        Parameters
-        ----------
-        product : str or ufl.form.Form
-            Either a string (see multi.product.InnerProduct) or
-            a ufl form defining the inner product.
-        bcs : bool, optional
-            If True, apply BCs to inner product matrix.
+    @property
+    def form_rhs(self):
+        """The ufl form of the right hand side"""
+        raise NotImplementedError
 
-        Returns
-        -------
-        product : dolfin.Matrix or None
-            Returns a dolfin.Matrix or None in case of euclidean
-            inner product.
+    def setup_solver(self, petsc_options={}, form_compiler_options={}, jit_options={}):
+        """setup the solver for a linear variational problem
+
+        This code is part of dolfinx.fem.petsc.py:
+        Copyright (C) 2018-2022 Garth N. Wells and Jørgen S. Dokken
+
+        Args:
+            petsc_options: Options that are passed to the linear
+                algebra backend PETSc. For available choices for the
+                'petsc_options' kwarg, see the `PETSc documentation
+                <https://petsc4py.readthedocs.io/en/stable/manual/ksp/>`_.
+            form_compiler_options: Options used in FFCx compilation of
+                this form. Run ``ffcx --help`` at the commandline to see
+                all available options.
+            jit_options: Options used in CFFI JIT compilation of C
+                code generated by FFCx. See `python/dolfinx/jit.py` for
+                all available options. Takes priority over all other
+                option values.
         """
-        if bcs:
-            bcs = self.get_dirichlet_bcs()
-            if not len(bcs) > 0:
-                raise Warning("Forgot to apply BCs?")
-        else:
-            bcs = ()
-        product = InnerProduct(self.V, product, bcs=bcs, name=product_name)
-        return product.assemble_matrix()  # returns Matrix or None
 
-    def get_form_lhs(self):
-        pass
+        a = self.form_lhs
+        L = self.form_rhs
+        bcs = self.get_dirichlet_bcs()
 
-    def get_form_rhs(self):
-        pass
-
-    # TODO add jit_params
-    def compile(self):
-        """compile the ufl forms and create matrix and vector objects"""
-        a = self.get_form_lhs()
-        L = self.get_form_rhs()
-        self._A = dolfinx.fem.form(a)
-        self._b = dolfinx.fem.form(L)
-
-    def setup_solver(self, matrix):
-        """setup a solver"""
-
-        options = self._solver_options
-        method = options.get("solver")
-        preconditioner = options.get("preconditioner")
-
-        solver = PETSc.KSP().create(self.V.mesh.comm)
-        solver.setOperators(matrix)
-        solver.setType(method)
-        solver.getPC().setType(preconditioner)
-
-        return solver
+        super().__init__(
+            a,
+            L,
+            bcs,
+            petsc_options=petsc_options,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+        )
 
     def assemble_matrix(self, bcs=()):
         """assemble matrix and apply boundary conditions"""
-        matrix = dolfinx.fem.petsc.create_matrix(self._A)
-        dolfinx.fem.petsc.assemble_matrix(matrix, self._A, bcs=bcs)
-        matrix.assemble()
-
-        return matrix
+        self._A.zeroEntries()
+        dolfinx.fem.petsc.assemble_matrix(self._A, self._a, bcs=bcs)
+        self._A.assemble()
 
     def assemble_vector(self, bcs=()):
         """assemble vector and apply boundary conditions"""
-        vector = dolfinx.fem.petsc.create_vector(self._b)
-        dolfinx.fem.petsc.assemble_vector(vector, self._b)
-        vector.ghostUpdate(
-            addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE
-        )
 
-        # Compute b - J(u_D-u_(i-1))
-        dolfinx.fem.petsc.apply_lifting(vector, [self._A], [bcs])
-        # Set dx|_bc = u_{i-1}-u_D
-        dolfinx.fem.petsc.set_bc(vector, bcs, scale=1.0)
-        vector.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
-        )
+        with self._b.localForm() as b_loc:
+            b_loc.set(0)
+        dolfinx.fem.petsc.assemble_vector(self._b, self._L)
 
-        return vector
-
-    def solve(self, u=None):
-        """performs single solve"""
-
-        bcs = self.get_dirichlet_bcs()
-        self.compile()
-        matrix = self.assemble_matrix(bcs)
-        rhs = self.assemble_vector(bcs)
-
-        try:
-            solver = self._solver
-        except AttributeError:
-            self.logger.info("Setting up the solver ...")
-            solver = self.setup_solver(matrix)
-
-        self.logger.info("Solving linear variational problem ...")
-
-        if u is None:
-            u = dolfinx.fem.Function(self.V)
-
-        solver.solve(rhs, u.vector)
-
-        if self._solver_options["keep_solver"]:
-            self._solver = solver
-
-        return u
+        # Apply boundary conditions to the rhs
+        dolfinx.fem.petsc.apply_lifting(self._b, [self._a], bcs=bcs)
+        self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+        dolfinx.fem.petsc.set_bc(self._b, self.bcs)
 
 
 class LinearElasticityProblem(LinearProblem):
@@ -414,7 +380,6 @@ class TransferProblem(object):
         self.range = FenicsxVectorSpace(subdomain_problem.V)
         self.gamma_out = gamma_out
         self.remove_kernel = remove_kernel
-        self.solver_options = solver_options or {"inverse": _solver_options()}
 
         # initialize commonly used quantities
         self._init_bc_gamma_out()
@@ -529,7 +494,9 @@ class TransferProblem(object):
             if isinstance(self.neumann, (list, tuple)):
                 neumann = self.neumann
             else:
-                neumann = [self.neumann, ]
+                neumann = [
+                    self.neumann,
+                ]
             for force in neumann:
                 try:
                     self.problem.add_neumann_bc(**force)
@@ -726,21 +693,27 @@ class MultiscaleProblem(object):
 
     def _setup_grids(self):
         """create coarse and fine grid"""
-        domain, ct, ft = gmshio.read_from_msh(self.coarse_grid_path.as_posix(), MPI.COMM_WORLD, gdim=2)
+        domain, ct, ft = gmshio.read_from_msh(
+            self.coarse_grid_path.as_posix(), MPI.COMM_WORLD, gdim=2
+        )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
-        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, self.fine_grid_path.as_posix(), "r") as xdmf:
+        with dolfinx.io.XDMFFile(
+            MPI.COMM_WORLD, self.fine_grid_path.as_posix(), "r"
+        ) as xdmf:
             fine_domain = xdmf.read_mesh(name="Grid")
             fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")
 
         boundaries = self.boundaries
         if boundaries is not None:
             from multi.preprocessing import create_facet_tags
+
             fine_ft, marked_boundaries = create_facet_tags(fine_domain, boundaries)
         else:
             fine_ft = None
-        self.fine_grid = Domain(fine_domain, cell_markers=fine_ct, facet_markers=fine_ft)
-
+        self.fine_grid = Domain(
+            fine_domain, cell_markers=fine_ct, facet_markers=fine_ft
+        )
 
     def setup_fe_spaces(self, family="P"):
         """create FE spaces on coarse and fine grid"""
@@ -808,7 +781,6 @@ class MultiscaleProblem(object):
         self.active_edges = active_edges
         self.edge_map = edge_map
 
-
     def get_active_edges(self, cell_index):
         """returns the set of edges to consider for
         construction of POD basis in the TransferProblem for given cell.
@@ -817,8 +789,8 @@ class MultiscaleProblem(object):
         """
         if not hasattr(self, "active_edges"):
             raise AttributeError(
-                    "You have to define an edge basis configuration "
-                    "by calling `self.edge_basis_config`"
-                    )
+                "You have to define an edge basis configuration "
+                "by calling `self.edge_basis_config`"
+            )
         config = self.active_edges
         return config[cell_index]
