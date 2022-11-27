@@ -445,8 +445,8 @@ def adaptive_edge_rrf(
         # maybe do something like 
         # max_num_samples = min(user_input, range.dim)
         covariances, num_eigvals = [], []
-        training_set = tp.source.empty()
-        # timer.start()
+        training_set = []
+        timer.start()
         while int(np.sum(num_eigvals)) < max_num_samples:
             Δ = max_num_samples - int(np.sum(num_eigvals))
             Σ, n_eigvals = compute_covariance(distance, lc)
@@ -458,12 +458,13 @@ def adaptive_edge_rrf(
                 random_state=random_state, mean=mean, cov=Σ
                 ))
             lc /= 2
-        # timer.stop()
-        # logger.debug(f"Building covariance matrices took t={timer.dt}s.")
+        timer.stop()
+        logger.debug(f"Building covariance matrices took t={timer.dt}s.")
+        training_set = np.vstack(training_set)
         assert len(training_set) == max_num_samples
 
         # global test set
-        R = tp.source.empty()
+        R = []
         counter = 0
         it = 0
         while counter < num_testvecs:
@@ -475,6 +476,7 @@ def adaptive_edge_rrf(
                     ))
             counter += num_eigvals[it]
             it += 1
+        R = np.vstack(R)
         M = tp.solve(R)
         assert len(M) == num_testvecs
 
@@ -565,17 +567,14 @@ def adaptive_edge_rrf(
     logger.info(f"{lambda_min=}")
     logger.info(f"{testlimit=}")
 
-    # TODO possible improvements to the code:
-    # 1. tp.solve(v) seems slow sometimes?
-    # 2. tp.solve(v) might as well return only fine scale part?
-
     num_solves = 0
     while np.any(maxnorm > testlimit):
 
         if distribution == "normal":
             v = tp.generate_random_boundary_data(1, distribution, random_state, **sampling_options)
         elif distribution == "multivariate_normal":
-            v = training_set[num_solves]
+            v = training_set[np.newaxis, num_solves]
+
         U = tp.solve(v)
         num_solves += 1
 
