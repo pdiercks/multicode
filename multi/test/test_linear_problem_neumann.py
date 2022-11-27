@@ -9,10 +9,11 @@ from multi.problems import LinearProblem
 
 
 class TestProblem(LinearProblem):
-    def __init__(self, domain, V, solver_options=None):
-        super().__init__(domain, V, solver_options)
+    def __init__(self, domain, V):
+        super().__init__(domain, V)
 
-    def get_form_rhs(self):
+    @property
+    def form_rhs(self):
         domain = self.domain.grid
         v = self.v
         f = dolfinx.fem.Constant(domain, PETSc.ScalarType(-6))
@@ -23,7 +24,8 @@ class TestProblem(LinearProblem):
 
         return rhs
 
-    def get_form_lhs(self):
+    @property
+    def form_lhs(self):
         u = self.u
         v = self.v
         return ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
@@ -53,6 +55,13 @@ def test():
     # since no markers are defined simply pass 'everywhere'
     problem.add_neumann_bc("everywhere", g)
 
+    # setup the solver
+    petsc_options = {
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "pc_factor_mat_solver_type": "mumps",
+    }
+    problem.setup_solver(petsc_options=petsc_options)
     uh = problem.solve()
 
     uex = dolfinx.fem.Function(V)

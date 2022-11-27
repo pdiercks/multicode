@@ -144,13 +144,13 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
             jit_options=jit_options,
         )
 
-    def assemble_matrix(self, bcs=()):
+    def assemble_matrix(self, bcs=[]):
         """assemble matrix and apply boundary conditions"""
         self._A.zeroEntries()
         dolfinx.fem.petsc.assemble_matrix(self._A, self._a, bcs=bcs)
         self._A.assemble()
 
-    def assemble_vector(self, bcs=()):
+    def assemble_vector(self, bcs=[]):
         """assemble vector and apply boundary conditions"""
 
         with self._b.localForm() as b_loc:
@@ -158,7 +158,7 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
         dolfinx.fem.petsc.assemble_vector(self._b, self._L)
 
         # Apply boundary conditions to the rhs
-        dolfinx.fem.petsc.apply_lifting(self._b, [self._a], bcs=bcs)
+        dolfinx.fem.petsc.apply_lifting(self._b, [self._a], bcs=[bcs])
         self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
         dolfinx.fem.petsc.set_bc(self._b, self.bcs)
 
@@ -178,15 +178,13 @@ class LinearElasticityProblem(LinearProblem):
         Poisson ratio of the linear elastic materials.
     plane_stress : bool, optional
         2d constraint.
-    solver_options : optional
-        The solver options.
 
     """
 
     def __init__(
-        self, domain, V, E=210e3, NU=0.3, plane_stress=False, solver_options=None
+        self, domain, V, E=210e3, NU=0.3, plane_stress=False
     ):
-        super().__init__(domain, V, solver_options)
+        super().__init__(domain, V)
         assert all(
             [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
         )
@@ -270,7 +268,8 @@ class LinearElasticityProblem(LinearProblem):
             V_to_L[edge] = make_mapping(L, V)
         self.V_to_L = V_to_L
 
-    def get_form_lhs(self):
+    @property
+    def form_lhs(self):
         """get bilinear form a(u, v) of the problem"""
         u = self.u
         v = self.v
@@ -285,20 +284,14 @@ class LinearElasticityProblem(LinearProblem):
             mat = self.materials[0]
             return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx
 
-    def get_form_rhs(self, body_forces=None):
+    # FIXME allow for body forces
+    @property
+    def form_rhs(self):
         """get linear form f(v) of the problem"""
         domain = self.V.mesh
         v = self.v
         zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
         rhs = ufl.inner(zero, v) * ufl.dx
-        if body_forces is not None:
-            if len(self.materials) > 1:
-                assert isinstance(body_forces, (list, tuple))
-                assert len(body_forces) == len(self.materials)
-                for i in range(len(self.materials)):
-                    rhs += ufl.inner(body_forces[i], v) * self.dx(i + 1)
-            else:
-                rhs += ufl.dot(body_forces, v) * self.dx
 
         if self._bc_handler.has_neumann:
             rhs += self._bc_handler.neumann_bcs

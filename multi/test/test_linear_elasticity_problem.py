@@ -42,17 +42,25 @@ def test():
     )
     problem.add_neumann_bc(marker_value, f_ext)
 
-    problem.compile()
-    bcs = problem.get_dirichlet_bcs()
-    matrix = problem.assemble_matrix(bcs)
-    vector = problem.assemble_vector(bcs)
-    solver = problem.setup_solver(matrix)
-    u = dolfinx.fem.Function(V)
-    solver.solve(vector, u.vector)
 
-    assert np.isclose(np.sum(vector[:]), 1000.0)
-    Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
-    assert matrix[:, :].shape == (Vdim, Vdim)
+    # setup the solver
+    petsc_options = {
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "pc_factor_mat_solver_type": "mumps",
+    }
+    problem.setup_solver(petsc_options=petsc_options)
+    solver = problem.solver
+
+    bcs = problem.get_dirichlet_bcs()
+    problem.assemble_matrix(bcs)
+    problem.assemble_vector(bcs)
+
+    u = dolfinx.fem.Function(V)
+    rhs = problem.b
+    solver.solve(rhs, u.vector)
+
+    assert np.isclose(np.sum(rhs[:]), 1000.0)
     assert np.sum(np.abs(u.x.array[:])) > 0.0
 
     # high level solve
@@ -90,17 +98,23 @@ def test_dirichlet():
     problem.add_dirichlet_bc(f, right, method="geometrical")
     problem.add_dirichlet_bc(u_bottom, bottom, method="geometrical")
 
-    problem.compile()
-    bcs = problem.get_dirichlet_bcs()
-    matrix = problem.assemble_matrix(bcs)
-    vector = problem.assemble_vector(bcs)
-    solver = problem.setup_solver(matrix)
-    u = dolfinx.fem.Function(V)
-    solver.solve(vector, u.vector)
+    petsc_options = {
+            "ksp_type": "preonly",
+            "pc_type": "lu",
+            "pc_factor_mat_solver_type": "mumps",
+            }
+    problem.setup_solver(petsc_options=petsc_options)
+    solver = problem.solver
 
-    assert np.sum(vector[:]) > 0
-    Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
-    assert matrix[:, :].shape == (Vdim, Vdim)
+    bcs = problem.get_dirichlet_bcs()
+    problem.assemble_matrix(bcs)
+    problem.assemble_vector(bcs)
+
+    u = dolfinx.fem.Function(V)
+    solver.solve(problem.b, u.vector)
+    u.x.scatter_forward()
+
+    assert np.sum(problem.b[:]) > 0
     assert np.sum(np.abs(u.x.array[:])) > 0.0
 
     # extract values at the bottom
@@ -152,17 +166,25 @@ def test_with_edges():
     T = dolfinx.fem.Constant(domain, PETSc.ScalarType((1000.0, 0.0)))
     problem.add_neumann_bc(3, T)
 
-    problem.compile()
+    petsc_options = {
+            "ksp_type": "preonly",
+            "pc_type": "lu",
+            "pc_factor_mat_solver_type": "mumps",
+            }
+    problem.setup_solver(petsc_options=petsc_options)
+    solver = problem.solver
+
     bcs = problem.get_dirichlet_bcs()
-    matrix = problem.assemble_matrix(bcs)
-    vector = problem.assemble_vector(bcs)
-    solver = problem.setup_solver(matrix)
+    problem.assemble_matrix(bcs)
+    problem.assemble_vector(bcs)
+
     u = dolfinx.fem.Function(V)
-    solver.solve(vector, u.vector)
+    solver.solve(problem.b, u.vector)
+    u.x.scatter_forward()
 
     Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
-    assert np.sum(vector[:]) > 0.0
-    assert matrix[:, :].shape == (Vdim, Vdim)
+    assert np.sum(problem.b[:]) > 0.0
+    assert problem.A[:, :].shape == (Vdim, Vdim)
     assert np.sum(np.abs(u.vector.array[:])) > 0.0
 
 
