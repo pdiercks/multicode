@@ -120,10 +120,17 @@ def create_rectangle_grid(
     recombine=False,
     facets=False,
     out_file=None,
+    options=None,
 ):
     """TODO docstring"""
     _initialize()
     gmsh.model.add("rectangle")
+
+    if options is not None:
+        # Example: {'Mesh.ElementOrder', 2, 'Mesh.SecondOrderIncomplete': 1}
+        # will result in 'quad8' cell type
+        for key, value in options.items():
+            gmsh.option.setNumber(key, value)
 
     p0 = gmsh.model.geo.addPoint(xmin, ymin, z, lc)
     p1 = gmsh.model.geo.addPoint(xmax, ymin, z, lc)
