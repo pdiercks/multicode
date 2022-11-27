@@ -1,4 +1,4 @@
-import dolfin as df
+import ufl
 
 
 class LinearElasticMaterial:
@@ -39,21 +39,24 @@ class LinearElasticMaterial:
         epsu = self.eps(u)
         epsv = self.eps(v)
         return df.assemble(
-            (2 * lambda_2 * df.inner(epsu, epsv) + lambda_1 * df.tr(epsu) * df.tr(epsv))
+            (
+                2 * lambda_2 * ufl.inner(epsu, epsv)
+                + lambda_1 * ufl.tr(epsu) * ufl.tr(epsv)
+            )
             * dx
         )
 
     def sigma(self, displacement):
         eps = self.eps(displacement)
-        return self.lambda_1 * df.tr(eps) * df.Identity(3) + 2 * self.lambda_2 * eps
+        return self.lambda_1 * ufl.tr(eps) * ufl.Identity(3) + 2 * self.lambda_2 * eps
 
     def eps(self, displacement):
         d = self.dim
-        e = df.sym(df.grad(displacement))
+        e = ufl.sym(ufl.grad(displacement))
         if d == 1:
-            return df.as_tensor([[e[0, 0], 0, 0], [0, 0, 0], [0, 0, 0]])
+            return ufl.as_tensor([[e[0, 0], 0, 0], [0, 0, 0], [0, 0, 0]])
         elif d == 2 and not self.plane_stress:
-            return df.as_tensor(
+            return ufl.as_tensor(
                 [[e[0, 0], e[0, 1], 0], [e[0, 1], e[1, 1], 0], [0, 0, 0]]
             )
         elif d == 2 and self.plane_stress:
@@ -62,7 +65,7 @@ class LinearElasticMaterial:
                 / (2.0 * self.lambda_2 + self.lambda_1)
                 * (e[0, 0] + e[1, 1])
             )
-            return df.as_tensor(
+            return ufl.as_tensor(
                 [[e[0, 0], e[0, 1], 0], [e[0, 1], e[1, 1], 0], [0, 0, ezz]]
             )
         elif d == 3:

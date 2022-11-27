@@ -1,66 +1,71 @@
-"""test domain"""
+"""test domain module"""
 
-import dolfin as df
 import numpy as np
-from multi import Domain, RectangularDomain
+import tempfile
+import dolfinx
+from dolfinx.io import gmshio
+from mpi4py import MPI
+from multi.domain import Domain, RectangularDomain
+from multi.preprocessing import create_line_grid, create_rectangle_grid
 
 
-def get_unit_square_mesh():
-    mesh = df.UnitSquareMesh(8, 8)
-    subdomains = df.MeshFunction("size_t", mesh, 2, value=0)
-
-    class Left(df.SubDomain):
-        def inside(self, x, on_boundary):
-            return x[0] <= 0.5
-
-    left = Left()
-    left.mark(subdomains, 1)
-
-    return mesh, subdomains
+def get_unit_square_mesh(nx=8, ny=8):
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(0., 1., 0., 1., num_cells=(nx, ny), recombine=True, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    return domain
 
 
 def get_unit_interval_mesh():
-    mesh = df.UnitIntervalMesh(10)
-    return mesh
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_line_grid([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    return domain
 
 
 def test_1d():
-    mesh = get_unit_interval_mesh()
-    domain = Domain(mesh)
+    domain = Domain(get_unit_interval_mesh())
+    xmin = domain.xmin
     xmax = domain.xmax
-    ymax = domain.ymax
-    zmin = domain.zmin
-    assert xmax == 1.0
-    assert ymax == 0.0
-    assert zmin == 0.0
-    domain.translate(df.Point([1.5]))
-    assert domain.xmax == 2.5
-    assert domain.ymax == 0.0
+
+    assert xmax[0] == 1.0
+    assert np.sum(xmax) == 1.0
+    assert xmin[0] == 0.0
+    assert np.sum(xmin) == 0.0
+
+    domain.translate([2.3, 4.7, 0.6])
+    xmin = domain.xmin
+    xmax = domain.xmax
+
+    assert xmax[0] == 3.3
+    assert np.sum(xmax) == 3.3 + 4.7 + 0.6
+    assert xmin[0] == 2.3
+    assert np.sum(xmin) == 2.3 + 4.7 + 0.6
 
 
 def test_2d():
-    mesh, subs = get_unit_square_mesh()
-    domain = Domain(mesh, _id=0, subdomains=subs)
-    assert np.isclose(np.sum(domain.subdomains.array()), 64)
+    domain = Domain(get_unit_square_mesh())
+    domain.translate([2.1, 0.4, 0.0])
 
-    other = Domain(mesh, _id=1, subdomains=None)
-    assert other.subdomains is None
-    other.translate(df.Point((2.1, 0.4)))
-    assert np.isclose(other.ymax, 1.4)
-    assert np.isclose(other.xmax, 3.1)
+    xmax = domain.xmax
 
-    another = RectangularDomain(
-        "data/rcedomain.xdmf", _id=2, subdomains=True, edges=True
+    assert np.isclose(xmax[1], 1.4)
+    assert np.isclose(xmax[0], 3.1)
+
+    rectangle = RectangularDomain(
+        get_unit_square_mesh(10, 10), index=17
     )
-    assert len(another.edges) == 4
-    assert all([isinstance(e, df.cpp.mesh.Mesh) for e in another.edges])
-    assert np.sum(another.subdomains.array()) > 1
-    # subdomain numbering is assumed to start with 1 (pygmsh default)
-    Ω_i = np.amin(another.subdomains.array())
-    assert Ω_i > 0 and Ω_i < 2
-    assert np.isclose(another.xmin, 0.0)
-    assert np.isclose(another.ymin, 0.0)
-    assert np.isclose(another.xmax, another.ymax)
+    rectangle.create_edge_grids(10)
+    assert len(rectangle.fine_edge_grid.keys()) == 4
+    assert len(rectangle.coarse_edge_grid.keys()) == 4
+    assert isinstance(rectangle.fine_edge_grid["bottom"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["top"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["right"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["left"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["bottom"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["top"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["right"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["left"], dolfinx.mesh.Mesh)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,13 @@
-import dolfin as df
-from pymor.bindings.fenics import FenicsMatrixOperator
+import ufl
+from dolfinx import fem
 
 
-class InnerProduct:
+class InnerProduct(object):
     """class to represent an inner product
 
     Parameters
     ----------
-    V
+    V : dolfinx.fem.function.FunctionSpace
         The finite element space.
     product : str or ufl.form.Form, optional
         The inner product given as string or weak form expressed in UFL.
@@ -26,21 +26,21 @@ class InnerProduct:
         self.V = V
         self.bcs = bcs
         if isinstance(product, str):
-            u = df.TrialFunction(V)
-            v = df.TestFunction(V)
+            u = ufl.TrialFunction(V)
+            v = ufl.TestFunction(V)
             names = ("euclidean", "mass", "l2", "h1-semi", "stiffness", "h1")
             if product in ("euclidean",):
                 form = None
             elif product in ("mass", "l2"):
-                form = df.inner(u, v) * df.dx
+                form = ufl.inner(u, v) * ufl.dx
             elif product in ("h1-semi", "stiffness"):
-                form = df.inner(df.grad(u), df.grad(v)) * df.dx
+                form = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
             elif product in ("h1",):
-                form = (df.inner(u, v) + df.inner(df.grad(u), df.grad(v))) * df.dx
+                form = (ufl.inner(u, v) + ufl.inner(ufl.grad(u), ufl.grad(v))) * ufl.dx
             else:
                 raise KeyError(
                     f"I don't know how to compute inner product with name '{product}'."
-                    + "You need to provide the form yourself or choose a supported value."
+                    + f"You need to provide the UFL form yourself or choose one of {names}."
                 )
             self.name = name or product
         else:
@@ -53,25 +53,18 @@ class InnerProduct:
         """returns the weak form of the inner product"""
         return self.form
 
-    def assemble(self):
-        """returns the dolfin matrix representing the inner product or None
+    def assemble_matrix(self):
+        """returns the matrix (`PETSc.Mat`) representing the inner product or None
         in case euclidean product is used"""
-        if self.get_form() is None:
+        ufl_form = self.get_form()
+        if ufl_form is None:
             # such that product=None is equal to euclidean inner product
             # when using pymor code
             return None
         else:
-            matrix = df.assemble(self.get_form())
-            vector = df.Function(self.V).vector()
-            for bc in self.bcs:
-                # bc.apply does not preserce symmetry
-                bc.zero_columns(matrix, vector, 1.0)
-            return matrix
+            compiled_form = fem.form(ufl_form)
+            A = fem.petsc.create_matrix(compiled_form)
+            fem.petsc.assemble_matrix(A, compiled_form, bcs=self.bcs)
+            A.assemble()
 
-    def assemble_operator(self):
-        """returns the dolfin matrix wrapped as FenicsMatrixOperator or None"""
-        matrix = self.assemble()
-        if matrix is not None:
-            return FenicsMatrixOperator(matrix, self.V, self.V, name=self.name)
-        else:
-            return None
+            return A

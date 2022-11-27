@@ -1,248 +1,225 @@
 """test dofmap"""
 
+import tempfile
+import dolfinx
+from dolfinx.io import gmshio
 import numpy as np
-from multi import DofMap
-from helpers import build_mesh
+from mpi4py import MPI
+from multi.dofmap import DofMap
+from multi.domain import StructuredQuadGrid
+from multi.preprocessing import create_rectangle_grid
+
+
+def test():
+    """test dofmap with type(dofs_per_edge)==int"""
+    n = 8
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(n, n), recombine=True, out_file=tf.name
+        )
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+
+    n_vertex_dofs = 2
+    n_edge_dofs = 0
+    n_face_dofs = 0
+
+    domain.topology.create_connectivity(0, 0)
+    domain.topology.create_connectivity(1, 1)
+
+    conn_00 = domain.topology.connectivity(0, 0)
+    conn_11 = domain.topology.connectivity(1, 1)
+    num_vertices = conn_00.num_nodes
+    num_edges = conn_11.num_nodes
+
+    grid = StructuredQuadGrid(domain)
+    dofmap = DofMap(grid)
+    dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, n_face_dofs)
+
+    assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
+
+    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
+
+    def get_global_dofs(V, cell_index):
+        """get global dofs of V for cell index"""
+        bs = V.dofmap.bs
+        num_dofs_local = V.dofmap.cell_dofs(0).size
+        dofs = []
+        cell_dofs = V.dofmap.cell_dofs(cell_index)
+        for i in range(num_dofs_local):
+            for k in range(bs):
+                dofs.append(bs * cell_dofs[i] + k)
+        return np.array(dofs)
+
+    # NOTE
+    # if n_edge_dofs = n_face_dofs = 0, V.dofmap and multi.DofMap should
+    # have the same dof layout
+    # V.element.needs_dof_transformations is False --> okay
+    u = dolfinx.fem.Function(V)
+    u.interpolate(lambda x: (44.7 * x[0], -12.3 * x[1]))
+    u_values = u.vector.array
+
+    # FIXME
+    # that still does not check whether the dofs
+    # have the same coordinates ...?
+
+    for ci in range(dofmap.num_cells):
+        mydofs = dofmap.cell_dofs(ci)
+        expected = get_global_dofs(V, ci)
+        assert np.allclose(mydofs, expected)
+        assert np.allclose(u_values[mydofs], u_values[expected])
+
+    # locate entities and get entity dofs
+    def bottom(x):
+        return np.isclose(x[1], 0.0)
+
+    ents = dofmap.grid.locate_entities(1, bottom)
+    assert ents.size == n
+    # this should return an empty list
+    # since zero dofs per edge are distributed
+    dofs = dofmap.entity_dofs(1, ents[0])
+    assert not dofs
+
+
+def test_array_uniform():
+    """test dofmap with type(dofs_per_edge)==np.ndarray"""
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
+        )
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+
+    # 6 vertices
+    # 7 edges
+    n_vertex_dofs = 2
+    n_edge_dofs = 3
+    dofs_per_edge = np.ones((2, 4), dtype=int) * n_edge_dofs
+    n_face_dofs = 0
+
+    domain.topology.create_connectivity(0, 0)
+    domain.topology.create_connectivity(1, 1)
+
+    conn_00 = domain.topology.connectivity(0, 0)
+    conn_11 = domain.topology.connectivity(1, 1)
+    num_vertices = conn_00.num_nodes
+    num_edges = conn_11.num_nodes
+
+    grid = StructuredQuadGrid(domain)
+    dofmap = DofMap(grid)
+    dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, n_face_dofs)
+
+    assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
+    N = dofmap.num_dofs
+
+    num_verts_cell = 4
+    num_edges_cell = 4
+    A = np.zeros((N, N))
+    n = num_verts_cell * n_vertex_dofs + num_edges_cell * n_edge_dofs
+    a = np.ones((n, n))
+    for ci in range(dofmap.num_cells):
+        cell_dofs = dofmap.cell_dofs(ci)
+        A[np.ix_(cell_dofs, cell_dofs)] += a
+    assert np.isclose(np.sum(A), 800)
+
+    def left(x):
+        return np.isclose(x[0], 0.0)
+
+    ents = dofmap.grid.locate_entities(1, left)
+    assert ents.size == 1
+    dofs = dofmap.entity_dofs(1, ents[0])
+    assert len(dofs) == 3
+    assert np.allclose(np.array([11, 12, 13]), dofs)
+
+    def bottom(x):
+        return np.isclose(x[1], 0.0)
+
+    ents = dofmap.grid.locate_entities(1, bottom)
+    assert ents.size == 2
+    dofs = dofmap.entity_dofs(1, ents[0])
+    assert len(dofs) == 3
+    assert np.allclose(np.array([8, 9, 10]), dofs)
 
 
 def test_array():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
-    mesh = build_mesh(2, 1, order=2)
-    """mesh.points
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
+        )
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    """
+    v2----e3----v3
+    |           |
+    e1          e2
+    |           |
+    v0----e0----v1
 
-         0<-------------------->2
-
-    1    3-----10----8-----9----2
-    ^    |           |          |
-    |    11  cell_0  12  cell_1 7
-    v    |           |          |
-    0    0-----5-----4-----6----1
-
-    dofs are distributed first for cell 0 in local order of
-    vertices and edges.
-    Then continue with vertices and edges in local order which
-    haven't been assigned any DoFs yet.
     """
     # 6 vertices
     # 7 edges
     n_vertex_dofs = 2
-    dofs_per_edge = np.array(
-        [
-            [5, 12, 10, 11],
-            [6, 7, 9, 12],
-        ]
+    dofs_per_edge = np.array([[5, 12, 10, 11], [11, 10, 7, 12]])
+    n_face_dofs = 0
+
+    domain.topology.create_connectivity(0, 0)
+    domain.topology.create_connectivity(1, 1)
+
+    conn_00 = domain.topology.connectivity(0, 0)
+    num_vertices = conn_00.num_nodes
+
+    grid = StructuredQuadGrid(domain)
+    dofmap = DofMap(grid)
+    dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, n_face_dofs)
+
+    N = dofmap.num_dofs
+    # num dofs minus dofs on the middle edge that are not distributed twice
+    expected_N = (
+        n_vertex_dofs * num_vertices + np.sum(dofs_per_edge) - dofs_per_edge[1][1]
     )
+    assert N == expected_N
 
-    dofmap = DofMap(mesh, 2, 2)
-    dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, 0)
-
-    N = dofmap.dofs()
-    assert N == n_vertex_dofs * 6 + np.sum(dofs_per_edge) - 12
+    num_verts_cell = 4
     A = np.zeros((N, N))  # global matrix
     summe = 0
-    for ci, cell in enumerate(dofmap.cells):
-        n = 4 * n_vertex_dofs + np.sum(dofs_per_edge[ci])
+    for ci in range(dofmap.num_cells):
+        n = num_verts_cell * n_vertex_dofs + np.sum(dofs_per_edge[ci])
         a = np.ones((n, n))  # local matrix
         summe += n**2
         cell_dofs = dofmap.cell_dofs(ci)
         A[np.ix_(cell_dofs, cell_dofs)] += a
     assert np.isclose(np.sum(A), summe)
 
-    x_dofs = dofmap.tabulate_dof_coordinates()
-    assert np.allclose(x_dofs[[0, 1]], np.zeros((2, 2)))
-    assert np.allclose(x_dofs[list(range(8, 8 + 5))], np.vstack(((0.5, 0.0),) * 5))
-    assert np.allclose(x_dofs[list(range(13, 13 + 12))], np.vstack(((1.0, 0.5),) * 12))
+    def origin(x):
+        return np.logical_and(np.isclose(x[0], 0.0), np.isclose(x[1], 0.0))
 
-    assert np.allclose(
-        dofmap.locate_dofs([[0, 0], [0.5, 0]]), np.array([0, 1, 8, 9, 10, 11, 12])
+    def top(x):
+        return np.isclose(x[1], 1.0)
+
+    vertex = dofmap.grid.locate_entities(0, origin)
+    assert len(vertex) == 1
+    dofs = dofmap.entity_dofs(0, vertex[0])
+    assert np.allclose(np.array([0, 1]), np.array(dofs))
+
+    edges = dofmap.grid.locate_entities_boundary(1, top)
+    dofs = []
+    for edge in edges:
+        dofs += dofmap.entity_dofs(1, edge)
+    assert len(dofs) == np.sum(dofs_per_edge[:, 3])
+    distributed_until_top_0 = 8 + np.sum(dofs_per_edge[0, :3])
+    distributed_until_top_1 = (
+        8
+        + np.sum(dofs_per_edge[0, :])
+        + 4
+        + np.sum(dofs_per_edge[1, :3])
+        - dofs_per_edge[1, 1]
     )
-    xxx = dofmap.within_range([0.0, 0.0], [0.5, 0.0])
-    c1 = np.allclose(dofmap.locate_dofs(xxx), np.array([0, 1, 8, 9, 10, 11, 12]))
-    xxx = dofmap.within_range([0.0, 0.0], [0.5, 0.0], edges_only=True)
-    c2 = np.allclose(dofmap.locate_dofs(xxx, sub=0), np.array([8, 10, 12]))
-    xxx = dofmap.within_range([0.0, 0.0], [0.5, 0.0], vertices_only=True)
-    c3 = np.allclose(
-        dofmap.locate_dofs(xxx, sub=1),
-        np.array(
-            [
-                1,
-            ]
+    assert np.allclose(
+        np.hstack(
+            (
+                np.arange(dofs_per_edge[0, 3]) + distributed_until_top_0,
+                np.arange(dofs_per_edge[1, 3]) + distributed_until_top_1,
+            )
         ),
-    )
-    assert all([c1, c2, c3])
-    assert np.allclose(dofmap.locate_dofs([[0, 0], [2, 0]], sub=0), np.array([0, 46]))
-    assert np.allclose(
-        dofmap.locate_dofs([[2.0, 0.5], [1.0, 1.0]]),
-        np.array([56, 57, 58, 59, 60, 61, 62, 4, 5]),
-    )
-    assert np.allclose(dofmap.locate_cells([[0, 0], [0.5, 0], [0, 0.5]]), [0])
-    assert np.allclose(dofmap.locate_cells([[1, 0]]), [0, 1])
-    assert np.allclose(dofmap.plane_at(0.0, "x"), np.array([[0, 0], [0, 1], [0, 0.5]]))
-    assert np.allclose(
-        dofmap.plane_at(0.0, "x", vertices_only=True), np.array([[0, 0], [0, 1]])
-    )
-    assert np.allclose(dofmap.plane_at(0.0, "x", edges_only=True), np.array([0, 0.5]))
-
-    assert np.allclose(
-        dofmap.get_cell_points(
-            [
-                0,
-            ]
-        ),
-        dofmap.points[dofmap.cells[0]],
-    )
-    assert np.allclose(
-        dofmap.get_cell_points(
-            [
-                0,
-            ],
-            gmsh_nodes=[4, 6],
-        ),
-        np.array([[0.5, 0.0], [0.5, 1.0]]),
-    )
-    assert np.allclose(
-        dofmap.get_cell_points([0, 1], gmsh_nodes=[0, 1, 6]),
-        np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [2.0, 0.0], [1.5, 1.0]]),
-    )
-
-
-def test_array_uniform():
-    """test dofmap with type(dofs_per_edge)==np.ndarray"""
-    mesh = build_mesh(2, 1, order=2)
-    """mesh.points
-
-    3-----10----8-----9----2
-    |           |          |
-    11  cell_0  12  cell_1 7
-    |           |          |
-    0-----5-----4-----6----1
-    """
-    # 6 vertices
-    # 7 edges
-    n_vertex_dofs = 2
-    n_edge_dofs = 3
-    dofs_per_edge = np.ones((2, 4), dtype=int) * n_edge_dofs
-    # n_edge_dofs = np.array([
-    #     [5, 12, 10, 11],
-    #     [6, 7, 9, 12]])
-
-    dofmap = DofMap(mesh, 2, 2)
-    dofmap.distribute_dofs(n_vertex_dofs, dofs_per_edge, 0)
-
-    N = dofmap.dofs()
-    assert N == n_vertex_dofs * 6 + np.sum(dofs_per_edge) - n_edge_dofs
-    A = np.zeros((N, N))
-    n = 4 * n_vertex_dofs + 4 * n_edge_dofs
-    a = np.ones((n, n))
-    for ci, cell in enumerate(dofmap.cells):
-        cell_dofs = dofmap.cell_dofs(ci)
-        A[np.ix_(cell_dofs, cell_dofs)] += a
-    assert np.isclose(np.sum(A), 800)
-    x_dofs = dofmap.tabulate_dof_coordinates()
-    assert np.allclose(x_dofs[0], np.array([0, 0]))
-    assert np.allclose(x_dofs[13], np.array([1.0, 0.5]))
-    assert np.allclose(x_dofs[32], np.array([1.5, 1.0]))
-
-    assert np.allclose(
-        dofmap.locate_dofs([[0, 0], [0.5, 0]]), np.array([0, 1, 8, 9, 10])
-    )
-    assert np.allclose(dofmap.locate_dofs([[0, 0], [2, 0]], sub=0), np.array([0, 20]))
-    assert np.allclose(dofmap.locate_cells([[0, 0], [0.5, 0], [0, 0.5]]), [0])
-    assert np.allclose(dofmap.locate_cells([[1, 0]]), [0, 1])
-    assert np.allclose(dofmap.plane_at(0.0, "x"), np.array([[0, 0], [0, 1], [0, 0.5]]))
-    assert np.allclose(
-        dofmap.plane_at(0.0, "x", vertices_only=True), np.array([[0, 0], [0, 1]])
-    )
-    assert np.allclose(dofmap.plane_at(0.0, "x", edges_only=True), np.array([0, 0.5]))
-
-    assert np.allclose(
-        dofmap.get_cell_points(
-            [
-                0,
-            ]
-        ),
-        dofmap.points[dofmap.cells[0]],
-    )
-    assert np.allclose(
-        dofmap.get_cell_points(
-            [
-                0,
-            ],
-            gmsh_nodes=[4, 6],
-        ),
-        np.array([[0.5, 0.0], [0.5, 1.0]]),
-    )
-    assert np.allclose(
-        dofmap.get_cell_points([0, 1], gmsh_nodes=[0, 1, 6]),
-        np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [2.0, 0.0], [1.5, 1.0]]),
-    )
-
-
-def test():
-    """test dofmap with type(dofs_per_edge)==int"""
-    mesh = build_mesh(2, 1, order=2)
-    """mesh.points
-
-    3-----10----8-----9----2
-    |           |          |
-    11          12         7
-    |           |          |
-    0-----5-----4-----6----1
-    """
-    # 6 vertices
-    # 7 edges
-    n_vertex_dofs = 2
-    n_edge_dofs = 3
-
-    dofmap = DofMap(mesh, 2, 2)
-    dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, 0)
-
-    N = dofmap.dofs()
-    assert N == n_vertex_dofs * 6 + n_edge_dofs * 7
-    A = np.zeros((N, N))
-    n = 4 * n_vertex_dofs + 4 * n_edge_dofs
-    a = np.ones((n, n))
-    for ci, cell in enumerate(dofmap.cells):
-        cell_dofs = dofmap.cell_dofs(ci)
-        A[np.ix_(cell_dofs, cell_dofs)] += a
-    assert np.isclose(np.sum(A), 800)
-    x_dofs = dofmap.tabulate_dof_coordinates()
-    assert np.allclose(x_dofs[0], np.array([0, 0]))
-    assert np.allclose(x_dofs[13], np.array([1.0, 0.5]))
-    assert np.allclose(x_dofs[32], np.array([1.5, 1.0]))
-
-    assert np.allclose(
-        dofmap.locate_dofs([[0, 0], [0.5, 0]]), np.array([0, 1, 8, 9, 10])
-    )
-    assert np.allclose(dofmap.locate_dofs([[0, 0], [2, 0]], sub=0), np.array([0, 20]))
-    assert np.allclose(dofmap.locate_cells([[0, 0], [0.5, 0], [0, 0.5]]), [0])
-    assert np.allclose(dofmap.locate_cells([[1, 0]]), [0, 1])
-    assert np.allclose(dofmap.plane_at(0.0, "x"), np.array([[0, 0], [0, 1], [0, 0.5]]))
-    assert np.allclose(
-        dofmap.plane_at(0.0, "x", vertices_only=True), np.array([[0, 0], [0, 1]])
-    )
-    assert np.allclose(dofmap.plane_at(0.0, "x", edges_only=True), np.array([0, 0.5]))
-
-    assert np.allclose(
-        dofmap.get_cell_points(
-            [
-                0,
-            ]
-        ),
-        dofmap.points[dofmap.cells[0]],
-    )
-    assert np.allclose(
-        dofmap.get_cell_points(
-            [
-                0,
-            ],
-            gmsh_nodes=[4, 6],
-        ),
-        np.array([[0.5, 0.0], [0.5, 1.0]]),
-    )
-    assert np.allclose(
-        dofmap.get_cell_points([0, 1], gmsh_nodes=[0, 1, 6]),
-        np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [2.0, 0.0], [1.5, 1.0]]),
+        dofs,
     )
 
 

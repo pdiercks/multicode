@@ -18,7 +18,7 @@ class NumpyLine:
         if self.nn == 2:
             self.G = np.column_stack((np.ones(nodes.size), nodes))
         elif self.nn == 3:
-            self.G = np.column_stack((np.ones(nodes.size), nodes, nodes ** 2))
+            self.G = np.column_stack((np.ones(nodes.size), nodes, nodes**2))
         else:
             raise NotImplementedError
 
@@ -37,23 +37,15 @@ class NumpyLine:
         phi : np.ndarray
             The shape functions.
         """
-        assert function_space.ufl_element().family() in ("Lagrange", "CG")
-        if function_space.num_sub_spaces() > 0:
-            coordinates = function_space.sub(0).collapse().tabulate_dof_coordinates()
-        else:
-            coordinates = function_space.tabulate_dof_coordinates()
+        assert function_space.ufl_element().family() in ("Lagrange", "P")
+        coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         coordinates = coordinates[:, sub]
         if self.nn == 2:
-            X = np.column_stack(
-                (
-                    np.ones(coordinates.size),
-                    coordinates,
-                )
-            )
+            X = np.column_stack((np.ones(coordinates.size), coordinates))
         elif self.nn == 3:
             X = np.column_stack(
-                (np.ones(coordinates.size), coordinates, coordinates ** 2)
+                (np.ones(coordinates.size), coordinates, coordinates**2)
             )
         else:
             assert False
@@ -94,18 +86,18 @@ def get_P_matrix(X, nn):
         x,
         y,
         x * y,
-        x ** 2,
-        y ** 2,
-        x ** 2 * y,
-        x * y ** 2,
-        x ** 2 * y ** 2,
-        x ** 3,
-        y ** 3,
-        x ** 3 * y,
-        x * y ** 3,
-        x ** 3 * y ** 2,
-        x ** 2 * y ** 3,
-        x ** 3 * y ** 3,
+        x**2,
+        y**2,
+        x**2 * y,
+        x * y**2,
+        x**2 * y**2,
+        x**3,
+        y**3,
+        x**3 * y,
+        x * y**3,
+        x**3 * y**2,
+        x**2 * y**3,
+        x**3 * y**3,
     ]
     return np.column_stack(variables[:nn])
 
@@ -146,11 +138,8 @@ class NumpyQuad:
             The standard shape functions.
 
         """
-        assert function_space.ufl_element().family() in ("Lagrange", "CG")
-        if function_space.num_sub_spaces() > 0:
-            coordinates = function_space.sub(0).collapse().tabulate_dof_coordinates()
-        else:
-            coordinates = function_space.tabulate_dof_coordinates()
+        assert function_space.ufl_element().family() in ("P", "Q", "Lagrange")
+        coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         X = get_P_matrix(coordinates, self.nn)
         Id = np.eye(self.nn)
@@ -234,7 +223,7 @@ def _get_hierarchical_shape_fun_expr(degree):
     else:
         p = degree - 1
         x = sympy.symbols("x")
-        N = sympy.diff((x ** 2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
+        N = sympy.diff((x**2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
         return sympy.lambdify(x, N, "numpy")
 
 

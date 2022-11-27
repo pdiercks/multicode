@@ -4,8 +4,10 @@ plots/plotstuff.py"""
 from pathlib import Path
 import subprocess
 import matplotlib as mpl
+
 mpl.use("pgf")
 import matplotlib.pyplot as plt
+
 
 class PlottingContext:
     def __init__(self, argv, style):
@@ -30,6 +32,10 @@ class PlottingContext:
         else:
             plt.savefig("/tmp/current_mpl_plot.pdf")
             try:
-                subprocess.run("ps aux | grep current_mpl_plot.pdf | grep -v grep", shell=True, check=True)
+                subprocess.run(
+                    "ps aux | grep current_mpl_plot.pdf | grep -v grep",
+                    shell=True,
+                    check=True,
+                )
             except subprocess.CalledProcessError:
                 subprocess.run(["xdg-open", "/tmp/current_mpl_plot.pdf"])

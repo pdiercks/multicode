@@ -4,11 +4,7 @@
 # Authorship: the pyMOR developers
 # the original code is part of the pymor tutorial https://docs.pymor.org/2020.2.0/tutorial_basis_generation.html
 import numpy as np
-from dolfin import Function, DirichletBC
-from multi.shapes import NumpyQuad
-from pymor.algorithms.pod import pod
-from pymor.bindings.fenics import FenicsVectorSpace
-from pymor.vectorarrays.numpy import NumpyVectorSpace
+from dolfinx.fem import Function
 
 
 def compute_proj_errors(basis, V, product, relative=True):
@@ -72,58 +68,39 @@ def compute_proj_errors_orth_basis(basis, V, product, relative=True):
     return errors
 
 
-def project_soi_data(
-    data_path, domain, V, restrict_to_boundary=None, soi_degree=2, use_pod=False
-):
-    """project structure of interest data into space
+def fine_scale_part(u, coarse_space, in_place=False):
+    """returns fine scale part u_f = u - u_c
 
     Parameters
     ----------
-    data_path : FilePath
-        The path to the structure of interest data.
-    domain : multi.RectangularDomain
-        The computational domain. Note that this has to
-        be a rectangular domain.
-    V : dolfin.FunctionSpace
-        The function space to project to.
-    restrict_to_boundary : dolfin.SubDomain, optional
-        Restrict the projection to a given boundary of the domain.
-    soi_degree : int, optional
-        Polynomial degree with which the SoI data was computed.
-    use_pod : bool, optional
-        If True, use pod to filter the SoI data.
+    u : dolfinx.fem.Function
+        The function whose fine scale part is computed.
+    coarse_space : dolfinx.fem.FunctionSpace
+        The coarse FE space W (u_c in W).
+    in_place : optional, bool
+        If True, modify u in-place.
 
     Returns
     -------
-    numpy.ndarray
-        The projected SoI data.
+    u_f: dolfinx.fem.Function or None if `in_place==True`.
+
+    Note
+    ----
+    u.function_space.mesh and coarse_space.mesh need to be
+    partitions of the same domain Ω.
     """
-    # prepare global shape functions in space
-    if soi_degree == 1:
-        num_nodes = 4
-    elif soi_degree == 2:
-        num_nodes = 9
-    else:
-        raise NotImplementedError
-    nodes = domain.get_nodes(n=num_nodes)
-    quadrilateral = NumpyQuad(nodes)
-    shape_functions = quadrilateral.interpolate(V)
-    source = FenicsVectorSpace(V)
-    shapes = source.from_numpy(shape_functions)
 
-    # prepare SoI data
-    data_array = np.load(data_path)
-    numpy_space = NumpyVectorSpace(data_array.shape[1])
-    soi_data = numpy_space.make_array(data_array)
-    if use_pod:
-        soi_data, svals = pod(soi_data)
-    U = shapes.lincomb(soi_data.to_numpy())
+    V = u.function_space
+    u_c = Function(V)
+    w = Function(coarse_space)
 
-    if restrict_to_boundary is not None:
-        # restrict U to boundary
-        boundary = restrict_to_boundary
-        bc = DirichletBC(V, Function(V), boundary)
-        boundary_dofs = list(bc.get_boundary_values().keys())
-        return U.dofs(boundary_dofs)
+    w.interpolate(u)
+    u_c.interpolate(w)
+
+    if in_place:
+        u.vector.axpy(-1, u_c.vector)
     else:
-        return U.to_numpy()
+        u_f = Function(V)
+        u_f.vector.axpy(1.0, u.vector)
+        u_f.vector.axpy(-1.0, u_c.vector)
+        return u_f

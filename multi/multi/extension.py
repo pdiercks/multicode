@@ -1,126 +1,111 @@
-import numpy as np
-import dolfin as df
-from pymor.bindings.fenics import FenicsMatrixOperator
+import dolfinx
 
 
-def extend_pymor(
-    problem,
-    boundary_data,
-    solver_options={"inverse": {"solver": "mumps"}},
-):
-    """extend boundary data into domain associated with the given problem
+def extend(problem, boundary_data, petsc_options={}):
+    """extend the `boundary_data` into the domain of the `problem`
 
     Parameters
     ----------
-    problem
-        The variational problem.
-    boundary_data
-        A list of dolfin vectors (elements of problem.V),
-        a numpy array or a VectorArray.
-    solver_options : dict, optional
-        Options in pymor format.
+    problem : multi.LinearProblem
+        The linear problem.
+    boundary_data : list of list of dolfinx.fem.dirichletbc
+        The boundary data to be extended.
+    petsc_options : optional
+        The petsc options for the linear problem.
 
-    Returns
-    -------
-    U : VectorArray
-        The extended vectors.
     """
+    problem.clear_bcs()
 
-    # assemble lhs
-    A = df.PETScMatrix()
-    lhs_form = problem.get_form_lhs()
-    df.assemble(lhs_form, tensor=A)
-
-    # rhs
     V = problem.V
-    B = FenicsMatrixOperator(A.copy(), V, V, solver_options=solver_options, name="B")
+    domain = V.mesh
+    tdim = domain.topology.dim
+    fdim = tdim - 1
 
-    # prepare operator
-    dummy = df.Function(V)
-    bc = df.DirichletBC(V, dummy, df.DomainBoundary())
-    bc.zero_columns(A, dummy.vector(), 1.0)
-    # see FenicsMatrixOperator._real_apply_inverse_one_vector
-    A = FenicsMatrixOperator(A, V, V, solver_options=solver_options, name="A")
+    # add dummy bc on whole boundary
+    # to zero out rows and columns of matrix A
+    zero_fun = dolfinx.fem.Function(V)
+    zero_fun.vector.zeroEntries()
+    boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+    problem.add_dirichlet_bc(
+        zero_fun, boundary_facets, method="topological", entity_dim=fdim
+    )
+    bcs = problem.get_dirichlet_bcs()
 
-    # wrap boundary_data as FenicsVectorArray
-    space = B.range
-    if isinstance(boundary_data, np.ndarray):
-        R = space.from_numpy(boundary_data)
-    elif isinstance(boundary_data, list):
-        R = space.make_array(boundary_data)
-    else:
-        R = space.from_numpy(boundary_data.to_numpy())
+    problem.setup_solver(petsc_options=petsc_options)
+    solver = problem.solver
 
-    # form rhs for each problem
-    # subtract g(x_i) times the i-th column of A from the rhs
-    rhs = -B.apply(R)
-
-    # set g(x_i) for i-th dof in rhs
-    bc_dofs = list(bc.get_boundary_values().keys())
-    bc_vals = R.dofs(bc_dofs)
-    # FIXME currently, I have to use a workaround since
-    # I don't know how to modify FenicsVectorArray in-place
-    rhs_array = rhs.to_numpy()
-    assert bc_vals.shape == (len(rhs), len(bc_dofs))
-    rhs_array[:, bc_dofs] = bc_vals
-    rhs = space.from_numpy(rhs_array)
-
-    U = A.apply_inverse(rhs)
-    return U
+    problem.assemble_matrix(bcs)
+    # clear bcs
+    problem.clear_bcs()
 
 
-def extend(
-    problem,
-    boundary_data,
-    solver_options={"solver": "mumps"},
-):
-    """extend boundary data into domain associated with the given problem
+    # define all extensions that should be computed
+    assert all(
+        [
+            isinstance(bc, dolfinx.fem.DirichletBCMetaClass)
+            for bcs in boundary_data
+            for bc in bcs
+        ]
+    )
+
+    # initialize rhs vector
+    rhs = problem.b
+    # initialize solution
+    u = dolfinx.fem.Function(problem.V)
+
+    extensions = []
+    for bcs in boundary_data:
+        problem.clear_bcs()
+        for bc in bcs:
+            problem.add_dirichlet_bc(bc)
+        current_bcs = problem.get_dirichlet_bcs()
+
+        # set values to rhs
+        problem.assemble_vector(current_bcs)
+        solver.solve(rhs, u.vector)
+        extensions.append(u.vector.copy())
+
+    return extensions
+
+
+# FIXME dim or boundary, but not both are required?
+# TODO can use interpolation between different meshes now
+# maybe this is not needed anymore
+def restrict(function, marker, dim, boundary=False):
+    """restrict the function to some part of the domain
 
     Parameters
     ----------
-    problem
-        The variational problem.
-    boundary_data
-        A list of dolfin functions (elements of problem.V).
+    function : dolfinx.fem.Function
+        The function to be evaluated at the boundary.
+    marker : callable
+        A function that defines the subdomain geometrically.
+        `dolfinx.mesh.locate_entities` is used.
+    dim : int
+        Topological dimension of the entities.
+    boundary : optional, bool
+        If True, use `dolfinx.mesh.locate_entities_boundary` and
+        locate entities on the boundary only.
 
     Returns
     -------
-    A list of dolfin vectors.
+    function values restricted to some part of the domain
     """
 
-    # assemble lhs
-    A = df.PETScMatrix()
-    lhs_form = problem.get_form_lhs()
-    df.assemble(lhs_form, tensor=A)
+    V = function.function_space
+    domain = V.mesh
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    assert dim in (fdim, tdim)
 
-    # rhs
-    B = A.copy()
-
-    # prepare operator
-    V = problem.V
-    dummy = df.Function(V)
-    bc = df.DirichletBC(V, dummy, df.DomainBoundary())
-    bc.zero_columns(A, dummy.vector(), 1.0)
-
-    # solver
-    method = solver_options.get("solver")
-    preconditioner = solver_options.get("preconditioner")
-    if method == "lu" or method in df.lu_solver_methods():
-        method = "default" if method == "lu" else method
-        solver = df.LUSolver(A, method)
+    if boundary:
+        entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
     else:
-        solver = df.KrylovSolver(A, method, preconditioner)
+        entities = dolfinx.mesh.locate_entities(domain, tdim, marker)
 
-    # Vectors for solution x, boundary data g, rhs b
-    b = df.Function(V)
-
-    extended = []
-    for g in boundary_data:
-        x = df.Function(V)
-        bc = df.DirichletBC(V, g, df.DomainBoundary())
-        b.vector().zero()
-        bc.zero_columns(B.copy(), b.vector(), 1.0)
-        solver.solve(x.vector(), b.vector())
-        extended.append(x.vector())
-
-    return extended
+    dofs = dolfinx.fem.locate_dofs_topological(V, dim, entities)
+    dummy = dolfinx.fem.Function(V)
+    dummy.x.set(0.0)
+    bc = dolfinx.fem.dirichletbc(dummy, dofs)
+    dof_indices = bc.dof_indices()[0]
+    return function.vector.array[dof_indices]

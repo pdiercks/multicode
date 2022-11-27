@@ -1,103 +1,13 @@
 """miscellaneous helpers"""
 
-import dolfin as df
 import numpy as np
-from pymor.vectorarrays.numpy import NumpyVectorArray
 
 
-def make_mapping(sub_space, super_space):
-    """get map from sub to super space
-
-    Parameters
-    ----------
-    sub_space
-        A dolfin.FunctionSpace
-    super_space
-        A dolfin.FunctionSpace
-
-    Returns
-    -------
-    The dofs of super_space located at entities in sub_space.
-
-    Note: This only works for conforming meshes.
-    """
-    f = df.Function(super_space)
-    f.vector().set_local(super_space.dofmap().dofs())
-    If = df.interpolate(f, sub_space)
-    return (If.vector().get_local() + 0.5).astype(int)
-
-
-def select_modes(basis, modes, max_modes):
-    """select modes according to local dof order in multi.dofmap.DofMap
-
-    Parameters
-    ----------
-    basis : np.ndarray
-        The multiscale basis used.
-    modes : int or list of int
-        Number of modes per edge.
-    max_modes : int or list of int
-        Maximum number of modes per edge.
-
-    Returns
-    -------
-    basis : np.ndarray
-        Subset of the full basis.
-
-    """
-    if isinstance(max_modes, (int, np.integer)):
-        max_modes = [max_modes] * 4
-    if isinstance(modes, (int, np.integer)):
-        modes = [modes] * 4
-
-    # make sure that modes[edge] <= max_modes[edge]
-    assert len(max_modes) == len(modes)
-    for i in range(len(max_modes)):
-        if modes[i] > max_modes[i]:
-            modes[i] = max_modes[i]
-
-    coarse = [i for i in range(8)]
-    offset = len(coarse)
-    mask = coarse
-    for edge in range(4):
-        mask += [offset + i for i in range(modes[edge])]
-        offset += max_modes[edge]
-    return basis[mask]
-
-
-def set_values(U, dofs, values):
-    """set ``dofs`` entries of all vectors in VectorArray U to ``values``"""
-    if isinstance(U, NumpyVectorArray):
-        # unfortunately, I cannot figure out how to achieve the same
-        # for ListVectorArray of FenicsVectors
-        array = U.to_numpy()
-        array[:, dofs] = values
-    else:
-        space = U.space
-        array = U.to_numpy()
-        array[:, dofs] = values
-        return space.from_numpy(array)
-
-
-def restrict_to(domain, function):
-    """restrict given function or list of functions to domain"""
-    if isinstance(function, list):
-        # assuming all functions are elements of V
-        V = function[0].function_space()
-        element = V.ufl_element()
-        Vsub = df.FunctionSpace(domain.mesh, element)
-        assert Vsub.dim() < V.dim()
-        interp = []
-        for f in function:
-            If = df.interpolate(f, Vsub)
-            interp.append(If)
-        return interp
-    else:
-        V = function.function_space()
-        element = V.ufl_element()
-        Vsub = df.FunctionSpace(domain.mesh, element)
-        assert Vsub.dim() < V.dim()
-        return df.interpolate(function, Vsub)
+def x_dofs_VectorFunctionSpace(V):
+    bs = V.dofmap.bs
+    x = V.tabulate_dof_coordinates()
+    x_dofs = np.repeat(x, repeats=bs, axis=0)
+    return x_dofs
 
 
 def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
