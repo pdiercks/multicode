@@ -2,10 +2,6 @@ import dolfinx
 import ufl
 import numpy as np
 from petsc4py import PETSc
-from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
-from multi.interpolation import interpolate
-from multi.shapes import NumpyLine
-from multi.product import InnerProduct
 
 
 def get_boundary_dofs(V, marker):
@@ -36,6 +32,17 @@ class BoundaryDataFactory(object):
     """
 
     def __init__(self, domain, V):
+        """
+
+        Parameters
+        ----------
+        domain : dolfinx.mesh.Mesh
+            The computational domain.
+        V : dolfinx.fem.FunctionSpace
+            The FE space.
+
+        """
+
         self.domain = domain
         self.V = V
 

@@ -62,8 +62,11 @@ class RectangularDomain(Domain):
     ):
         super().__init__(grid, cell_markers, facet_markers, index)
 
-    def create_coarse_grid(self):
+    def create_coarse_grid(self, num_cells=1):
         """create a coarse grid partition of Ω"""
+
+        if hasattr(self, "coarse_grid"):
+            raise AttributeError("Coarse grid already exists")
 
         xmin, ymin, zmin = self.xmin
         xmax, ymax, zmax = self.xmax
@@ -71,11 +74,19 @@ class RectangularDomain(Domain):
         with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
             create_rectangle_grid(
                     xmin, xmax, ymin, ymax, 0.,
-                    recombine=True, num_cells=1, out_file=tf.name)
+                    recombine=True, num_cells=num_cells, out_file=tf.name)
             coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
         self.coarse_grid = coarse
 
-    def create_edge_meshes(self, num_cells=None):
+    def set_coarse_grid(self, mesh):
+        """set a coarse grid partition of Ω"""
+
+        if hasattr(self, "coarse_grid"):
+            raise AttributeError("Coarse grid already exists")
+
+        self.coarse_grid = mesh
+
+    def create_edge_grids(self, num_cells=None):
         """create coarse and fine grid partitions of the boundary of Ω"""
         parent = self.grid
         tdim = parent.topology.dim

@@ -55,7 +55,7 @@ def test_2d():
     rectangle = RectangularDomain(
         get_unit_square_mesh(10, 10), index=17
     )
-    rectangle.create_edge_meshes(10)
+    rectangle.create_edge_grids(10)
     assert len(rectangle.fine_edge_grid.keys()) == 4
     assert len(rectangle.coarse_edge_grid.keys()) == 4
     assert isinstance(rectangle.fine_edge_grid["bottom"], dolfinx.mesh.Mesh)

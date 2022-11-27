@@ -9,6 +9,7 @@ from petsc4py import PETSc
 
 from multi.bcs import BoundaryConditions
 from multi.domain import StructuredQuadGrid, Domain
+from multi.dofmap import QuadrilateralDofLayout
 from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
@@ -21,6 +22,7 @@ from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
 from pymor.tools.random import get_random_state
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
+from pymor.tools.timing import Timer
 
 from scipy.sparse import csc_matrix
 
@@ -238,7 +240,7 @@ class LinearElasticityProblem(LinearProblem):
             )
             # FIXME double check if gmsh cell data starts at 1
             assert np.amin(domain.cell_markers.values) > 0
-            mesh = domain.mesh
+            mesh = domain.grid
             subdomains = domain.cell_markers
             self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
         self.gdim = int(V.element.value_shape)
@@ -266,12 +268,6 @@ class LinearElasticityProblem(LinearProblem):
         family_name = ufl_element.family_name
         degree = ufl_element.degree()
 
-        # FIXME dolfinx:nightly now returns basix.ufl_wrapper.VectorElement
-        # instead of ufl.VectorElement --> .reconstruct is not implemened
-        # Therefore, _init_edge_spaces was moved to here and VectorFunctionSpace
-        # is used to create edge spaces.
-
-        # V_to_L = {}
         edge_spaces = {}
         for scale, data in edge_meshes.items():
             edge_spaces[scale] = {}
@@ -399,6 +395,7 @@ class TransferProblem(object):
 
     """
 
+    @Timer("TransferProblem.__init__")
     def __init__(
         self,
         problem,
@@ -462,6 +459,7 @@ class TransferProblem(object):
         """
         self._neumann = neumann
 
+    @Timer("_init_bc_gamma_out")
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
         V = self.source.V
@@ -482,10 +480,12 @@ class TransferProblem(object):
         # source space restricted to Γ_out
         self._source_gamma = NumpyVectorSpace(dofs.size)
 
+    @Timer("_make_mapping")
     def _make_mapping(self):
         """builds map from source space to range space"""
         return make_mapping(self.range.V, self.source.V)
 
+    @Timer("discretize_operator")
     def discretize_operator(self):
         """discretize the operator"""
         V = self.source.V
@@ -515,6 +515,7 @@ class TransferProblem(object):
             A_0, V, V, solver_options=self.solver_options, name="A_0"
         )
 
+    @Timer("discretize_neumann")
     def discretize_neumann(self):
         # FIXME handling of volume forces not possible
         # BoundaryConditinos only handles traction forces
@@ -552,6 +553,7 @@ class TransferProblem(object):
         rhs = self.source.make_array([rhs_vector])
         self._f_ext = rhs
 
+    @Timer("discretize_rhs")
     def discretize_rhs(self, boundary_data):
         """discretize the right hand side"""
         R = boundary_data
@@ -584,6 +586,7 @@ class TransferProblem(object):
 
         return self.source.from_numpy(rhs_array)
 
+    @Timer("generate_boundary_data")
     def generate_boundary_data(self, values):
         """generate boundary data g in V with ``values`` on Γ_out and zero elsewhere"""
         bc_dofs = self._bc_dofs_gamma_out
@@ -592,6 +595,7 @@ class TransferProblem(object):
         D[:, bc_dofs] = values
         return self.source.from_numpy(D)
 
+    @Timer("generate_random_boundary_data")
     def generate_random_boundary_data(
         self, count, distribution="normal", random_state=None, seed=None, **kwargs
     ):
@@ -610,6 +614,7 @@ class TransferProblem(object):
         D[:, bc_dofs] = values
         return self.source.from_numpy(D)
 
+    @Timer("TransferProblem.solve")
     def solve(self, boundary_data):
         """solve the problem for boundary_data
 
@@ -636,6 +641,7 @@ class TransferProblem(object):
         else:
             return U_in
 
+    @Timer("_get_source_product")
     def _get_source_product(self, product=None, bcs=(), product_name=None):
         """get source product
 
@@ -667,6 +673,7 @@ class TransferProblem(object):
         else:
             return None
 
+    @Timer("_get_range_product")
     def _get_range_product(self, product=None, bcs=(), product_name=None):
         """discretize range product
 
@@ -692,9 +699,12 @@ class TransferProblem(object):
 
 
 class MultiscaleProblem(object):
+    """base class to handle definition of a multiscale problem"""
+
     def __init__(self, coarse_grid_path, fine_grid_path):
         self.coarse_grid_path = pathlib.Path(coarse_grid_path)
         self.fine_grid_path = pathlib.Path(fine_grid_path)
+        self._setup_grids()
 
     @property
     def material(self):
@@ -738,9 +748,8 @@ class MultiscaleProblem(object):
             degree = self.degree
         except AttributeError as err:
             raise err("You need to set the degree of the problem first")
-        self._setup_grids()
-        self.W = dolfinx.fem.VectorFunctionSpace(self.coarse_grid.mesh, (family, 1))
-        self.V = dolfinx.fem.VectorFunctionSpace(self.fine_grid.mesh, (family, degree))
+        self.W = dolfinx.fem.VectorFunctionSpace(self.coarse_grid.grid, (family, 1))
+        self.V = dolfinx.fem.VectorFunctionSpace(self.fine_grid.grid, (family, degree))
 
     @property
     def cell_sets(self):
@@ -750,17 +759,66 @@ class MultiscaleProblem(object):
     def boundaries(self):
         raise NotImplementedError
 
-    def get_dirichlet(self):
+    def get_dirichlet(self, cell_index=None):
         raise NotImplementedError
 
-    def get_neumann(self):
+    def get_neumann(self, cell_index=None):
         raise NotImplementedError
 
-    def get_gamma_out(self):
+    def get_gamma_out(self, cell_index):
         raise NotImplementedError
 
-    def get_remove_kernel(self):
+    def get_remove_kernel(self, cell_index):
         raise NotImplementedError
 
-    def get_pod_config(self):
-        raise NotImplementedError
+    def build_edge_basis_config(self, cell_sets):
+        """defines which oversampling problem is used to
+        compute the POD basis for a certain edge
+
+        Parameters
+        ----------
+        cell_sets : dict
+            Cell sets according to which 'active_edges' for
+            a cell are defined. The order is important.
+
+        """
+
+        cs = {}
+        # sort cell indices in increasing order
+        for key, value in cell_sets.items():
+            cs[key] = np.sort(list(value))
+
+        dof_layout = QuadrilateralDofLayout()
+        active_edges = {}
+        edge_map = {}  # maps global edge index to tuple(cell index, local edge)
+        marked_edges = set()
+
+        for cset in cs.values():
+            for cell_index in cset:
+
+                active_edges[cell_index] = set()
+                edges = self.coarse_grid.get_entities(1, cell_index)
+                for local_ent, ent in enumerate(edges):
+                    edge = dof_layout.local_edge_index_map[local_ent]
+                    if ent not in marked_edges:
+                        active_edges[cell_index].add(edge)
+                        edge_map[ent] = (cell_index, edge)
+                        marked_edges.add(ent)
+        assert len(active_edges.keys()) == self.coarse_grid.num_cells
+        self.active_edges = active_edges
+        self.edge_map = edge_map
+
+
+    def get_active_edges(self, cell_index):
+        """returns the set of edges to consider for
+        construction of POD basis in the TransferProblem for given cell.
+        This depends on the `self.edge_basis_config`.
+
+        """
+        if not hasattr(self, "active_edges"):
+            raise AttributeError(
+                    "You have to define an edge basis configuration "
+                    "by calling `self.edge_basis_config`"
+                    )
+        config = self.active_edges
+        return config[cell_index]
