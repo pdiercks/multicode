@@ -9,7 +9,7 @@ from multi.extension import extend
 
 
 def test():
-    num_cells = 2
+    num_cells = int(100 / 1.41)
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, num_cells, num_cells, dolfinx.mesh.CellType.quadrilateral
     )
@@ -18,15 +18,17 @@ def test():
     print(f"Number of DoFs={Vdim}")
 
     class DummyProblem(LinearProblem):
-        def __init__(self, domain, V, solver_options=None):
-            super().__init__(domain, V, solver_options)
+        def __init__(self, domain, V):
+            super().__init__(domain, V)
 
-        def get_form_lhs(self):
+        @property
+        def form_lhs(self):
             u = self.u
             v = self.v
             return ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
 
-        def get_form_rhs(self):
+        @property
+        def form_rhs(self):
             v = self.v
             f = dolfinx.fem.Constant(self.V.mesh, ScalarType(0.0))
             return f * v * ufl.dx
@@ -35,8 +37,6 @@ def test():
         return np.isclose(x[1], 0.0)
 
     def boundary_expression_factory(k):
-        # def expr(x):
-        #     return np.sin(k * np.pi * x[0])
         def expr(x):
             return x[0] * k
 
@@ -47,7 +47,7 @@ def test():
     boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
 
     boundary_data = []
-    num_test = 7
+    num_test = 20
     for i in range(1, num_test + 1):
         problem.clear_bcs()
         g = dolfinx.fem.Function(V)
@@ -57,7 +57,12 @@ def test():
         boundary_data.append(bcs.copy())
 
     # compute extensions
-    extensions = extend(problem, boundary_data)
+    petsc_options = {
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "pc_factor_mat_solver_type": "mumps",
+    }
+    extensions = extend(problem, boundary_data, petsc_options=petsc_options)
     assert len(extensions) == num_test
     for fun in extensions:
         print(np.sum(fun[:]))
