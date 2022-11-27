@@ -237,13 +237,13 @@ class LinearElasticityProblem(LinearProblem):
         edge_meshes = {}
         try:
             edge_meshes["fine"] = self.domain.fine_edge_grid
-        except AttributeError:
-            pass
+        except AttributeError as err:
+            raise err("Fine grid partition of the edges does not exist.")
 
         try:
             edge_meshes["coarse"] = self.domain.coarse_edge_grid
-        except AttributeError:
-            pass
+        except AttributeError as err:
+            raise err("Coarse grid partition of the edges does not exist.")
 
         V = self.V
         ufl_element = V.ufl_element()
