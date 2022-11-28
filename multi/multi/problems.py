@@ -181,9 +181,13 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
         self._solver = PETSc.KSP().create(self.u.function_space.mesh.comm)
         self._solver.setOperators(self._A)
 
-        self._solver.setType(petsc_options["ksp_type"])
-        self._solver.getPC().setType(petsc_options["pc_type"])
-        self._solver.getPC().setFactorSolverType(petsc_options["pc_factor_mat_solver_type"])
+        ksp_type = petsc_options.get("ksp_type", "preonly")
+        pc_type = petsc_options.get("pc_type", "lu")
+        pc_factor_mat_solver_type = petsc_options.get("pc_factor_mat_solver_type", "mumps")
+
+        self._solver.setType(ksp_type)
+        self._solver.getPC().setType(pc_type)
+        self._solver.getPC().setFactorSolverType(pc_factor_mat_solver_type)
 
     def assemble_matrix(self, bcs=[]):
         """assemble matrix and apply boundary conditions"""
