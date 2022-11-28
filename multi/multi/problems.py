@@ -1,6 +1,7 @@
 import pathlib
 import yaml
 import dolfinx
+from dolfinx import cpp as _cpp
 from dolfinx.io import gmshio
 import ufl
 import numpy as np
@@ -152,14 +153,37 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
         L = self.form_rhs
         bcs = self.get_dirichlet_bcs()
 
-        super().__init__(
-            a,
-            L,
-            bcs,
-            petsc_options=petsc_options,
-            form_compiler_options=form_compiler_options,
-            jit_options=jit_options,
-        )
+        # FIXME there are issues with PETSc.Options()
+        # see here https://gitlab.com/petsc/petsc/-/issues/1201
+        # Avoid using global PETSc.Options until the issues is closed.
+        # super().__init__(
+        #     a,
+        #     L,
+        #     bcs,
+        #     petsc_options=petsc_options,
+        #     form_compiler_options=form_compiler_options,
+        #     jit_options=jit_options,
+        # )
+
+        # simplified version of super().__init__ as workaround
+        self._a = dolfinx.fem.form(a, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._A = dolfinx.fem.petsc.create_matrix(self._a)
+
+        self._L = dolfinx.fem.form(L, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._b = dolfinx.fem.petsc.create_vector(self._L)
+
+        # solution function
+        self.u = dolfinx.fem.Function(self.V)
+
+        self._x = _cpp.la.petsc.create_vector_wrap(self.u.x)
+        self.bcs = bcs
+
+        self._solver = PETSc.KSP().create(self.u.function_space.mesh.comm)
+        self._solver.setOperators(self._A)
+
+        self._solver.setType(petsc_options["ksp_type"])
+        self._solver.getPC().setType(petsc_options["pc_type"])
+        self._solver.getPC().setFactorSolverType(petsc_options["pc_factor_mat_solver_type"])
 
     def assemble_matrix(self, bcs=[]):
         """assemble matrix and apply boundary conditions"""
