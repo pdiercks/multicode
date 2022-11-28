@@ -22,7 +22,6 @@ from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
 from pymor.tools.random import get_random_state
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
-from pymor.tools.timing import Timer
 
 from scipy.sparse import csc_matrix
 
@@ -368,7 +367,6 @@ class TransferProblem(object):
 
     """
 
-    @Timer("TransferProblem.__init__")
     def __init__(
         self,
         problem,
@@ -415,7 +413,6 @@ class TransferProblem(object):
             self.range_l2_product = l2_product
             self.kernel = build_nullspace(self.range, product=l2_product, gdim=2)
 
-    @Timer("_init_bc_gamma_out")
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
         V = self.source.V
@@ -463,12 +460,10 @@ class TransferProblem(object):
         """map from source to range space"""
         return self._S_to_R
 
-    @Timer("_make_mapping")
     def _make_mapping(self):
         """builds map from source space to range space"""
         return make_mapping(self.range.V, self.source.V)
 
-    @Timer("discretize_operator")
     def discretize_operator(self):
         """discretize the operator A of the oversampling problem"""
         V = self.source.V
@@ -492,7 +487,6 @@ class TransferProblem(object):
         # now p.solver is setup with matrix p.A
         # and p.a should be used to modify rhs (apply lifting)
 
-    @Timer("discretize_rhs")
     def discretize_rhs(self, boundary_values):
         """discretize the right hand side
 
@@ -507,10 +501,6 @@ class TransferProblem(object):
         # zero values on Γ_D if present are added here without the user
         # having to care about this
 
-        # ddd = dolfinx.fem.locate_dofs_topological(tp.source.V, tp.fdim, tp.facets_Γ_out)
-        # bc_inhom = dolfinx.fem.dirichletbc(array, ddd, tp.source.V) # most likely
-        # because random values are created using numpy
-
         dofs = self.bc_dofs_gamma_out
         _dofs = self._dofs_Γ_out
         p = self.problem
@@ -520,16 +510,6 @@ class TransferProblem(object):
 
         p.assemble_vector(bcs=[bc_inhom])
 
-    # @Timer("generate_boundary_data")
-    # def generate_boundary_data(self, values):
-    #     """generate boundary data g in V(Γ_out)"""
-    #     bc_dofs = self.bc_dofs_gamma_out
-    #     assert values.shape[1] == len(bc_dofs)
-    #     D = np.zeros((len(values), self.source.dim))
-    #     D[:, bc_dofs] = values
-    #     return self.source.from_numpy(D)
-
-    @Timer("generate_random_boundary_data")
     def generate_random_boundary_data(
         self, count, distribution="normal", random_state=None, seed=None, **kwargs
     ):
@@ -544,7 +524,6 @@ class TransferProblem(object):
 
         return values
 
-    @Timer("TransferProblem.solve")
     def solve(self, boundary_values):
         """solve the problem for boundary_data
 
@@ -591,7 +570,6 @@ class TransferProblem(object):
         else:
             return U
 
-    @Timer("_get_source_product")
     def _get_source_product(self, product=None, bcs=(), product_name=None):
         """get source product
 
@@ -623,7 +601,6 @@ class TransferProblem(object):
         else:
             return None
 
-    @Timer("_get_range_product")
     def _get_range_product(self, product=None, bcs=(), product_name=None):
         """discretize range product
 
