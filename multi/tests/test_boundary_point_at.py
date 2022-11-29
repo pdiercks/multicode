@@ -13,7 +13,7 @@ def test_function_space():
     V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
 
     h = 1.0 / n
-    my_point = point_at([h * 2, h * 5, 0.0])
+    my_point = point_at(np.array([h * 2, h * 5, 0.0]))
 
     dofs = dolfinx.fem.locate_dofs_geometrical(V, my_point)
     bc = dolfinx.fem.dirichletbc(ScalarType(42), dofs, V)
