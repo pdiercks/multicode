@@ -2,12 +2,12 @@ import pathlib
 import yaml
 import dolfinx
 from dolfinx import cpp as _cpp
-from dolfinx.io import gmshio
 import ufl
 import numpy as np
 from mpi4py import MPI
 from petsc4py import PETSc
 
+from multi import gmshio
 from multi.bcs import BoundaryConditions
 from multi.domain import StructuredQuadGrid, Domain
 from multi.dofmap import QuadrilateralDofLayout
@@ -753,6 +753,9 @@ class MultiscaleProblem(object):
         active_edges = {}
         edge_map = {}  # maps global edge index to tuple(cell index, local edge)
         marked_edges = set()
+
+        from doit import tools
+        tools.set_trace()
 
         for cset in cs.values():
             for cell_index in cset:

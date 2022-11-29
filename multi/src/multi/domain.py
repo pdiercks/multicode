@@ -4,8 +4,8 @@ import tempfile
 import meshio
 import numpy as np
 import dolfinx
-from dolfinx.io import gmshio
 from mpi4py import MPI
+from multi import gmshio
 from multi.preprocessing import create_mesh, create_line_grid, create_rectangle_grid
 
 
