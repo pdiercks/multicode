@@ -253,10 +253,9 @@ class StructuredQuadGrid(object):
             vertices = self.get_entities(0, cell)
             dx = dolfinx.mesh.compute_midpoints(self.grid, 0, vertices)
             dx = np.around(dx, decimals=3)
-            xmin, ymin, zmin = dx[0]
-            xmax, ymax, zmax = dx[3]
-            assert xmin < xmax
-            assert ymin < ymax
+
+            xmin = np.amin(dx, axis=0)
+            xmax = np.amax(dx, axis=0)
 
             fine_grid_method = self.fine_grid_method[cell]
 
@@ -267,15 +266,15 @@ class StructuredQuadGrid(object):
                 if isinstance(fine_grid_method, str):
                     # read msh file and translate, then save to msh again
                     subdomain_mesh = meshio.read(fine_grid_method)
-                    subdomain_mesh.points += dx[0]
+                    subdomain_mesh.points += xmin
                     meshio.write(tf.name, subdomain_mesh, file_format="gmsh")
                 else:
                     # create msh via method
                     fine_grid_method(
-                        xmin,
-                        xmax,
-                        ymin,
-                        ymax,
+                        xmin[0],
+                        xmax[0],
+                        xmin[1],
+                        xmax[1],
                         num_cells=num_cells,
                         facets=create_facets,
                         out_file=tf.name,
