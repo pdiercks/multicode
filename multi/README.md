@@ -1,12 +1,10 @@
 # multi
 
-`multi` is a collection of little helper classes and functions which handle operations
-that come up repeatedly in the context of a variational multiscale method to model
-heterogeneous structures.
+This is a package to help model linear elastic heterogeneous structures
+via localized model order reduction.
 
-## Installation
-* using pip
+## Install
+
 ```
-git clone https://git.bam.de/mechanics/pdiercks/multicode.git && cd multi
-pip install .
+python3 -m pip install <path>
 ```
