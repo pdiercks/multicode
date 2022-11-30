@@ -1,9 +1,9 @@
 import dolfinx
+from dolfinx.io import gmshio
 from mpi4py import MPI
 import numpy as np
 import yaml
 
-from multi import gmshio
 from multi.problems import LinearElasticityProblem
 from multi.domain import RectangularDomain
 from multi.bcs import BoundaryDataFactory
