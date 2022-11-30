@@ -754,9 +754,6 @@ class MultiscaleProblem(object):
         edge_map = {}  # maps global edge index to tuple(cell index, local edge)
         marked_edges = set()
 
-        from doit import tools
-        tools.set_trace()
-
         for cset in cs.values():
             for cell_index in cset:
 
