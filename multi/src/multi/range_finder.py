@@ -199,7 +199,6 @@ def adaptive_edge_rrf(
     # ### initialize data structures
     test_set = {}
     range_spaces = {}
-    range_products = {}
     pod_bases = {}
     maxnorm = np.array([], dtype=float)
     edges = np.array([], dtype=str)
@@ -225,11 +224,6 @@ def adaptive_edge_rrf(
         gdim = tp.subproblem.domain.grid.geometry.dim
         range_bc = dolfinx.fem.dirichletbc(np.array((0, ) * gdim, dtype=ScalarType), _dofs_, edge_space)
         edge_boundary_dofs[edge] = range_bc.dof_indices()[0]
-
-        # ### range product
-        inner_product = InnerProduct(edge_space, range_product, bcs=(range_bc, ))
-        range_product_op = FenicsxMatrixOperator(inner_product.assemble_matrix(), edge_space, edge_space)
-        range_products[edge] = range_product_op
 
         # ### compute coarse scale edge basis
         nodes = dolfinx.mesh.compute_midpoints(edge_mesh, facet_dim, vertices)
@@ -259,6 +253,34 @@ def adaptive_edge_rrf(
             pod_bases[edge] = range_spaces[edge].empty()
         else:
             maxnorm = np.append(maxnorm, 0.0)
+
+    if isinstance(range_product, dict):
+        range_products = range_product
+    else:
+        range_products = {}
+        for i in range(dof_layout.num_entities[1]):
+            edge = edge_index_map[i]
+            edges = np.append(edges, edge)
+
+            edge_mesh = tp.subproblem.domain.fine_edge_grid[edge]
+            edge_space = tp.subproblem.edge_spaces["fine"][edge]
+            range_spaces[edge] = FenicsxVectorSpace(edge_space)
+
+            # ### create dirichletbc for range product
+            facet_dim = edge_mesh.topology.dim - 1
+            vertices = dolfinx.mesh.locate_entities_boundary(
+                    edge_mesh, facet_dim, lambda x: np.full(x[0].shape, True, dtype=bool)
+                    )
+            _dofs_ = dolfinx.fem.locate_dofs_topological(edge_space, facet_dim, vertices)
+            gdim = tp.subproblem.domain.grid.geometry.dim
+            range_bc = dolfinx.fem.dirichletbc(np.array((0, ) * gdim, dtype=ScalarType), _dofs_, edge_space)
+            edge_boundary_dofs[edge] = range_bc.dof_indices()[0]
+
+            # ### range product
+            inner_product = InnerProduct(edge_space, range_product, bcs=(range_bc, ))
+            range_product_op = FenicsxMatrixOperator(inner_product.assemble_matrix(), edge_space, edge_space)
+            range_products[edge] = range_product_op
+
 
     timer.stop()
     logger.debug(f"Preparing stuff took t={timer.dt}s.")
@@ -306,4 +328,4 @@ def adaptive_edge_rrf(
 
         logger.info(f"{maxnorm=}")
 
-    return pod_bases, range_products, num_solves
+    return pod_bases, num_solves
