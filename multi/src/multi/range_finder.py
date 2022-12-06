@@ -298,7 +298,6 @@ def adaptive_edge_rrf(
 
             # orthonormalize test set wrt pod basis
             M = test_set[edge]
-            # FIXME there should be 4 range_products
             M -= B.lincomb(B.inner(M, range_products[edge]).T)
 
             norm = M.norm(range_products[edge])
