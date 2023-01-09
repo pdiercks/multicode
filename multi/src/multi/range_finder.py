@@ -147,7 +147,7 @@ def adaptive_edge_rrf(
 
         # ### build covariances
         lc = sampling_options.get("correlation_length")
-        max_num_samples = 50  # upper bound would be range.dim I guess
+        max_num_samples = 40  # upper bound would be range.dim I guess
         # maybe do something like 
         # max_num_samples = min(user_input, range.dim)
         covariances, num_eigvals = [], []
@@ -279,7 +279,16 @@ def adaptive_edge_rrf(
         if distribution == "normal":
             v = tp.generate_random_boundary_data(1, distribution, random_state, **sampling_options)
         elif distribution == "multivariate_normal":
-            v = training_set[np.newaxis, num_solves]
+            try:
+                v = training_set[np.newaxis, num_solves]
+            except IndexError:
+                samples = tp.generate_random_boundary_data(
+                    count=10, distribution="multivariate_normal",
+                    random_state=random_state, mean=mean, cov=Σ
+                    )
+                training_set = np.append(training_set, samples, axis=0)
+                v = training_set[np.newaxis, num_solves]
+
 
         U = tp.solve(v)
         num_solves += 1
