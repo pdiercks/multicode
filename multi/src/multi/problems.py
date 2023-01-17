@@ -659,7 +659,6 @@ class MultiscaleProblem(object):
     def __init__(self, coarse_grid_path, fine_grid_path):
         self.coarse_grid_path = pathlib.Path(coarse_grid_path)
         self.fine_grid_path = pathlib.Path(fine_grid_path)
-        self._setup_grids()
 
     @property
     def material(self):
@@ -679,13 +678,15 @@ class MultiscaleProblem(object):
     def degree(self, degree):
         self._degree = int(degree)
 
-    def _setup_grids(self):
-        """create coarse and fine grid"""
+    def setup_coarse_grid(self):
+        """create coarse grid"""
         domain, ct, ft = gmshio.read_from_msh(
             self.coarse_grid_path.as_posix(), MPI.COMM_WORLD, gdim=2
         )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
+    def setup_fine_grid(self):
+        """create fine grid"""
         with dolfinx.io.XDMFFile(
             MPI.COMM_WORLD, self.fine_grid_path.as_posix(), "r"
         ) as xdmf:
@@ -703,13 +704,16 @@ class MultiscaleProblem(object):
             fine_domain, cell_markers=fine_ct, facet_markers=fine_ft
         )
 
-    def setup_fe_spaces(self, family="P"):
-        """create FE spaces on coarse and fine grid"""
+    def setup_coarse_space(self, family="P"):
+        """create FE space on coarse grid"""
+        self.W = dolfinx.fem.VectorFunctionSpace(self.coarse_grid.grid, (family, 1))
+
+    def setup_fine_space(self, family="P"):
+        """create FE space on fine grid"""
         try:
             degree = self.degree
         except AttributeError as err:
             raise err("You need to set the degree of the problem first")
-        self.W = dolfinx.fem.VectorFunctionSpace(self.coarse_grid.grid, (family, 1))
         self.V = dolfinx.fem.VectorFunctionSpace(self.fine_grid.grid, (family, degree))
 
     @property
