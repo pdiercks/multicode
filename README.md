@@ -6,28 +6,23 @@ The library contains
 * scripts / programs which can be used to generate meshes and construct a reduced basis.
 
 ## Installation
+It is recommended to install required dependencies via conda.
+* docopt
+* fenicsx (dolfinx, basix, ufl, ffcx)
+* gmsh
+* h5py
+* meshio
+* matplotlib (note that the `pgf` backend is used and requires a texlive installation)
+* pyaml
+* pymor
+* pyvista
+* pytest
+* sympy
 
-To use the library you need to install all software dependencies which are listed in the below command(s) (using conda and pip).
-```
-conda create -n <env-name> fenics=2019.1.0 gmsh=4.6.0 doit meshio=4.3.1 matplotlib pyaml line_profiler pymor=2020.1.2 pytest fenics_helpers
-conda activate <env-name> && conda install -c pdiercks pygmsh
-```
-Or:
-```
-conda env create -f env.yml
-```
-Note that you need to change the `prefix` in `env.yml`
-(`env.yml` was created by `conda env export --from-history > env.yml`).
-
-### Additional packages
-
-Unfortunately not all required packages are available from `anaconda.org`.
-These are installed via pip *after* everything else was installed successfully.
-
-#### multi
+The source code can be installed via `pip`.
 ```
 git clone https://git.bam.de/mechanics/pdiercks/multicode.git && cd multi
-pip install .
+$PYTHON -m pip install <path/to/package/directory>
 ```
 
 ## Usage
