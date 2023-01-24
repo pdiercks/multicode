@@ -681,14 +681,14 @@ class MultiscaleProblem(object):
     def setup_coarse_grid(self):
         """create coarse grid"""
         domain, ct, ft = gmshio.read_from_msh(
-            self.coarse_grid_path.as_posix(), MPI.COMM_WORLD, gdim=2
+            self.coarse_grid_path.as_posix(), MPI.COMM_SELF, gdim=2
         )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
     def setup_fine_grid(self):
         """create fine grid"""
         with dolfinx.io.XDMFFile(
-            MPI.COMM_WORLD, self.fine_grid_path.as_posix(), "r"
+            MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r"
         ) as xdmf:
             fine_domain = xdmf.read_mesh(name="Grid")
             fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")

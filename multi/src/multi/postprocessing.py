@@ -89,7 +89,7 @@ def write_local_fields(xdmf_file, multiscale_problem, dofmap, bases, u_rom, u_fo
 
         subdomain_xdmf = grid_dir / f"offline/subdomain_{cell_index:03}.xdmf"
 
-        with XDMFFile(MPI.COMM_WORLD, subdomain_xdmf.as_posix(), "r") as xdmf:
+        with XDMFFile(MPI.COMM_SELF, subdomain_xdmf.as_posix(), "r") as xdmf:
             subdomain = xdmf.read_mesh(name="Grid")
         V = dolfinx.fem.VectorFunctionSpace(subdomain, ("P", degree))
 
@@ -160,7 +160,7 @@ def compute_error_norms(
 
         subdomain_xdmf = grid_dir / f"offline/subdomain_{cell_index:03}.xdmf"
 
-        with XDMFFile(MPI.COMM_WORLD, subdomain_xdmf.as_posix(), "r") as xdmf:
+        with XDMFFile(MPI.COMM_SELF, subdomain_xdmf.as_posix(), "r") as xdmf:
             subdomain = xdmf.read_mesh(name="Grid")
         V = dolfinx.fem.VectorFunctionSpace(subdomain, ("P", degree))
 
@@ -184,7 +184,7 @@ def compute_error_norms(
 
             cell_index = 0
             subdomain_xdmf = grid_dir / f"offline/subdomain_{cell_index:03}.xdmf"
-            with XDMFFile(MPI.COMM_WORLD, subdomain_xdmf.as_posix(), "r") as xdmf:
+            with XDMFFile(MPI.COMM_SELF, subdomain_xdmf.as_posix(), "r") as xdmf:
                 subdomain = xdmf.read_mesh(name="Grid")
                 ct = xdmf.read_meshtags(subdomain, name="Grid")
 

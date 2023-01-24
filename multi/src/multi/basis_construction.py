@@ -62,7 +62,7 @@ def compute_coarse_scale_basis(rce_grid, material, degree, out_file):
         Degree of the VectorFunctionSpace
     """
     domain, cell_marker, facet_marker = gmshio.read_from_msh(
-        rce_grid, MPI.COMM_WORLD, gdim=2
+        rce_grid, MPI.COMM_SELF, gdim=2
     )
     omega = RectangularDomain(domain, cell_marker, facet_marker, index=0)
     V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree))

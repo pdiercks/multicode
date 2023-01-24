@@ -75,7 +75,7 @@ class RectangularDomain(Domain):
             create_rectangle_grid(
                     xmin, xmax, ymin, ymax, 0.,
                     recombine=True, num_cells=num_cells, out_file=tf.name)
-            coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+            coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
         self.coarse_grid = coarse
 
     def set_coarse_grid(self, mesh):
@@ -112,11 +112,11 @@ class RectangularDomain(Domain):
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line_grid(start, end, num_cells=num_cells, out_file=tf.name)
-                fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+                fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
             fine_grid[key] = fine
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line_grid(start, end, num_cells=1, out_file=tf.name)
-                coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+                coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
             coarse_grid[key] = coarse
 
         self.fine_edge_grid = fine_grid
