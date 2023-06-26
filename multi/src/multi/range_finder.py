@@ -243,7 +243,7 @@ def adaptive_edge_rrf_normal(
 
             # extend pod basis
             extend_basis(U_fine, B, product=range_products[edge],
-                         method="pod", pod_modes=1)
+                         method="gram_schmidt")
 
             # orthonormalize test set wrt pod basis
             M = test_set[edge]
@@ -514,7 +514,7 @@ def adaptive_edge_rrf_mvn(
 
             # extend pod basis
             extend_basis(U_fine, B, product=range_products[edge],
-                         method="pod", pod_modes=1)
+                         method="gram_schmidt")
 
             # orthonormalize test set wrt pod basis
             M = test_set[edge]
