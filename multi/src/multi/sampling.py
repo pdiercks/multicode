@@ -1,42 +1,45 @@
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
+from pymor.tools.random import new_rng
 
 
 # modified version of pymor.vectorarrays.interface._create_random_values
 # to be used with transfer_problem.generate_random_boundary_data
 # shape = (count, source.dim)
-def _create_random_values(shape, distribution, random_state, **kwargs):
+def _create_random_values(shape, distribution, seed_seq, **kwargs):
     if distribution not in ('uniform', 'normal', 'multivariate_normal'):
         raise NotImplementedError
 
-    if distribution == 'uniform':
-        if not kwargs.keys() <= {'low', 'high'}:
-            raise ValueError
-        low = kwargs.get('low', 0.)
-        high = kwargs.get('high', 1.)
-        if high <= low:
-            raise ValueError
-        return random_state.uniform(low, high, shape)
-    elif distribution == 'normal':
-        if not kwargs.keys() <= {'loc', 'scale'}:
-            raise ValueError
-        loc = kwargs.get('loc', 0.)
-        scale = kwargs.get('scale', 1.)
-        return random_state.normal(loc, scale, shape)
-    elif distribution == 'multivariate_normal':
-        if not kwargs.keys() <= {'mean', 'cov', 'check_valid', 'tol'}:
-            raise ValueError
-        mean = kwargs.get('mean')
-        cov = kwargs.get('cov')
-        check_valid = kwargs.get('check_valid', 'warn')
-        tol = kwargs.get('tol', 1e-8)
-        if mean is None:
-            raise ValueError
-        if cov is None:
-            raise ValueError
-        return random_state.multivariate_normal(mean, cov, size=shape[0], check_valid=check_valid, tol=tol)
-    else:
-        assert False
+    with new_rng(seed_seq) as random_state:
+
+        if distribution == 'uniform':
+            if not kwargs.keys() <= {'low', 'high'}:
+                raise ValueError
+            low = kwargs.get('low', 0.)
+            high = kwargs.get('high', 1.)
+            if high <= low:
+                raise ValueError
+            return random_state.uniform(low, high, shape)
+        elif distribution == 'normal':
+            if not kwargs.keys() <= {'loc', 'scale'}:
+                raise ValueError
+            loc = kwargs.get('loc', 0.)
+            scale = kwargs.get('scale', 1.)
+            return random_state.normal(loc, scale, shape)
+        elif distribution == 'multivariate_normal':
+            if not kwargs.keys() <= {'mean', 'cov', 'check_valid', 'tol'}:
+                raise ValueError
+            mean = kwargs.get('mean')
+            cov = kwargs.get('cov')
+            check_valid = kwargs.get('check_valid', 'warn')
+            tol = kwargs.get('tol', 1e-8)
+            if mean is None:
+                raise ValueError
+            if cov is None:
+                raise ValueError
+            return random_state.multivariate_normal(mean, cov, size=shape[0], check_valid=check_valid, tol=tol)
+        else:
+            assert False
 
 
 def correlation_function(
