@@ -20,7 +20,6 @@ from multi.solver import build_nullspace
 
 from pymor.core.logger import getLogger
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
-from pymor.tools.random import get_random_state
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
 
@@ -539,15 +538,13 @@ class TransferProblem(object):
         p.assemble_vector(bcs=[bc_inhom])
 
     def generate_random_boundary_data(
-        self, count, distribution="normal", random_state=None, seed=None, **kwargs
+        self, count, distribution="normal", seed_seq=None, **kwargs
     ):
         """generate random values shape (count, num_dofs_Γ_out)"""
 
         bc_dofs = self.bc_dofs_gamma_out  # actual size of the source space
-        assert random_state is None or seed is None
-        random_state = get_random_state(random_state, seed)
         values = _create_random_values(
-            (count, bc_dofs.size), distribution, random_state, **kwargs
+            (count, bc_dofs.size), distribution, seed_seq, **kwargs
         )
 
         return values
