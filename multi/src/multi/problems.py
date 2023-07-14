@@ -93,8 +93,8 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
         self.logger = getLogger("multi.problems.LinearProblem")
         self.domain = domain
         self.V = V
-        self.u = ufl.TrialFunction(V)
-        self.v = ufl.TestFunction(V)
+        self.trial = ufl.TrialFunction(V)
+        self.test = ufl.TestFunction(V)
         self._bc_handler = BoundaryConditions(domain.grid, V, domain.facet_markers)
 
     def add_dirichlet_bc(
@@ -315,8 +315,8 @@ class LinearElasticityProblem(LinearProblem):
     @property
     def form_lhs(self):
         """get bilinear form a(u, v) of the problem"""
-        u = self.u
-        v = self.v
+        u = self.trial
+        v = self.test
         if len(self.materials) > 1:
             return sum(
                 [
@@ -333,7 +333,7 @@ class LinearElasticityProblem(LinearProblem):
     def form_rhs(self):
         """get linear form f(v) of the problem"""
         domain = self.V.mesh
-        v = self.v
+        v = self.test
         zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
         rhs = ufl.inner(zero, v) * ufl.dx
 
