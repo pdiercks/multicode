@@ -1,9 +1,0 @@
-# dolfin.parameters for krylov solver
-krylov_solver:
-    relative_tolerance: 1.0e-9
-    absolute_tolerance: 1.0e-12
-    maximum_iterations: 1000
-# solver parameters dolfin.solve()
-solver_parameters:
-    linear_solver: "default"
-    preconditioner: "default"
