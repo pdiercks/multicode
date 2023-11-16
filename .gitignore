@@ -127,3 +127,4 @@ tags
 *.lprof
 
 multi/test/.assembly.py
+multi.env/

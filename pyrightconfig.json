@@ -1,0 +1,15 @@
+{
+    "include": [
+        "",
+    ],
+
+    "exclude": [
+        "**/__pycache__",
+        "**/node_modules",
+        "**/.*",
+        "multi.env",
+    ],
+
+    "venvPath": ".",
+    "venv": "multi.env",
+}
