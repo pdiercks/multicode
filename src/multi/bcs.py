@@ -1,7 +1,7 @@
 import dolfinx
 import ufl
 import numpy as np
-from petsc4py import PETSc
+from petsc4py.PETSc import ScalarType, InsertMode, ScatterMode # type: ignore
 
 
 def get_boundary_dofs(V, marker):
@@ -12,8 +12,8 @@ def get_boundary_dofs(V, marker):
     fdim = tdim - 1
     entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
     dofs = dolfinx.fem.locate_dofs_topological(V, fdim, entities)
-    bc = dolfinx.fem.dirichletbc(np.array((0,) * gdim, dtype=PETSc.ScalarType), dofs)
-    dof_indices = bc.dof_indices()[0]
+    bc = dolfinx.fem.dirichletbc(np.array((0,) * gdim, dtype=ScalarType), dofs)
+    dof_indices = bc.dof_indices()[0] # type: ignore
     return dof_indices
 
 
@@ -74,7 +74,7 @@ class BoundaryDataFactory(object):
         """
         u = dolfinx.fem.Function(self.V)
         u.vector.zeroEntries()
-        u.vector.setValues(boundary_dofs, values, addv=PETSc.InsertMode.INSERT)
+        u.vector.setValues(boundary_dofs, values, addv=InsertMode.INSERT)
         u.vector.assemblyBegin()
         u.vector.assemblyEnd()
         return u
@@ -98,7 +98,7 @@ class BoundaryDataFactory(object):
         u = dolfinx.fem.Function(self.V)
         dolfinx.fem.petsc.set_bc(u.vector, bcs)
         u.vector.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+            addv=InsertMode.INSERT_VALUES, mode=ScatterMode.FORWARD
         )
         return u
 
@@ -182,13 +182,14 @@ class BoundaryConditions:
             V = self.V.sub(sub) if sub is not None else self.V
 
             if method == "topological":
+                facets = None
                 assert entity_dim is not None
 
                 if isinstance(boundary, int):
                     try:
-                        facets = self._facet_tags.find(boundary)
-                    except AttributeError as atterr:
-                        raise atterr("There are no facet tags defined!")
+                        facets = self._facet_markers.find(boundary)
+                    except AttributeError:
+                        print("There are no facet tags defined!")
                 else:
                     facets = boundary
 
@@ -225,6 +226,7 @@ class BoundaryConditions:
 
         """
         if isinstance(marker, int):
+            assert self._facet_markers is not None
             assert marker in self._facet_markers.values
 
         self._neumann_bcs.append([value, marker])
