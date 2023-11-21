@@ -1,9 +1,8 @@
+from mpi4py import MPI
 import tempfile
 import gmsh
 import dolfinx
 from dolfinx.io import gmshio
-from mpi4py import MPI
-from IPython import embed
 
 
 def create_rectangle_grid(
@@ -82,4 +81,3 @@ if __name__ == "__main__":
 
     do_test(gmsh_grid)
     do_test(df_grid)
-    embed()

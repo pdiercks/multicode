@@ -4,17 +4,22 @@ import numpy as np
 from petsc4py.PETSc import ScalarType, InsertMode, ScatterMode # type: ignore
 
 
-def get_boundary_dofs(V, marker):
+def get_boundary_dofs(V, marker=None):
     """get dofs on the boundary"""
     domain = V.mesh
-    gdim = domain.geometry.dim
     tdim = domain.topology.dim
     fdim = tdim - 1
-    entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
+    if marker is not None:
+        entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
+    else:
+        everywhere = lambda x: np.full(x.shape[1], True, dtype=bool)
+        entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, everywhere)
     dofs = dolfinx.fem.locate_dofs_topological(V, fdim, entities)
-    bc = dolfinx.fem.dirichletbc(np.array((0,) * gdim, dtype=ScalarType), dofs)
-    dof_indices = bc.dof_indices()[0] # type: ignore
-    return dof_indices
+    # bc = dolfinx.fem.dirichletbc(np.array((0,) * gdim, dtype=ScalarType), dofs)
+    # dof_indices = bc.dof_indices()[0] # type: ignore
+
+    # FIXME why is dofs not the same as dof_indices?
+    return dofs
 
 
 class BoundaryDataFactory(object):

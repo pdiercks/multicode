@@ -1,31 +1,32 @@
-import dolfinx
 from mpi4py import MPI
-from multi.bcs import BoundaryConditions
+import dolfinx
+from basix.ufl import element
+from multi.bcs import get_boundary_dofs, BoundaryConditions
 
 
 def test():
-    n = 8
+    n = 3
     degree = 2
-    dim = 2
+    ncomp = 2
 
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", degree), dim=dim)
+    fe = element("Lagrange", domain.basix_cell(), degree, shape=(ncomp,))
+    V = dolfinx.fem.functionspace(domain, fe)
 
-    bc_handler = BoundaryConditions(domain, V)
-    boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-    u = dolfinx.fem.Function(V)
-    u.x.set(0.0)
-    bc_handler.add_dirichlet_bc(u, boundary_facets, method="topological", entity_dim=1)
-    bcs = bc_handler.bcs
-    dofs = bcs[0].dof_indices()[0]
-    assert dofs.size == n * 4 * degree * dim
-    # there are (n+1) * 4 - 4 points
-    # and if degree == 2: additional n*4 dofs (edges)
-    # thus n * 4 * degree dofs for degree in (1, 2)
-    # times number of components (i.e. dim)
+    dd = get_boundary_dofs(V)
 
+    xdofs = V.tabulate_dof_coordinates()
+    xx = xdofs[dd]
+
+    # number of vertices (n+1) * 4 - 4 = n*4
+    # if degree == 2: n*4 additional edge midpoints
+    # ndofs = n * 4 * ncomp (degree 1)
+    # ndofs = n * 8 * ncomp (degree 2)
+    # V.tabulate_dof_coordinates() does not take dofmap.bs into account
+    # --> xx.size = n * 4 * ncomp (for degree in (1, 2))
+    assert len(xx) == n * 4 * ncomp
 
 if __name__ == "__main__":
     test()

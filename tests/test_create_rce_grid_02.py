@@ -17,7 +17,7 @@ def test():
         domain, cell_markers, facet_markers = gmshio.read_from_msh(
                 tf.name, MPI.COMM_WORLD, gdim=2
                 )
-        assert cell_markers.mesh is domain
+        assert cell_markers.topology is domain.topology
         assert cell_markers.find(0).size == 0
         assert cell_markers.find(3).size == 0
         assert cell_markers.find(1).size > 0

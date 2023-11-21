@@ -1,8 +1,9 @@
+from mpi4py import MPI
 import tempfile
 import dolfinx
 import numpy as np
 from dolfinx.io import gmshio
-from mpi4py import MPI
+from basix.ufl import element
 
 from multi.domain import RectangularDomain
 from multi.preprocessing import create_rce_grid_01
@@ -26,8 +27,11 @@ def test():
     bottom = Ω.fine_edge_grid["bottom"]
     top = Ω.fine_edge_grid["top"]
 
-    Vb = dolfinx.fem.VectorFunctionSpace(bottom, ("P", 2))
-    Vt = dolfinx.fem.VectorFunctionSpace(top, ("P", 2))
+    be = element("Lagrange", bottom.basix_cell(), 2, shape=(2,))
+    te = element("Lagrange", top.basix_cell(), 2, shape=(2,))
+
+    Vb = dolfinx.fem.functionspace(bottom, be)
+    Vt = dolfinx.fem.functionspace(top, te)
 
     xdofs_b = Vb.tabulate_dof_coordinates()
     xdofs_t = Vt.tabulate_dof_coordinates()
