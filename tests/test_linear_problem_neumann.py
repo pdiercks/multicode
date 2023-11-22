@@ -1,7 +1,7 @@
-import dolfinx
-import ufl
 from mpi4py import MPI
-from petsc4py import PETSc
+from dolfinx import mesh, fem, default_scalar_type
+from basix.ufl import element
+import ufl
 import numpy as np
 
 from multi.domain import Domain
@@ -15,8 +15,8 @@ class TestProblem(LinearProblem):
     @property
     def form_rhs(self):
         domain = self.domain.grid
-        v = self.v
-        f = dolfinx.fem.Constant(domain, PETSc.ScalarType(-6))
+        v = self.test
+        f = fem.Constant(domain, default_scalar_type(-6))
         rhs = f * v * ufl.dx
 
         if self._bc_handler.has_neumann:
@@ -26,15 +26,16 @@ class TestProblem(LinearProblem):
 
     @property
     def form_lhs(self):
-        u = self.u
-        v = self.v
+        u = self.trial
+        v = self.test
         return ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
 
 
 def test():
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 10, 10)
+    domain = mesh.create_unit_square(MPI.COMM_WORLD, 10, 10)
     Ω = Domain(domain)
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
+    fe = element("P", domain.basix_cell(), 1, shape=())
+    V = fem.functionspace(domain, fe)
 
     problem = TestProblem(Ω, V)
 
@@ -45,7 +46,7 @@ def test():
         return np.logical_or(np.isclose(x[0], 0), np.isclose(x[0], 1))
 
     # dirichlet
-    u_bc = dolfinx.fem.Function(V)
+    u_bc = fem.Function(V)
     u_bc.interpolate(u_exact)
     problem.add_dirichlet_bc(u_bc, boundary_D, method="geometrical")
 
@@ -64,7 +65,7 @@ def test():
     problem.setup_solver(petsc_options=petsc_options)
     uh = problem.solve()
 
-    uex = dolfinx.fem.Function(V)
+    uex = fem.Function(V)
     uex.interpolate(u_exact)
 
     error_max = np.max(np.abs(uex.x.array[:] - uh.x.array[:]))

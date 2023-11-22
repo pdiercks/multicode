@@ -4,7 +4,7 @@
 # Authorship: the pyMOR developers
 # the original code is part of the pymor tutorial https://docs.pymor.org/2020.2.0/tutorial_basis_generation.html
 import numpy as np
-from dolfinx.fem import Function
+from dolfinx.fem import Function, create_nonmatching_meshes_interpolation_data
 
 
 def compute_proj_errors(basis, V, product, relative=True):
@@ -94,8 +94,14 @@ def fine_scale_part(u, coarse_space, in_place=False):
     u_c = Function(V)
     w = Function(coarse_space)
 
-    w.interpolate(u)
-    u_c.interpolate(w)
+    w.interpolate(u, nmm_interpolation_data=create_nonmatching_meshes_interpolation_data(
+        w.function_space.mesh._cpp_object,
+        w.function_space.element,
+        u.function_space.mesh._cpp_object))
+    u_c.interpolate(w, nmm_interpolation_data=create_nonmatching_meshes_interpolation_data(
+        u_c.function_space.mesh._cpp_object,
+        u_c.function_space.element,
+        w.function_space.mesh._cpp_object))
 
     if in_place:
         u.vector.axpy(-1, u_c.vector)

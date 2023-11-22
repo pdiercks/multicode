@@ -1,8 +1,8 @@
+from mpi4py import MPI
 import numpy as np
 import ufl
-import dolfinx
-from petsc4py.PETSc import ScalarType
-from mpi4py import MPI
+from dolfinx import fem, mesh, default_scalar_type
+from basix.ufl import element
 from multi.domain import Domain
 from multi.problems import LinearProblem
 
@@ -14,33 +14,34 @@ class PoissonProblem(LinearProblem):
 
     @property
     def form_lhs(self):
-        u = self.u
-        v = self.v
+        u = self.trial
+        v = self.test
         return ufl.dot(ufl.grad(u), ufl.grad(v)) * self.dx
 
     @property
     def form_rhs(self):
-        f = dolfinx.fem.Constant(self.domain.grid, ScalarType(-6))
-        return f * self.v * self.dx
+        f = fem.Constant(self.domain.grid, default_scalar_type(-6))
+        return f * self.test * self.dx
 
 
 def test_poisson():
-    domain = dolfinx.mesh.create_unit_square(
-        MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
+    domain = mesh.create_unit_square(
+        MPI.COMM_WORLD, 8, 8, mesh.CellType.quadrilateral
     )
     Ω = Domain(domain)
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
+    fe = element("P", domain.basix_cell(), 1, shape=())
+    V = fem.functionspace(domain, fe)
     # instantiate problem class
     problem = PoissonProblem(Ω, V)
 
     # add a Dirichlet bc
-    uD = dolfinx.fem.Function(V)
+    uD = fem.Function(V)
     uD.interpolate(lambda x: 1 + x[0] ** 2 + 2 * x[1] ** 2)
     # Create facet to cell connectivity required to determine boundary facets
     tdim = domain.topology.dim
     fdim = tdim - 1
     domain.topology.create_connectivity(fdim, tdim)
-    boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+    boundary_facets = mesh.exterior_facet_indices(domain.topology)
     problem.add_dirichlet_bc(uD, boundary_facets, entity_dim=fdim)
 
     # setup the solver
@@ -54,7 +55,7 @@ def test_poisson():
     bcs = problem.get_dirichlet_bcs()
     problem.assemble_matrix(bcs)
     problem.assemble_vector(bcs)
-    uh = dolfinx.fem.Function(V)
+    uh = fem.Function(V)
     solver = problem.solver
     solver.solve(problem.b, uh.vector)
     uh.x.scatter_forward()

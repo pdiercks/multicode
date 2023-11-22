@@ -88,8 +88,8 @@ def test_VectorFunctionSpace_square_Boundary():
     )
 
     quad1 = element("Lagrange", coarse.basix_cell(), 1, shape=(2,))
-    quad2 = element("Lagrange", fine.basix_cell(), 2, shape=(2,))
     W = dolfinx.fem.functionspace(coarse, quad1)
+    quad2 = element("Lagrange", fine.basix_cell(), 2, shape=(2,))
     V = dolfinx.fem.functionspace(fine, quad2)
 
     w = dolfinx.fem.Function(W)
@@ -109,7 +109,7 @@ def test_VectorFunctionSpace_square_Boundary():
         dolfinx.default_scalar_type(0), boundary_facets, sub=0, method="topological", entity_dim=fdim
     )
     bcs = bc_handler.bcs
-    dofs, num_dofs = bcs[0].dof_indices()
+    dofs, num_dofs = bcs[0]._cpp_object.dof_indices()
     assert num_dofs == 240
 
     def xdofs_VectorFunctionSpace(V):
@@ -128,12 +128,12 @@ def test_VectorFunctionSpace_square_Boundary():
     u.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
 
     bc_handler.clear()
-    zero = np.array([0.0, 0.0], dtype=ScalarType)
+    zero = np.array([0.0, 0.0], dtype=dolfinx.default_scalar_type)
     bc_handler.add_dirichlet_bc(
         zero, boundary_facets, method="topological", entity_dim=fdim
     )
     bcs = bc_handler.bcs
-    dofs, num_dofs = bcs[0].dof_indices()
+    dofs, num_dofs = bcs[0]._cpp_object.dof_indices()
     assert num_dofs == 240 * 2
     u_values = u.x.array[dofs]
 

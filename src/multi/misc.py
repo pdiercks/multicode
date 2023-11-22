@@ -3,7 +3,7 @@
 import numpy as np
 
 
-def x_dofs_VectorFunctionSpace(V):
+def x_dofs_vectorspace(V):
     bs = V.dofmap.bs
     x = V.tabulate_dof_coordinates()
     x_dofs = np.repeat(x, repeats=bs, axis=0)

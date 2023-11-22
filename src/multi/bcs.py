@@ -164,7 +164,7 @@ class BoundaryConditions:
 
         Parameters
         ----------
-        value : Function, Constant or np.ndarray or DirichletBCMetaClass
+        value : Function, Constant or np.ndarray or DirichletBC
             The Dirichlet function or boundary condition.
         boundary : optional, callable or np.ndarray or int
             The part of the boundary whose dofs should be constrained.
@@ -180,7 +180,7 @@ class BoundaryConditions:
             The entity dimension in case `method=topological`.
         """
         if boundary is None:
-            assert isinstance(value, dolfinx.fem.DirichletBCMetaClass)
+            assert isinstance(value, dolfinx.fem.DirichletBC)
             self._bcs.append(value)
         else:
             assert method in ("topological", "geometrical")
