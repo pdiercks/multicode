@@ -1,5 +1,6 @@
-import dolfinx
 from mpi4py import MPI
+from dolfinx import fem, mesh
+from basix.ufl import element
 from multi.projection import project
 from multi.shapes import NumpyQuad
 import numpy as np
@@ -8,8 +9,9 @@ from pymor.algorithms.gram_schmidt import gram_schmidt
 
 
 def test():
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+    domain = mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
+    ve = element("P", domain.basix_cell(), 2, shape=(2,))
+    V = fem.functionspace(domain, ve)
     nodes = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
     quad = NumpyQuad(nodes)
     shapes = quad.interpolate(V)

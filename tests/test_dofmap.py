@@ -1,8 +1,9 @@
 """test dofmap"""
 
 import tempfile
-import dolfinx
+from dolfinx import fem
 from dolfinx.io import gmshio
+from basix.ufl import element
 import numpy as np
 from mpi4py import MPI
 from multi.dofmap import DofMap
@@ -37,7 +38,8 @@ def test():
 
     assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
 
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
+    ve = element("P", domain.basix_cell(), 1, shape=(2,))
+    V = fem.functionspace(domain, ve)
 
     def get_global_dofs(V, cell_index):
         """get global dofs of V for cell index"""
@@ -54,7 +56,7 @@ def test():
     # if n_edge_dofs = n_face_dofs = 0, V.dofmap and multi.DofMap should
     # have the same dof layout
     # V.element.needs_dof_transformations is False --> okay
-    u = dolfinx.fem.Function(V)
+    u = fem.Function(V)
     u.interpolate(lambda x: (44.7 * x[0], -12.3 * x[1]))
     u_values = u.vector.array
 

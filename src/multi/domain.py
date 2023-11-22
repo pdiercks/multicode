@@ -112,11 +112,11 @@ class RectangularDomain(Domain):
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line_grid(start, end, num_cells=num_cells, out_file=tf.name)
-                fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
+                fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
             fine_grid[key] = fine
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line_grid(start, end, num_cells=1, out_file=tf.name)
-                coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
+                coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
             coarse_grid[key] = coarse
 
         self.fine_edge_grid = fine_grid
@@ -145,7 +145,7 @@ class StructuredQuadGrid(object):
         self.facet_markers = facet_markers
 
         # bounding box tree
-        self.bb_tree = dolfinx.geometry.BoundingBoxTree(grid, grid.topology.dim)
+        self.bb_tree = dolfinx.geometry.bb_tree(grid, grid.topology.dim)
 
         grid.topology.create_connectivity(2, 0)
         grid.topology.create_connectivity(2, 1)

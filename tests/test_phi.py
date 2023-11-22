@@ -1,4 +1,5 @@
-import dolfinx
+from dolfinx import mesh, fem
+from basix.ufl import element
 import numpy as np
 from mpi4py import MPI
 from multi.domain import RectangularDomain
@@ -17,8 +18,9 @@ def xdofs_VectorFunctionSpace(V):
 
 def test_nodes():
     n = 20
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+    domain = mesh.create_unit_square(MPI.COMM_WORLD, n, n)
+    ve = element("P", domain.basix_cell(), 2, shape=(2,))
+    V = fem.functionspace(domain, ve)
 
     rce = RectangularDomain(domain)
     rce.create_edge_grids(20)

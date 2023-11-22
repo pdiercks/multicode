@@ -1,12 +1,12 @@
 """test oversampling problem discretization for
 inhomogeneous neumann boundary conditions"""
 
+from mpi4py import MPI
 import tempfile
 import numpy as np
-import dolfinx
+from dolfinx import fem, mesh, default_scalar_type
 from dolfinx.io import gmshio
-from mpi4py import MPI
-from petsc4py import PETSc
+from basix.ufl import element
 from multi.domain import RectangularDomain
 from multi.problems import LinearElasticityProblem, TransferProblem
 from multi.boundary import plane_at, within_range
@@ -28,8 +28,11 @@ def exact_solution(problem, dirichlet_bc, Vsub):
     # ### exact solution full space
     u_exact = problem.solve()
 
-    u_in = dolfinx.fem.Function(Vsub)
-    u_in.interpolate(u_exact)
+    u_in = fem.Function(Vsub)
+    u_in.interpolate(u_exact, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
+        u_in.function_space.mesh._cpp_object,
+        u_in.function_space.element,
+        u_exact.function_space.mesh._cpp_object))
 
     # clean up
     problem.clear_bcs()
@@ -66,19 +69,23 @@ def test_dirichlet_hom():
         square, cell_markers, facet_markers = gmshio.read_from_msh(
             tf.name, MPI.COMM_WORLD, gdim=2
         )
-    V = dolfinx.fem.VectorFunctionSpace(square, ("Lagrange", 1))
+    degree = 1
+    ve = element("P", square.basix_cell(), degree, shape=(2,))
+    V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
     # subdomain problem
-    cells_submesh = dolfinx.mesh.locate_entities(domain.grid, 2, target_subdomain)
-    submesh = dolfinx.mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
-    Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
+    cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
+    submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
+
+    # submesh has same cell type, reuse ve
+    Vsub = fem.functionspace(submesh, ve)
 
     subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
 
-    zero = dolfinx.fem.Constant(square, (PETSc.ScalarType(0.0), PETSc.ScalarType(0.0)))
+    zero = fem.Constant(square, (default_scalar_type(0.0), default_scalar_type(0.0)))
     right = plane_at(1.0, "x")
     dirichlet_bc = {"boundary": right, "value": zero, "method": "geometrical"}
     gamma_out = plane_at(0.0, "x")  # left
@@ -95,7 +102,7 @@ def test_dirichlet_hom():
     u_ex = np.zeros_like(u_arr)
     dof_indices = tp.bc_dofs_gamma_out
     for i, vector in enumerate(D):
-        boundary_function = dolfinx.fem.Function(V)
+        boundary_function = fem.Function(V)
         boundary_vector = boundary_function.vector
         boundary_vector.array[dof_indices] = vector
 
@@ -109,8 +116,7 @@ def test_dirichlet_hom():
 
     error = u_ex - u_arr
     norm = np.linalg.norm(error)
-    print(norm)
-    assert np.linalg.norm(error) < 1e-12
+    assert norm < 1e-12
 
 
 def test_remove_kernel():
@@ -135,24 +141,26 @@ def test_remove_kernel():
             recombine=True,
             out_file=tf.name,
         )
-        square, cell_markers, facet_markers = gmshio.read_from_msh(
+        square, _, facet_markers = gmshio.read_from_msh(
             tf.name, MPI.COMM_WORLD, gdim=2
         )
-    V = dolfinx.fem.VectorFunctionSpace(square, ("Lagrange", 1))
+    degree = 1
+    ve = element("P", square.basix_cell(), degree, shape=(2,))
+    V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
     problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
     # subdomain problem
-    cells_submesh = dolfinx.mesh.locate_entities(domain.grid, 2, target_subdomain)
-    submesh = dolfinx.mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
-    Vsub = dolfinx.fem.FunctionSpace(submesh, problem.V.ufl_element())
+    cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
+    submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
+    Vsub = fem.FunctionSpace(submesh, ve)
 
     subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
 
     gamma_out = lambda x: np.full(x[0].shape, True, dtype=bool)  # noqa: E731
 
-    facets_gamma_out = dolfinx.mesh.locate_entities_boundary(
+    facets_gamma_out = mesh.locate_entities_boundary(
         V.mesh, 1, gamma_out
     )
 
@@ -168,7 +176,7 @@ def test_remove_kernel():
     u_ex = np.zeros_like(u_arr)
     dof_indices = tp.bc_dofs_gamma_out
     for i, vector in enumerate(D):
-        boundary_function = dolfinx.fem.Function(V)
+        boundary_function = fem.Function(V)
         boundary_vector = boundary_function.vector
         boundary_vector.array[dof_indices] = vector
 

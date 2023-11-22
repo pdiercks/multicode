@@ -99,16 +99,18 @@ def point_at(coord):
 
 
 def show_marked(domain, marker):
-    import dolfinx
+    from dolfinx import fem
+    from basix.ufl import element
     import matplotlib.pyplot as plt
 
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
-    dofs = dolfinx.fem.locate_dofs_geometrical(V, marker)
-    u = dolfinx.fem.Function(V)
-    bc = dolfinx.fem.dirichletbc(u, dofs)
+    fe = element("Lagrange", domain.basix_cell(), 1, shape=())
+    V = fem.functionspace(domain, fe)
+    dofs = fem.locate_dofs_geometrical(V, marker)
+    u = fem.Function(V)
+    bc = fem.dirichletbc(u, dofs)
     x_dofs = V.tabulate_dof_coordinates()
     x_dofs = x_dofs[:, :2]
-    marked = x_dofs[bc.dof_indices()[0]]
+    marked = x_dofs[bc._cpp_object.dof_indices()[0]]
 
     plt.figure(1)
     x, y = x_dofs.T

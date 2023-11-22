@@ -128,3 +128,5 @@ tags
 
 multi/test/.assembly.py
 multi.env/
+multi.v0.7.1.env/
+.pymorsrc/

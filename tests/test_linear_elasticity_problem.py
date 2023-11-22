@@ -1,14 +1,14 @@
+from mpi4py import MPI
 import tempfile
 import dolfinx
 from dolfinx.io import gmshio
+from basix.ufl import element
 import numpy as np
-from mpi4py import MPI
-from petsc4py import PETSc
 from multi.boundary import plane_at
 from multi.domain import Domain, RectangularDomain
 from multi.preprocessing import create_rectangle_grid
 from multi.problems import LinearElasticityProblem
-from multi.misc import x_dofs_VectorFunctionSpace
+from multi.misc import x_dofs_vectorspace
 from multi.interpolation import interpolate
 
 
@@ -31,19 +31,15 @@ def test():
     Ω = Domain(domain, cell_markers=None, facet_markers=facet_tags)
 
     # initialize problem
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
+    fe = element("P", domain.basix_cell(), 1, shape=(2,))
+    V = dolfinx.fem.functionspace(domain, fe)
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 
-    # import ufl
-    # r = ufl.rank(problem.form_lhs)
-    # print(r)
-    # breakpoint()
-
     # add dirichlet and neumann bc
-    zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * 2)
+    zero = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(0.0),) * 2)
     problem.add_dirichlet_bc(zero, left, method="geometrical")
     f_ext = dolfinx.fem.Constant(
-        domain, (PETSc.ScalarType(1000.0), PETSc.ScalarType(0.0))
+        domain, (dolfinx.default_scalar_type(1000.0), dolfinx.default_scalar_type(0.0))
     )
     problem.add_neumann_bc(marker_value, f_ext)
 
@@ -87,14 +83,15 @@ def test_dirichlet():
     Ω = Domain(domain, cell_markers=None, facet_markers=None)
 
     # initialize problem
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 1))
+    fe = element("P", domain.basix_cell(), 1, shape=(2,))
+    V = dolfinx.fem.functionspace(domain, fe)
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
 
     # add two dirichlet bc
-    zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * 2)
+    zero = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(0.0),) * 2)
     f_x = 12.3
     f_y = 0.0
-    f = dolfinx.fem.Constant(domain, (PETSc.ScalarType(f_x), PETSc.ScalarType(f_y)))
+    f = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(f_x), dolfinx.default_scalar_type(f_y)))
 
     def u_bottom(x):
         return (x[0] * f_x, x[1])
@@ -152,13 +149,14 @@ def test_with_edges():
         domain, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     Ω = RectangularDomain(domain, None, ft)
     Ω.create_edge_grids(10)
-    V = dolfinx.fem.VectorFunctionSpace(Ω.grid, ("Lagrange", 1))
+    ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
+    V = dolfinx.fem.functionspace(Ω.grid, ve)
 
     problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
     problem.setup_edge_spaces()
     problem.create_map_from_V_to_L()
 
-    x_dofs = x_dofs_VectorFunctionSpace(problem.V)
+    x_dofs = x_dofs_vectorspace(problem.V)
     bottom = x_dofs[problem.V_to_L["bottom"]]
     assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
     left = x_dofs[problem.V_to_L["left"]]
@@ -166,9 +164,9 @@ def test_with_edges():
 
     left = plane_at(0.0, "x")
     gdim = domain.geometry.dim
-    zero = np.array((0,) * gdim, dtype=PETSc.ScalarType)
+    zero = np.array((0,) * gdim, dtype=dolfinx.default_scalar_type)
     problem.add_dirichlet_bc(zero, boundary=left, method="geometrical")
-    T = dolfinx.fem.Constant(domain, PETSc.ScalarType((1000.0, 0.0)))
+    T = dolfinx.fem.Constant(domain, dolfinx.default_scalar_type((1000.0, 0.0)))
     problem.add_neumann_bc(3, T)
 
     petsc_options = {

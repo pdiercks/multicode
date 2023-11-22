@@ -1,4 +1,5 @@
-import dolfinx
+from dolfinx.fem import Function, create_nonmatching_meshes_interpolation_data
+from dolfinx.geometry import bb_tree, compute_collisions_points, compute_colliding_cells
 import numpy as np
 
 
@@ -8,15 +9,15 @@ def interpolate(u, points):
     """evaluate u at points"""
     V = u.function_space
     domain = V.mesh
-    bb_tree = dolfinx.geometry.BoundingBoxTree(domain, domain.topology.dim)
+    tree = bb_tree(domain, domain.topology.dim)
 
     cells = []
     points_on_proc = []
 
     if not points.shape[1] == 3:
         points = points.T
-    cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, points)
-    colliding_cells = dolfinx.geometry.compute_colliding_cells(
+    cell_candidates = compute_collisions_points(tree, points)
+    colliding_cells = compute_colliding_cells(
         domain, cell_candidates, points
     )
     for i, point in enumerate(points):
@@ -37,11 +38,16 @@ def make_mapping(subspace, superspace):
     dofs : np.ndarray
         The dofs of `superspace` corresponding to dofs of `subspace`.
     """
-    u = dolfinx.fem.Function(superspace)
+    u = Function(superspace)
     ndofs = superspace.dofmap.index_map.size_global * superspace.dofmap.bs
     u.vector.array[:] = np.arange(ndofs, dtype=np.intc)
 
-    f = dolfinx.fem.Function(subspace)
-    f.interpolate(u)
+    f = Function(subspace)
+
+    f.interpolate(u, nmm_interpolation_data=create_nonmatching_meshes_interpolation_data(
+        f.function_space.mesh._cpp_object,
+        f.function_space.element,
+        u.function_space.mesh._cpp_object))
+    f.x.scatter_forward()
     dofs = (f.vector.array + 0.5).astype(np.int32).flatten()
     return dofs

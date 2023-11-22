@@ -1,7 +1,7 @@
-import dolfinx
-import numpy as np
 from mpi4py import MPI
-from petsc4py.PETSc import ScalarType
+import dolfinx
+from basix.ufl import element
+import numpy as np
 from multi.bcs import BoundaryConditions
 from multi.interpolation import interpolate
 
@@ -10,8 +10,10 @@ def test_FunctionSpace():
     coarse = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 2)
     fine = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 20)
 
-    V = dolfinx.fem.FunctionSpace(fine, ("Lagrange", 2))
-    W = dolfinx.fem.FunctionSpace(coarse, ("Lagrange", 1))
+    line1 = element("Lagrange", coarse.basix_cell(), 1, shape=())
+    line2 = element("Lagrange", fine.basix_cell(), 2, shape=())
+    W = dolfinx.fem.functionspace(coarse, line1)
+    V = dolfinx.fem.functionspace(fine, line2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: x[0] * 12.0)
@@ -31,8 +33,10 @@ def test_VectorFunctionSpace():
     coarse = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 2)
     fine = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 20)
 
-    V = dolfinx.fem.VectorFunctionSpace(fine, ("Lagrange", 2), dim=2)
-    W = dolfinx.fem.VectorFunctionSpace(coarse, ("Lagrange", 1), dim=2)
+    line1 = element("Lagrange", coarse.basix_cell(), 1, shape=(2,))
+    line2 = element("Lagrange", fine.basix_cell(), 2, shape=(2,))
+    W = dolfinx.fem.functionspace(coarse, line1)
+    V = dolfinx.fem.functionspace(fine, line2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[0]]))
@@ -56,8 +60,10 @@ def test_VectorFunctionSpace_square():
         MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle
     )
 
-    V = dolfinx.fem.VectorFunctionSpace(fine, ("Lagrange", 2), dim=2)
-    W = dolfinx.fem.VectorFunctionSpace(coarse, ("Lagrange", 1), dim=2)
+    quad1 = element("Lagrange", coarse.basix_cell(), 1, shape=(2,))
+    quad2 = element("Lagrange", fine.basix_cell(), 2, shape=(2,))
+    W = dolfinx.fem.functionspace(coarse, quad1)
+    V = dolfinx.fem.functionspace(fine, quad2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
@@ -81,8 +87,10 @@ def test_VectorFunctionSpace_square_Boundary():
         MPI.COMM_WORLD, 30, 30, dolfinx.mesh.CellType.triangle
     )
 
-    V = dolfinx.fem.VectorFunctionSpace(fine, ("Lagrange", 2), dim=2)
-    W = dolfinx.fem.VectorFunctionSpace(coarse, ("Lagrange", 1), dim=2)
+    quad1 = element("Lagrange", coarse.basix_cell(), 1, shape=(2,))
+    W = dolfinx.fem.functionspace(coarse, quad1)
+    quad2 = element("Lagrange", fine.basix_cell(), 2, shape=(2,))
+    V = dolfinx.fem.functionspace(fine, quad2)
 
     w = dolfinx.fem.Function(W)
     w.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
@@ -98,10 +106,10 @@ def test_VectorFunctionSpace_square_Boundary():
     # each node has 2 dofs, but only need the coordinate once for interpolation
     boundary_facets = dolfinx.mesh.exterior_facet_indices(fine.topology)
     bc_handler.add_dirichlet_bc(
-        ScalarType(0), boundary_facets, sub=0, method="topological", entity_dim=fdim
+        dolfinx.default_scalar_type(0), boundary_facets, sub=0, method="topological", entity_dim=fdim
     )
     bcs = bc_handler.bcs
-    dofs, num_dofs = bcs[0].dof_indices()
+    dofs, num_dofs = bcs[0]._cpp_object.dof_indices()
     assert num_dofs == 240
 
     def xdofs_VectorFunctionSpace(V):
@@ -120,12 +128,12 @@ def test_VectorFunctionSpace_square_Boundary():
     u.interpolate(lambda x: np.array([4.2 * x[0], 2.7 * x[1]]))
 
     bc_handler.clear()
-    zero = np.array([0.0, 0.0], dtype=ScalarType)
+    zero = np.array([0.0, 0.0], dtype=dolfinx.default_scalar_type)
     bc_handler.add_dirichlet_bc(
         zero, boundary_facets, method="topological", entity_dim=fdim
     )
     bcs = bc_handler.bcs
-    dofs, num_dofs = bcs[0].dof_indices()
+    dofs, num_dofs = bcs[0]._cpp_object.dof_indices()
     assert num_dofs == 240 * 2
     u_values = u.x.array[dofs]
 

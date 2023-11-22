@@ -1,8 +1,8 @@
+from mpi4py import MPI
 import dolfinx
+from basix.ufl import element
 import numpy as np
 import ufl
-from mpi4py import MPI
-from petsc4py.PETSc import ScalarType
 from multi.domain import Domain
 from multi.problems import LinearProblem
 from multi.extension import extend
@@ -13,7 +13,8 @@ def test():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, num_cells, num_cells, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
+    quad = element("Lagrange", domain.basix_cell(), 2, shape=())
+    V = dolfinx.fem.functionspace(domain, quad)
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
     print(f"Number of DoFs={Vdim}")
 
@@ -23,18 +24,15 @@ def test():
 
         @property
         def form_lhs(self):
-            u = self.u
-            v = self.v
+            u = self.trial
+            v = self.test
             return ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
 
         @property
         def form_rhs(self):
-            v = self.v
-            f = dolfinx.fem.Constant(self.V.mesh, ScalarType(0.0))
+            v = self.test
+            f = dolfinx.fem.Constant(self.V.mesh, dolfinx.default_scalar_type(0.0))
             return f * v * ufl.dx
-
-    def bottom(x):
-        return np.isclose(x[1], 0.0)
 
     def boundary_expression_factory(k):
         def expr(x):

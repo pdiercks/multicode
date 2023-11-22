@@ -1,11 +1,14 @@
+from mpi4py import MPI
 import pathlib
 import yaml
-import dolfinx
-from dolfinx import cpp as _cpp
+from basix.ufl import element
+from dolfinx import fem, la, mesh
+from dolfinx.fem.petsc import create_vector, create_matrix, set_bc, apply_lifting, assemble_vector, assemble_matrix
+from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.io import gmshio
+from dolfinx.io.utils import XDMFFile
 import ufl
 import numpy as np
-from mpi4py import MPI
 from petsc4py import PETSc
 
 from multi.bcs import BoundaryConditions
@@ -75,7 +78,9 @@ solution.x.scatter_forward()
 """
 
 
-class LinearProblem(dolfinx.fem.petsc.LinearProblem):
+# FIXME re-evaluate design, implement __del__
+# is overriding method setup_solver still required?
+class LinearProblem(LinearProblemBase):
 
     """Class for solving a linear variational problem"""
 
@@ -164,17 +169,18 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
         #     jit_options=jit_options,
         # )
 
+        # Get tpye aliases for "Form" and possibly other dolfinx types
         # simplified version of super().__init__ as workaround
-        self._a = dolfinx.fem.form(a, form_compiler_options=form_compiler_options, jit_options=jit_options)
-        self._A = dolfinx.fem.petsc.create_matrix(self._a)
+        self._a = fem.form(a, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._A = create_matrix(self._a)
 
-        self._L = dolfinx.fem.form(L, form_compiler_options=form_compiler_options, jit_options=jit_options)
-        self._b = dolfinx.fem.petsc.create_vector(self._L)
+        self._L = fem.form(L, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._b = create_vector(self._L)
 
         # solution function
-        self.u = dolfinx.fem.Function(self.V)
+        self.u = fem.Function(self.V)
 
-        self._x = _cpp.la.petsc.create_vector_wrap(self.u.x)
+        self._x = la.create_petsc_vector_wrap(self.u.x)
         self.bcs = bcs
 
         self._solver = PETSc.KSP().create(self.u.function_space.mesh.comm)
@@ -191,7 +197,7 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
     def assemble_matrix(self, bcs=[]):
         """assemble matrix and apply boundary conditions"""
         self._A.zeroEntries()
-        dolfinx.fem.petsc.assemble_matrix(self._A, self._a, bcs=bcs)
+        assemble_matrix(self._A, self._a, bcs=bcs)
         self._A.assemble()
 
     def assemble_vector(self, bcs=[]):
@@ -199,12 +205,22 @@ class LinearProblem(dolfinx.fem.petsc.LinearProblem):
 
         with self._b.localForm() as b_loc:
             b_loc.set(0)
-        dolfinx.fem.petsc.assemble_vector(self._b, self._L)
+        assemble_vector(self._b, self._L)
 
         # Apply boundary conditions to the rhs
-        dolfinx.fem.petsc.apply_lifting(self._b, [self._a], bcs=[bcs])
+        apply_lifting(self._b, [self._a], bcs=[bcs])
         self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-        dolfinx.fem.petsc.set_bc(self._b, self.bcs)
+        set_bc(self._b, self.bcs)
+
+    def __del__(self):
+        # problem may be instantiated without call to `setup_solver`
+        try:
+            self._solver.destroy()
+            self._A.destroy()
+            self._b.destroy()
+            self._x.destroy()
+        except AttributeError:
+            pass
 
 
 class LinearElasticityProblem(LinearProblem):
@@ -251,7 +267,7 @@ class LinearElasticityProblem(LinearProblem):
             mesh = domain.grid
             subdomains = domain.cell_markers
             self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
-        self.gdim = int(V.element.value_shape)
+        self.gdim = domain.grid.ufl_cell().geometric_dimension()
         assert self.gdim in (1, 2, 3)
         self.materials = [
             LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
@@ -273,18 +289,16 @@ class LinearElasticityProblem(LinearProblem):
 
         V = self.V
         ufl_element = V.ufl_element()
-        family_name = ufl_element.family_name
-        degree = ufl_element.degree()
+        family = ufl_element.family_name
+        shape = ufl_element.value_shape()
 
         edge_spaces = {}
+        degree = {"coarse": 1, "fine": ufl_element.degree()}
         for scale, data in edge_meshes.items():
             edge_spaces[scale] = {}
-            if scale == "fine":
-                fe = (family_name, degree)
-            else:
-                fe = (family_name, 1)
             for edge, grid in data.items():
-                space = dolfinx.fem.VectorFunctionSpace(grid, fe)
+                fe = element(family, grid.basix_cell(), degree[scale], shape=shape, gdim=grid.ufl_cell().geometric_dimension())
+                space = fem.functionspace(grid, fe)
                 edge_spaces[scale][edge] = space
 
         self.edge_spaces = edge_spaces
@@ -297,7 +311,7 @@ class LinearElasticityProblem(LinearProblem):
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
-        self.W = dolfinx.fem.VectorFunctionSpace(coarse_grid, (family_name, 1))
+        self.W = fem.VectorFunctionSpace(coarse_grid, (family_name, 1))
 
     def create_map_from_V_to_L(self):
         try:
@@ -334,7 +348,7 @@ class LinearElasticityProblem(LinearProblem):
         """get linear form f(v) of the problem"""
         domain = self.V.mesh
         v = self.test
-        zero = dolfinx.fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
+        zero = fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
         rhs = ufl.inner(zero, v) * ufl.dx
 
         if self._bc_handler.has_neumann:
@@ -445,15 +459,15 @@ class TransferProblem(object):
         V = self.source.V
         tdim = V.mesh.topology.dim
         fdim = tdim - 1
-        dummy = dolfinx.fem.Function(V)
+        dummy = fem.Function(V)
 
         # determine boundary facets of Γ_out
-        facets_Γ_out = dolfinx.mesh.locate_entities_boundary(
+        facets_Γ_out = mesh.locate_entities_boundary(
             V.mesh, fdim, self.gamma_out
         )
         # determine dofs on Γ_out
-        _dofs = dolfinx.fem.locate_dofs_topological(V, fdim, facets_Γ_out)
-        bc = dolfinx.fem.dirichletbc(dummy, _dofs)
+        _dofs = fem.locate_dofs_topological(V, fdim, facets_Γ_out)
+        bc = fem.dirichletbc(dummy, _dofs)
 
         # only internal use
         self._facets_Γ_out = facets_Γ_out
@@ -462,7 +476,7 @@ class TransferProblem(object):
         self._dofs_Γ_out = _dofs
 
         # quantities that might be used --> property
-        dofs = bc.dof_indices()[0]
+        dofs = bc._cpp_object.dof_indices()[0]
         self._bc_dofs_gamma_out = dofs
         # source space restricted to Γ_out
         self._source_gamma = NumpyVectorSpace(dofs.size)
@@ -531,9 +545,9 @@ class TransferProblem(object):
         dofs = self.bc_dofs_gamma_out
         _dofs = self._dofs_Γ_out
         p = self.problem
-        f = dolfinx.fem.Function(p.V)
+        f = fem.Function(p.V)
         f.x.array[dofs] = boundary_values
-        bc_inhom = dolfinx.fem.dirichletbc(f, _dofs)
+        bc_inhom = fem.dirichletbc(f, _dofs)
 
         p.assemble_vector(bcs=[bc_inhom])
 
@@ -576,8 +590,8 @@ class TransferProblem(object):
         rhs = p.b
 
         # solution
-        u = dolfinx.fem.Function(p.V)  # full space
-        u_in = dolfinx.fem.Function(self.range.V)  # target subdomain
+        u = fem.Function(p.V)  # full space
+        u_in = fem.Function(self.range.V)  # target subdomain
         U = self.range.empty()  # VectorArray to store u_in
 
         # construct rhs from boundary data
@@ -586,8 +600,13 @@ class TransferProblem(object):
             solver.solve(rhs, u.vector)
             u.x.scatter_forward()
 
-            # restrict full solution to target subdomain
-            u_in.interpolate(u)
+            # ### restrict full solution to target subdomain
+            # need to use nmm_interpolation_data even if subdomain discretization
+            # matches the global mesh
+            u_in.interpolate(u, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
+                u_in.function_space.mesh._cpp_object,
+                u_in.function_space.element,
+                u.function_space.mesh._cpp_object))
             U.append(self.range.make_array([u_in.vector.copy()]))
 
         if self.remove_kernel:
@@ -684,7 +703,7 @@ class MultiscaleProblem(object):
 
     def setup_fine_grid(self):
         """create fine grid"""
-        with dolfinx.io.XDMFFile(
+        with XDMFFile(
             MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r"
         ) as xdmf:
             fine_domain = xdmf.read_mesh(name="Grid")
@@ -701,17 +720,21 @@ class MultiscaleProblem(object):
             fine_domain, cell_markers=fine_ct, facet_markers=fine_ft
         )
 
-    def setup_coarse_space(self, family="P"):
+    def setup_coarse_space(self, family="P", degree=1, shape=(2,)):
         """create FE space on coarse grid"""
-        self.W = dolfinx.fem.VectorFunctionSpace(self.coarse_grid.grid, (family, 1))
+        grid = self.coarse_grid.grid
+        fe = element(family, grid.basix_cell(), degree, shape=shape)
+        self.W = fem.functionspace(grid, fe)
 
-    def setup_fine_space(self, family="P"):
+    def setup_fine_space(self, family="P", shape=(2,)):
         """create FE space on fine grid"""
         try:
             degree = self.degree
-        except AttributeError as err:
-            raise err("You need to set the degree of the problem first")
-        self.V = dolfinx.fem.VectorFunctionSpace(self.fine_grid.grid, (family, degree))
+        except AttributeError:
+            raise RuntimeError("You need to set the degree of the problem first")
+        grid = self.fine_grid.grid
+        fe = element(family, grid.basix_cell(), degree, shape=shape)
+        self.V = fem.functionspace(grid, fe)
 
     @property
     def cell_sets(self):

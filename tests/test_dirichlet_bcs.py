@@ -1,7 +1,7 @@
-import dolfinx
-import numpy as np
 from mpi4py import MPI
-from petsc4py.PETSc import ScalarType
+import dolfinx
+from basix.ufl import element
+import numpy as np
 from multi.bcs import BoundaryConditions
 
 """Note: topological vs. geometrical
@@ -31,7 +31,7 @@ bottom_boundary_facets = locate_entities_boundary(
 bottom_boundary_dofs_y = locate_dofs_topological(
     V.sub(1), domain.topology.dim - 1, bottom_boundary_facets
 )
-fix_uy = dirichletbc(ScalarType(0), bottom_boundary_dofs_y, V.sub(1))
+fix_uy = dirichletbc(dolfinx.default_scalar_type(0), bottom_boundary_dofs_y, V.sub(1))
 ```
 
 """
@@ -41,7 +41,8 @@ def test_vector_geom():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+    ve = element("Lagrange", domain.basix_cell(), 2, shape=(2,))
+    V = dolfinx.fem.functionspace(domain, ve)
 
     bc_handler = BoundaryConditions(domain, V)
 
@@ -56,16 +57,16 @@ def test_vector_geom():
     # constrain entire boundary only for the x-component
     boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
     bc_handler.add_dirichlet_bc(
-        ScalarType(0), boundary_facets, sub=0, method="topological", entity_dim=fdim
+        dolfinx.default_scalar_type(0), boundary_facets, sub=0, method="topological", entity_dim=fdim
     )
     # constrain left boundary as well
-    zero = np.array([0.0, 0.0], dtype=ScalarType)
+    zero = np.array([0.0, 0.0], dtype=dolfinx.default_scalar_type)
     bc_handler.add_dirichlet_bc(zero, left, method="geometrical")
 
     bcs = bc_handler.bcs
     ndofs = 0
     for bc in bcs:
-        ndofs += bc.dof_indices()[1]
+        ndofs += bc._cpp_object.dof_indices()[1]
 
     assert ndofs == 64 + 34
 
@@ -74,7 +75,8 @@ def test_vector_geom_component_wise():
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, 8, 8, dolfinx.mesh.CellType.quadrilateral
     )
-    V = dolfinx.fem.VectorFunctionSpace(domain, ("Lagrange", 2))
+    ve = element("Lagrange", domain.basix_cell(), 2, shape=(2,))
+    V = dolfinx.fem.functionspace(domain, ve)
 
     bc_handler = BoundaryConditions(domain, V)
 
@@ -85,32 +87,33 @@ def test_vector_geom_component_wise():
     fdim = tdim - 1
     domain.topology.create_connectivity(fdim, tdim)
 
-    zero = ScalarType(0.)
+    zero = dolfinx.default_scalar_type(0.)
     bc_handler.add_dirichlet_bc(zero, left, method="geometrical", sub=0, entity_dim=fdim)
 
     bcs = bc_handler.bcs
     ndofs = 0
     for bc in bcs:
-        ndofs += bc.dof_indices()[1]
+        ndofs += bc._cpp_object.dof_indices()[1]
 
     assert ndofs == 17
 
 
 def test_scalar_geom():
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
+    ve = element("Lagrange", domain.basix_cell(), 2, shape=())
+    V = dolfinx.fem.functionspace(domain, ve)
 
     bc_handler = BoundaryConditions(domain, V)
 
     def left(x):
         return np.isclose(x[0], 0.0)
 
-    bc_handler.add_dirichlet_bc(ScalarType(0), left, method="geometrical")
+    bc_handler.add_dirichlet_bc(dolfinx.default_scalar_type(0), left, method="geometrical")
 
     bcs = bc_handler.bcs
     my_bc = bcs[0]
 
-    ndofs = my_bc.dof_indices()[1]
+    ndofs = my_bc._cpp_object.dof_indices()[1]
     all_ndofs = domain.comm.allreduce(ndofs, op=MPI.SUM)
     assert all_ndofs == 17
     assert my_bc.g.value == 0.0
@@ -119,7 +122,8 @@ def test_scalar_geom():
 def test_scalar_topo():
     n = 20
     domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, n, n)
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
+    ve = element("Lagrange", domain.basix_cell(), 2, shape=())
+    V = dolfinx.fem.functionspace(domain, ve)
 
     bc_handler = BoundaryConditions(domain, V)
 
@@ -129,12 +133,12 @@ def test_scalar_topo():
 
     # entire boundary; should have (n+1+n)*4 - 4 = 8n dofs
     boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-    bc_handler.add_dirichlet_bc(ScalarType(0), boundary_facets, entity_dim=fdim)
+    bc_handler.add_dirichlet_bc(dolfinx.default_scalar_type(0), boundary_facets, entity_dim=fdim)
 
     bcs = bc_handler.bcs
     my_bc = bcs[0]
 
-    ndofs = my_bc.dof_indices()[1]
+    ndofs = my_bc._cpp_object.dof_indices()[1]
     all_ndofs = domain.comm.allreduce(ndofs, op=MPI.SUM)
     assert all_ndofs == 8 * n
     assert my_bc.g.value == 0.0
