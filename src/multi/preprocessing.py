@@ -11,6 +11,7 @@ import dolfinx
 import gmsh
 import meshio
 import numpy as np
+from typing import Callable
 
 GMSH_VERBOSITY = 0
 
@@ -39,23 +40,24 @@ def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
     return out_mesh
 
 
-def create_facet_tags(mesh, boundaries):
-    """create facet tags for given mesh
+def create_facet_tags(
+    mesh: dolfinx.mesh.Mesh, boundaries: dict[str, tuple[int, Callable]]
+) -> tuple[dolfinx.mesh.MeshTags, dict[str, int]]:
+    """Creates facet tags for the given mesh and boundaries.
 
-    Parameters
-    ----------
-    mesh : dolfinx.mesh.Mesh
-        The grid of the computational domain.
-    boundaries : dict
-        The definition of boundaries given by a name (key) and
-        a tuple of an integer and a function (value).
+    This code is part of the FEniCSx tutorial
+    by Jørgen S. Dokken.
+    See https://jsdokken.com/dolfinx-tutorial/chapter3/robin_neumann_dirichlet.html?highlight=sorted_facets#implementation # noqa: E501
 
-    Returns
-    -------
-    facet_tags : dolfinx.mesh.MeshTags
-        The mesh tags for the facets/boundary.
-    marked_boundary: dict
-        The name (key) and integer (value) defining the boundary.
+    Args:
+        mesh: The computational domain.
+        boundaries: The definition of boundaries where each key is a string
+          and each value is a tuple of an integer and a marker function.
+
+    Returns:
+      A tuple (facet_tags, marked_boundary) where facet_tags is an array
+      with dtype int and marked_boundary is a dict where each key is a string
+      and each value is an int.
     """
 
     facet_indices, facet_markers = [], []
@@ -70,9 +72,7 @@ def create_facet_tags(mesh, boundaries):
     facet_indices = np.hstack(facet_indices).astype(np.int32)
     facet_markers = np.hstack(facet_markers).astype(np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_tags = dolfinx.mesh.meshtags(
-        mesh, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets]
-    )
+    facet_tags = dolfinx.mesh.meshtags(mesh, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
     return facet_tags, marked_boundary
 
 

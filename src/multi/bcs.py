@@ -1,7 +1,9 @@
-import dolfinx
+from typing import Union, Callable
+from dolfinx import fem, mesh
+from dolfinx.fem.petsc import set_bc
 import ufl
 import numpy as np
-from petsc4py.PETSc import ScalarType, InsertMode, ScatterMode # type: ignore
+from petsc4py.PETSc import InsertMode, ScatterMode
 
 
 def get_boundary_dofs(V, marker=None):
@@ -10,15 +12,11 @@ def get_boundary_dofs(V, marker=None):
     tdim = domain.topology.dim
     fdim = tdim - 1
     if marker is not None:
-        entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, marker)
+        entities = mesh.locate_entities_boundary(domain, fdim, marker)
     else:
         everywhere = lambda x: np.full(x.shape[1], True, dtype=bool)
-        entities = dolfinx.mesh.locate_entities_boundary(domain, fdim, everywhere)
-    dofs = dolfinx.fem.locate_dofs_topological(V, fdim, entities)
-    # bc = dolfinx.fem.dirichletbc(np.array((0,) * gdim, dtype=ScalarType), dofs)
-    # dof_indices = bc.dof_indices()[0] # type: ignore
-
-    # FIXME why is dofs not the same as dof_indices?
+        entities = mesh.locate_entities_boundary(domain, fdim, everywhere)
+    dofs = fem.locate_dofs_topological(V, fdim, entities)
     return dofs
 
 
@@ -58,8 +56,8 @@ class BoundaryDataFactory(object):
         tdim = domain.topology.dim
         fdim = tdim - 1
         domain.topology.create_connectivity(fdim, tdim)
-        boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-        self.boundary_dofs = dolfinx.fem.locate_dofs_topological(
+        boundary_facets = mesh.exterior_facet_indices(domain.topology)
+        self.boundary_dofs = fem.locate_dofs_topological(
             V, fdim, boundary_facets
         )
 
@@ -77,7 +75,7 @@ class BoundaryDataFactory(object):
         -------
         u : dolfinx.fem.Function
         """
-        u = dolfinx.fem.Function(self.V)
+        u = fem.Function(self.V)
         u.vector.zeroEntries()
         u.vector.setValues(boundary_dofs, values, addv=InsertMode.INSERT)
         u.vector.assemblyBegin()
@@ -100,8 +98,8 @@ class BoundaryDataFactory(object):
         self.bch.clear()
         self.bch.add_dirichlet_bc(**bc)
         bcs = self.bch.bcs
-        u = dolfinx.fem.Function(self.V)
-        dolfinx.fem.petsc.set_bc(u.vector, bcs)
+        u = fem.Function(self.V)
+        set_bc(u.vector, bcs)
         u.vector.ghostUpdate(
             addv=InsertMode.INSERT_VALUES, mode=ScatterMode.FORWARD
         )
@@ -120,26 +118,37 @@ class BoundaryDataFactory(object):
         bc : dolfinx.fem.dirichletbc
         """
         dofs = self.boundary_dofs
-        bc = dolfinx.fem.dirichletbc(function, dofs)
+        bc = fem.dirichletbc(function, dofs)
         return bc
 
 
 # adapted version of MechanicsBCs by Thomas Titscher
-class BoundaryConditions:
-    """Handles dirichlet and neumann boundary conditions
+class BoundaryConditions(object):
+    """Handles Dirichlet and Neumann boundary conditions.
 
-    Parameters
-    ----------
-    domain : dolfinx.mesh.Mesh
-        Computational domain of the problem.
-    space : dolfinx.fem.FunctionSpace
-        Finite element space defined on the domain.
-    facet_markers : optional, dolfinx.mesh.MeshTags
-        The mesh tags defining boundaries.
-
+    Attributes:
+        domain: The computational domain.
+        V: The finite element space.
     """
 
-    def __init__(self, domain, space, facet_markers=None):
+    def __init__(
+        self,
+        domain: mesh.Mesh,
+        space: fem.FunctionSpaceBase,
+        facet_tags: Union[mesh.MeshTags, None] = None,
+    ) -> None:
+        """Initializes the instance based on domain and FE space.
+
+        It sets up lists to hold the Dirichlet and Neumann BCs
+        as well as the required `ufl` objects to define Neumann
+        BCs if `facet_tags` is not None.
+
+        Args:
+            domain: The computational domain.
+            space: The finite element space.
+            facet_tags: The mesh tags defining boundaries.
+        """
+
         self.domain = domain
         self.V = space
 
@@ -153,268 +162,152 @@ class BoundaryConditions:
 
         # handle facets and measure for neumann bcs
         self._neumann_bcs = []
-        self._facet_markers = facet_markers
-        self._ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_markers)
+        self._facet_tags = facet_tags
+        self._ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tags)
         self._v = ufl.TestFunction(space)
 
     def add_dirichlet_bc(
-        self, value, boundary=None, sub=None, method="topological", entity_dim=None
-    ):
-        """add a Dirichlet BC
+        self,
+        value: (
+            Union[fem.Function, fem.Constant, fem.DirichletBC, np.ndarray, Callable]
+        ),
+        boundary: Union[int, np.ndarray, Callable, None] = None,
+        sub: Union[int, None] = None,
+        method: str = "topological",
+        entity_dim: Union[int, None] = None,
+    ) -> None:
+        """Adds a Dirichlet bc.
 
-        Parameters
-        ----------
-        value : Function, Constant or np.ndarray or DirichletBC
-            The Dirichlet function or boundary condition.
-        boundary : optional, callable or np.ndarray or int
-            The part of the boundary whose dofs should be constrained.
-            This can be a callable defining the boundary geometrically or
-            an array of entity tags or an integer marking the boundary if
-            `facet_tags` is not None.
-        sub : optional, int
-            If `sub` is not None the subspace `V.sub(sub)` will be constrained.
-        method : optional, str
-            A hint which method should be used to locate the dofs.
-            Choice: 'topological' or 'geometrical'.
-        entity_dim : optional, int
-            The entity dimension in case `method=topological`.
+        Args:
+            value: Anything that *might* be used to define the Dirichlet function.
+                    It can be a `Function`, a `Callable` which is then interpolated
+                    or an already existing Dirichlet BC, or ... (see type hint).
+            boundary: The part of the boundary whose dofs should be constrained.
+                    This can be a callable defining the boundary geometrically or
+                    an array of entity tags or an integer marking the boundary if
+                    `facet_tags` is not None.
+            sub: If `sub` is not None the subspace `V.sub(sub)` will be
+                    constrained.
+            method: A hint which method should be used to locate the dofs.
+                    Choices: 'topological' or 'geometrical'.
+            entity_dim: The dimension of the entities to be located
+                        topologically. Note that `entity_dim` is required if `sub`
+                        is not None and `method=geometrical`.
         """
-        if boundary is None:
-            assert isinstance(value, dolfinx.fem.DirichletBC)
+        if isinstance(value, fem.DirichletBC):
             self._bcs.append(value)
         else:
             assert method in ("topological", "geometrical")
             V = self.V.sub(sub) if sub is not None else self.V
 
-            if method == "topological":
-                facets = None
+            # if sub is not None and method=="geometrical"
+            # dolfinx.fem.locate_dofs_geometrical(V, boundary) will raise a RuntimeError
+            # because dofs of a subspace cannot be tabulated
+            topological = method == "topological" or sub is not None
+
+            if topological:
                 assert entity_dim is not None
 
                 if isinstance(boundary, int):
-                    try:
-                        facets = self._facet_markers.find(boundary)
-                    except AttributeError:
-                        print("There are no facet tags defined!")
-                else:
+                    if self._facet_tags is None:
+                        raise AttributeError("There are no facet tags defined!")
+                    else:
+                        facets = self._facet_tags.find(boundary)
+                    if facets.size < 1:
+                        raise ValueError(f"Not able to find facets tagged with value {boundary=}.")
+                elif isinstance(boundary, np.ndarray):
                     facets = boundary
-
-                dofs = dolfinx.fem.locate_dofs_topological(V, entity_dim, facets)
-            else:
-                if sub is not None:
-                    assert entity_dim is not None
-                    facets = dolfinx.mesh.locate_entities_boundary(
-                        self.domain, entity_dim, boundary
-                    )
-                    dofs = dolfinx.fem.locate_dofs_topological(V, entity_dim, facets)
                 else:
-                    dofs = dolfinx.fem.locate_dofs_geometrical(V, boundary)
+                    facets = mesh.locate_entities_boundary(self.domain, entity_dim, boundary)
 
-            if isinstance(value, (dolfinx.fem.Constant, np.ndarray, np.float64)):
-                bc = dolfinx.fem.dirichletbc(value, dofs, V)
+                dofs = fem.locate_dofs_topological(V, entity_dim, facets)
             else:
-                try:
-                    bc = dolfinx.fem.dirichletbc(value, dofs)
-                except AttributeError:
-                    f = dolfinx.fem.Function(V)
-                    f.interpolate(value)
-                    bc = dolfinx.fem.dirichletbc(f, dofs)
+                dofs = fem.locate_dofs_geometrical(V, boundary)
+
+            try:
+                bc = fem.dirichletbc(value, dofs, V)
+            except TypeError:
+                # value is Function and V cannot be passed
+                # TODO understand 4th constructor
+                # see dolfinx/fem/bcs.py line 127
+                bc = fem.dirichletbc(value, dofs)
+            except AttributeError:
+                # value has no Attribute `dtype`
+                f = fem.Function(V)
+                f.interpolate(value)
+                bc = fem.dirichletbc(f, dofs)
+
             self._bcs.append(bc)
 
-    def add_neumann_bc(self, marker, value):
-        """adds a Neumann BC.
+    def add_neumann_bc(self, marker: Union[str, int, list[int]], value: fem.Constant) -> None:
+        """Adds a Neumann BC.
 
-        Parameters
-        ----------
-        marker : int
-        value : some ufl type
-            The neumann data, e.g. traction vector.
-
+        Args:
+            marker: The id of the boundary where Neumann BC should be applied.
+                This can be the str 'everywhere' or int or list[int], see `ufl.Measure`.
+            value: The Neumann data, e.g. a traction vector. This has
+              to be a valid `ufl` object.
         """
-        if isinstance(marker, int):
-            assert self._facet_markers is not None
-            assert marker in self._facet_markers.values
+        if self._facet_tags is not None:
+            if marker not in self._facet_tags.values:
+                raise ValueError(f"No facet tags defined for {marker=}.")
 
         self._neumann_bcs.append([value, marker])
 
     @property
-    def has_neumann(self):
+    def has_neumann(self) -> bool:
+        """check if Neumann BCs are defined
+
+        Returns:
+            True or False
+        """
         return len(self._neumann_bcs) > 0
 
     @property
-    def has_dirichlet(self):
+    def has_dirichlet(self) -> bool:
+        """check if Dirichlet BCs are defined
+
+        Returns:
+            True or False
+        """
         return len(self._bcs) > 0
 
     @property
-    def bcs(self):
-        """returns list of dirichlet bcs"""
+    def bcs(self) -> list[fem.DirichletBC]:
+        """returns the list of Dirichlet BCs
+
+        Returns:
+            The list of Dirichlet BCs.
+        """
+
         return self._bcs
 
-    def clear(self, dirichlet=True, neumann=True):
-        """clear list of boundary conditions"""
+    def clear(self, dirichlet: bool = True, neumann: bool = True) -> None:
+        """Clears list of Dirichlet and/or Neumann BCs.
+
+        Args:
+            dirichlet: flag for Dirichlet Bcs (if true will clear those)
+            neumann: flag for Neumann Bcs (if true will clear those)
+
+        """
+
         if dirichlet:
             self._bcs.clear()
         if neumann:
             self._neumann_bcs.clear()
 
     @property
-    def neumann_bcs(self):
-        """returns ufl form of (sum of) neumann bcs"""
+    def neumann_bcs(self) -> ufl.Form:
+        """creates the ufl form of (sum of) Neumann BCs
+
+        Returns:
+            A ufl object representing Neumann BCs
+        """
+
         r = 0
         for expression, marker in self._neumann_bcs:
             r += ufl.inner(expression, self._v) * self._ds(marker)
         return r
-
-
-# deprecated
-# def compute_multiscale_bcs(
-#     problem, cell_index, edge, boundary_data, dofmap, chi=None, product=None, orth=False
-# ):
-#     """compute multiscale bcs from given boundary data
-
-#     The coarse scale basis functions are assumed to be linear functions
-#     with value 1 or 0 at the endpoints of the edge mesh.
-#     The dof values for the fine scale edge basis are computed
-#     via projection of the boundary data onto the fine scale basis.
-#     If `chi` is None, or the number of dofs per edge (dofmap) is
-#     < 1, then only the coarse dof values are computed.
-
-#     Parameters
-#     ----------
-#     problem : multi.problems.LinearProblem
-#         The linear problem.
-#     cell_index : int
-#         The cell index with respect to the coarse grid.
-#     edge : str
-#         The boundary edge.
-#     boundary_data : dolfinx.fem.Function
-#         The (total) displacement value on the boundary.
-#         Will be projected onto the edge space.
-#     dofmap : multi.dofmap.DofMap
-#         The dofmap of the reduced order model.
-#     chi : optional, np.ndarray
-#         The fine scale edge basis. ``chi.shape`` has to agree
-#         with number of dofs for current coarse grid cell.
-#     product : str or ufl.form.Form, optional
-#         The inner product wrt which chi was orthonormalized.
-#     orth : bool, optional
-#         If True, assume orthonormal basis.
-
-
-#     Returns
-#     -------
-#     bcs : dict
-#         The dofs (dict.keys()) and values (dict.values()) of the
-#         projected boundary conditions.
-
-#     """
-#     assert edge in ("bottom", "right", "top", "left")
-#     local_edge_index = dofmap.dof_layout.local_edge_index_map[edge]
-#     local_vertices = dofmap.dof_layout.topology[1][local_edge_index]
-
-#     edge_space = problem.edge_spaces[edge]
-#     source = FenicsxVectorSpace(edge_space)
-
-#     dofs_per_edge = dofmap.dofs_per_edge
-#     if isinstance(dofs_per_edge, (int, np.integer)):
-#         add_fine_bcs = dofs_per_edge > 0
-#         edge_basis_length = dofs_per_edge
-#     else:
-#         assert dofs_per_edge.shape == (dofmap.num_cells, 4)
-#         dofs_per_edge = dofs_per_edge[cell_index]
-#         add_fine_bcs = np.sum(dofs_per_edge) > 0
-#         edge_basis_length = dofs_per_edge[local_edge_index]
-
-#     if edge == "bottom":
-#         component = 0
-#     elif edge == "top":
-#         component = 0
-#     elif edge == "left":
-#         component = 1
-#     elif edge == "right":
-#         component = 1
-#     else:
-#         raise NotImplementedError
-
-#     # need to know entities wrt the global coarse grid
-#     # to determine the dof indices of the global problem
-#     vertices_coarse_cell = dofmap.conn[0].links(cell_index)
-#     edges_coarse_cell = dofmap.conn[1].links(cell_index)
-
-#     boundary_vertices = vertices_coarse_cell[local_vertices]
-#     boundary_nodes = dolfinx.mesh.compute_midpoints(
-#         dofmap.grid.mesh, 0, boundary_vertices
-#     )
-#     # make sure points are withing problem.domain
-#     boundary_nodes = np.around(boundary_nodes, decimals=3)
-
-#     coarse_values = interpolate(boundary_data, boundary_nodes)
-#     coarse_dofs = []
-#     for vertex in boundary_vertices:
-#         coarse_dofs += dofmap.entity_dofs(0, vertex)
-
-#     if not len(coarse_dofs) == coarse_values.size:
-#         breakpoint()
-
-#     # initialize return value
-#     bcs = {}  # dofs are keys, bc_values are values
-#     for dof, val in zip(coarse_dofs, coarse_values.flatten()):
-#         bcs.update({dof: val})
-
-#     if add_fine_bcs:
-#         assert chi is not None
-#         # ### subtract coarse scale part from boundary data
-#         # FIXME interpolation for different meshes not supported (yet) in dolfinx
-#         x_dofs = edge_space.tabulate_dof_coordinates()
-#         g = interpolate(boundary_data, x_dofs)
-#         G = source.from_numpy(g.reshape(1, source.dim))
-
-#         def boundary(x):
-#             start = np.isclose(x[component], boundary_nodes[:, component][0])
-#             end = np.isclose(x[component], boundary_nodes[:, component][1])
-#             return np.logical_or(start, end)
-
-#         line = NumpyLine(boundary_nodes[:, component])
-#         phi_array = line.interpolate(edge_space, component)
-#         phi = source.from_numpy(phi_array)
-#         Gfine = G - phi.lincomb(coarse_values.flatten())
-
-#         # ### build inner product for edge space
-#         boundary_dofs = dolfinx.fem.locate_dofs_geometrical(edge_space, boundary)
-#         zero = dolfinx.fem.Function(edge_space)
-#         zero.x.set(0.0)
-#         product_bc = dolfinx.fem.dirichletbc(zero, boundary_dofs)
-#         inner_product = InnerProduct(edge_space, product, bcs=(product_bc,))
-#         matrix = inner_product.assemble_matrix()
-#         if matrix is not None:
-#             product = FenicsxMatrixOperator(matrix, edge_space, edge_space)
-#         else:
-#             product = None
-
-#         edge_basis = source.from_numpy(chi)
-#         edge_basis = edge_basis[:edge_basis_length]
-#         if orth:
-#             coeff = Gfine.inner(edge_basis, product=product)
-#         else:
-#             Gramian = edge_basis.gramian(product=product)
-#             R = edge_basis.inner(Gfine, product=product)
-#             coeff = np.linalg.solve(Gramian, R)
-
-#         # determine entity tag for the edge of the coarse grid cell
-#         edges_coarse_cell = dofmap.conn[1].links(cell_index)
-#         edge_tag = edges_coarse_cell[local_edge_index]
-#         fine_dofs = np.array(dofmap.entity_dofs(1, edge_tag))
-
-#         try:
-#             coeff = coeff.reshape(fine_dofs.shape)
-#         except ValueError as verr:
-#             raise ValueError(
-#                 "Number of modes per edge (dofmap) and the number of modes of the edge basis do not agree!"
-#             ) from verr
-
-#         for dof, val in zip(fine_dofs, coeff):
-#             bcs.update({dof: val})
-
-#     return bcs
 
 
 def apply_bcs(lhs, rhs, bc_indices, bc_values):
