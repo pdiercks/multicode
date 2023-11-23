@@ -1,49 +1,23 @@
-"""helpers to define boundaries"""
+"""Easy definition of boundaries."""
 
+import typing
+
+import dolfinx
 import numpy as np
-from multi.common import to_floats
+from basix.ufl import element
 
-"""Design
 
-old dolfin: 
-    here on needed a SubDomain object that defined the boundary geometrically.
-    SubDomain could then be passed to DirichletBC.
-    Therefore, fenics_helpers.boundary was used to conveniently define boundaries
-    geometrically (would return a SubDomain).
-
-dolfinx:
-    input to dirichletbc is now:
-        1. (Function, array)
-        2. ([Constant, array], array, FunctionSpace)
-    The array are the boundary_dofs which are determined via `locate_dofs_topological` or
-    `locate_dofs_geometrical`.
-
-    Thus, multi.boundary could provide functions to:
-        (a) define callables that define complex geometry as input to locate_dofs_geometrical.
-        (b) define functions that compute entities of the mesh and pass this array to locate_dofs_topological.
-
-    (b) might use dolfinx.mesh.locate_entities and dolfinx.mesh.locate_entities_boundary
+def plane_at(coordinate: float, dim: typing.Union[str, int]) -> typing.Callable:
+    """Defines a plane where `x[dim]` equals `coordinate`.
 
     Args:
-        mesh: dolfinx.mesh.Mesh
-        dim: tdim of the entities
-        marker: function that takes an array of points x and returns an array of booleans
+        coordinate: value
+        dim: dimension
 
-    --> therefore, use of locate_dofs_topological again boils down to a geometrical description
-    of the boundary to be defined. The only difference is the possibility to filter wrt the tdim.
-    (this is not possible with locate_dofs_geometrical)
-
-"""
-
-
-def plane_at(coordinate, dim):
-    """return callable that determines boundary geometrically
-
-    Parameters
-    ----------
-    coordinate : float
-    dim : str or int
+    Returns:
+        function defining the boundary
     """
+
     if dim in ["x", "X"]:
         dim = 0
     if dim in ["y", "Y"]:
@@ -59,11 +33,58 @@ def plane_at(coordinate, dim):
     return boundary
 
 
-def within_range(start, end, tol=1e-6):
-    """mark the domain within range
+def line_at(coordinates: list[float], dims: list[typing.Union[str, int]]) -> typing.Callable:
+    """Defines a line where `x[dims[0]]` equals `coordinates[0]` and `x[dims[1]]` equals `coordinates[1]`.
 
-    Note: best used together with dolfinx.mesh.locate_entities_boundary
-    and topological definition of the Dirichlet bc
+    Args:
+        coordinates: list of values
+        dims: list of dimension
+
+    Returns:
+        function defining the boundary
+    """
+
+    assert len(coordinates) == 2
+    assert len(dims) == 2
+
+    # transform x,y,z str into integer
+    for i, dim in enumerate(dims):
+        if dim in ["x", "X"]:
+            dims[i] = 0
+        elif dim in ["y", "Y"]:
+            dims[i] = 1
+        elif dim in ["z", "Z"]:
+            dims[i] = 2
+        assert dims[i] in (0, 1, 2)
+
+    assert dims[0] != dims[1]
+
+    def boundary(x):
+        return np.logical_and(
+            np.isclose(x[dims[0]], coordinates[0]),
+            np.isclose(x[dims[1]], coordinates[1]),
+        )
+
+    return boundary
+
+
+def within_range(
+    start: typing.Union[typing.Iterable[int], typing.Iterable[float]],
+    end: typing.Union[typing.Iterable[int], typing.Iterable[float]],
+    tol: float = 1e-6,
+) -> typing.Callable:
+    """Defines a range.
+
+    It is best used together with `dolfinx.mesh.locate_entities_boundary`
+    and topological definition of the Dirichlet BC, because the Callable
+    will mark the whole range and not just the boundary.
+
+    Args:
+        start: The start point of the range.
+        end: The end point of the range.
+
+    Returns:
+        function defining the boundary
     """
     start = to_floats(start)
     end = to_floats(end)
@@ -85,9 +106,16 @@ def within_range(start, end, tol=1e-6):
     return boundary
 
 
-def point_at(coord):
+def point_at(coord: typing.Union[typing.Iterable[int], typing.Iterable[float]]) -> typing.Callable:
+    """Defines a point.
+
+    Args:
+        coord: points coordinates
+
+    Returns:
+        function defining the boundary
+    """
     p = to_floats(coord)
-    assert len(p) == 3
 
     def boundary(x):
         return np.logical_and(
@@ -98,16 +126,41 @@ def point_at(coord):
     return boundary
 
 
-def show_marked(domain, marker):
-    from dolfinx import fem
-    from basix.ufl import element
-    import matplotlib.pyplot as plt
+def show_marked(
+    domain: dolfinx.mesh.Mesh,
+    marker: typing.Callable,
+    filename: typing.Union[str, None] = None,
+) -> None:  # pragma: no cover
+    """Shows dof coordinates marked by `marker`.
+
+    Notes:
+      This is useful for debugging boundary conditions.
+      Currently this only works for domains of topological
+      dimension 2.
+
+    Args:
+        domain: The computational domain.
+        marker: A function that takes an array of points ``x`` with shape
+          ``(gdim, num_points)`` and returns an array of booleans of
+          length ``num_points``, evaluating to ``True`` for entities whose
+          degree-of-freedom should be returned.
+        filename: Save figure to this path.
+          If None, the figure is shown (default).
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required to show marked dofs.")
+
+    tdim = domain.topology.dim
+    if tdim in (1, 3):
+        raise NotImplementedError(f"Not implemented for mesh of topological dimension {tdim=}.")
 
     fe = element("Lagrange", domain.basix_cell(), 1, shape=())
-    V = fem.functionspace(domain, fe)
-    dofs = fem.locate_dofs_geometrical(V, marker)
-    u = fem.Function(V)
-    bc = fem.dirichletbc(u, dofs)
+    V = dolfinx.fem.functionspace(domain, fe)
+    dofs = dolfinx.fem.locate_dofs_geometrical(V, marker)
+    u = dolfinx.fem.Function(V)
+    bc = dolfinx.fem.dirichletbc(u, dofs)
     x_dofs = V.tabulate_dof_coordinates()
     x_dofs = x_dofs[:, :2]
     marked = x_dofs[bc._cpp_object.dof_indices()[0]]
@@ -117,4 +170,30 @@ def show_marked(domain, marker):
     plt.scatter(x, y, facecolors="none", edgecolors="k", marker="o")
     xx, yy = marked.T
     plt.scatter(xx, yy, facecolors="r", edgecolors="none", marker="o")
-    plt.show()
+
+    if filename is not None:
+        plt.savefig(filename)
+    else:
+        plt.show()
+
+
+def to_floats(x: typing.Union[typing.Iterable[int], typing.Iterable[float]]) -> list[float]:
+    """Converts `x` to a 3d coordinate.
+
+    Args:
+        x: point coordinates at least 1D
+
+    Returns:
+        point described as list with x,y,z value
+    """
+
+    floats = []
+    try:
+        for v in x:
+            floats.append(float(v))
+        while len(floats) < 3:
+            floats.append(0.0)
+    except TypeError:
+        raise TypeError(f"x={x} is not iterable!")
+
+    return floats
