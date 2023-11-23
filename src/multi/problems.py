@@ -2,7 +2,7 @@ from mpi4py import MPI
 import pathlib
 import yaml
 from basix.ufl import element
-from dolfinx import fem, la, mesh
+from dolfinx import fem, la, mesh, default_scalar_type
 from dolfinx.fem.petsc import create_vector, create_matrix, set_bc, apply_lifting, assemble_vector, assemble_matrix
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.io import gmshio
@@ -84,23 +84,20 @@ class LinearProblem(LinearProblemBase):
 
     """Class for solving a linear variational problem"""
 
-    def __init__(self, domain, V):
+    def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
         """Initialize domain and FE space
 
-        Parameters
-        ----------
-        domain : multi.Domain
-            The computational domain.
-        V : dolfinx.fem.FunctionSpace
-            The FE space.
+        Args:
+            domain: The computational domain.
+            space: The FE space.
 
         """
         self.logger = getLogger("multi.problems.LinearProblem")
         self.domain = domain
-        self.V = V
-        self.trial = ufl.TrialFunction(V)
-        self.test = ufl.TestFunction(V)
-        self._bc_handler = BoundaryConditions(domain.grid, V, domain.facet_markers)
+        self.V = space
+        self.trial = ufl.TrialFunction(self.V)
+        self.test = ufl.TestFunction(self.V)
+        self._bc_handler = BoundaryConditions(domain.grid, self.V, domain.facet_markers)
 
     def add_dirichlet_bc(
         self, value, boundary=None, sub=None, method="topological", entity_dim=None
@@ -224,55 +221,62 @@ class LinearProblem(LinearProblemBase):
 
 
 class LinearElasticityProblem(LinearProblem):
-    """class representing a linear elastic problem
-
-    Parameters
-    ----------
-    domain : multi.domain.Domain
-        The computational domain.
-    V : dolfin.FunctionSpace
-        The finite element space.
-    E : float or tuple of float
-        Young's modulus of the linear elastic materials.
-    NU : float or tuple of float
-        Poisson ratio of the linear elastic materials.
-    plane_stress : bool, optional
-        2d constraint.
-
-    """
+    """Represents a linear elastic problem."""
 
     def __init__(
-        self, domain, V, E=210e3, NU=0.3, plane_stress=False
+            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]
     ):
-        super().__init__(domain, V)
-        assert all(
-            [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
-        )
-        if isinstance(E, float) and isinstance(NU, float):
-            E = (E,)
-            NU = (NU,)
-            assert domain.cell_markers is None
+        """Initializes a linear elastic problem.
+
+        Args:
+            domain: The computational domain.
+            space: The FE space.
+            phases: Tuple of linear elastic materials for each phase.
+            The order should match `domain.cell_markers` if there are
+            several phases.
+
+        """
+
+        super().__init__(domain, space)
+        if domain.cell_markers is None:
+            assert len(phases) == 1
             self.dx = ufl.dx
         else:
-            if len(E) > 1 and domain.cell_markers is None:
-                raise KeyError("You need to define mesh tags for multiple materials")
-            assert all(
-                [
-                    len(E) == len(NU),
-                    len(E) == np.unique(domain.cell_markers.values).size,
-                ]
-            )
-            # FIXME double check if gmsh cell data starts at 1
-            assert np.amin(domain.cell_markers.values) > 0
-            mesh = domain.grid
-            subdomains = domain.cell_markers
-            self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
+            if np.amin(domain.cell_markers.values) < 0:
+                raise ValueError("Gmsh cell data should start at 1!")
+            self.dx = ufl.Measure("dx", domain=domain.grid,
+                                  subdomain_data=domain.cell_markers)
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
-        assert self.gdim in (1, 2, 3)
-        self.materials = [
-            LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
-            for e, nu in zip(E, NU)
-        ]
+        self.phases = phases
+
+        # assert all(
+        #     [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
+        # )
+        # if isinstance(E, float) and isinstance(NU, float):
+        #     E = (E,)
+        #     NU = (NU,)
+        #     assert domain.cell_markers is None
+        #     self.dx = ufl.dx
+        # else:
+        #     if len(E) > 1 and domain.cell_markers is None:
+        #         raise KeyError("You need to define mesh tags for multiple materials")
+        #     assert all(
+        #         [
+        #             len(E) == len(NU),
+        #             len(E) == np.unique(domain.cell_markers.values).size,
+        #         ]
+        #     )
+        #     # FIXME double check if gmsh cell data starts at 1
+        #     assert np.amin(domain.cell_markers.values) > 0
+        #     mesh = domain.grid
+        #     subdomains = domain.cell_markers
+        #     self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
+        # self.gdim = domain.grid.ufl_cell().geometric_dimension()
+        # assert self.gdim in (1, 2, 3)
+        # self.materials = [
+        #     LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
+        #     for e, nu in zip(E, NU)
+        # ]
 
     def setup_edge_spaces(self):
 
@@ -307,7 +311,7 @@ class LinearElasticityProblem(LinearProblem):
         try:
             coarse_grid = self.domain.coarse_grid
         except AttributeError:
-            pass
+            raise AttributeError
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
@@ -331,15 +335,15 @@ class LinearElasticityProblem(LinearProblem):
         """get bilinear form a(u, v) of the problem"""
         u = self.trial
         v = self.test
-        if len(self.materials) > 1:
+        if len(self.phases) > 1:
             return sum(
                 [
                     ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i + 1)
-                    for (i, mat) in enumerate(self.materials)
+                    for (i, mat) in enumerate(self.phases)
                 ]
             )
         else:
-            mat = self.materials[0]
+            mat = self.phases[0]
             return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx
 
     # FIXME allow for body forces
@@ -348,7 +352,7 @@ class LinearElasticityProblem(LinearProblem):
         """get linear form f(v) of the problem"""
         domain = self.V.mesh
         v = self.test
-        zero = fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
+        zero = fem.Constant(domain, (default_scalar_type(0.0),) * self.gdim)
         rhs = ufl.inner(zero, v) * ufl.dx
 
         if self._bc_handler.has_neumann:

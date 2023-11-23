@@ -8,6 +8,7 @@ from dolfinx import fem, mesh, default_scalar_type
 from dolfinx.io import gmshio
 from basix.ufl import element
 from multi.domain import RectangularDomain
+from multi.materials import LinearElasticMaterial
 from multi.problems import LinearElasticityProblem, TransferProblem
 from multi.boundary import plane_at, within_range
 from multi.preprocessing import create_rectangle_grid
@@ -55,6 +56,7 @@ def test_dirichlet_hom():
         return np.logical_and(a, b)
 
     n = 20
+    gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle_grid(
             0.0,
@@ -67,14 +69,15 @@ def test_dirichlet_hom():
             out_file=tf.name,
         )
         square, cell_markers, facet_markers = gmshio.read_from_msh(
-            tf.name, MPI.COMM_WORLD, gdim=2
+            tf.name, MPI.COMM_WORLD, gdim=gdim
         )
     degree = 1
     ve = element("P", square.basix_cell(), degree, shape=(2,))
     V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
-    problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
     submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
@@ -83,7 +86,7 @@ def test_dirichlet_hom():
     Vsub = fem.functionspace(submesh, ve)
 
     subdomain = RectangularDomain(submesh)
-    subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
+    subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
 
     zero = fem.Constant(square, (default_scalar_type(0.0), default_scalar_type(0.0)))
     right = plane_at(1.0, "x")
@@ -130,6 +133,7 @@ def test_remove_kernel():
     target_subdomain = within_range([1, 1, 0], [2, 2, 0])
 
     n = 60
+    gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle_grid(
             0.0,
@@ -142,21 +146,22 @@ def test_remove_kernel():
             out_file=tf.name,
         )
         square, _, facet_markers = gmshio.read_from_msh(
-            tf.name, MPI.COMM_WORLD, gdim=2
+            tf.name, MPI.COMM_WORLD, gdim=gdim
         )
     degree = 1
     ve = element("P", square.basix_cell(), degree, shape=(2,))
     V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
-    problem = LinearElasticityProblem(domain, V, E=210e3, NU=0.3, plane_stress=True)
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
     submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
     Vsub = fem.FunctionSpace(submesh, ve)
 
     subdomain = RectangularDomain(submesh)
-    subproblem = LinearElasticityProblem(subdomain, Vsub, E=210e3, NU=0.3, plane_stress=True)
+    subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
 
     gamma_out = lambda x: np.full(x[0].shape, True, dtype=bool)  # noqa: E731
 
@@ -196,8 +201,7 @@ def test_remove_kernel():
     u_ex = U_proj.to_numpy()
     error = u_ex - u_arr
     norm = np.linalg.norm(error)
-    print(norm)
-    assert np.linalg.norm(error) < 1e-12
+    assert norm < 1e-12
 
 
 if __name__ == "__main__":

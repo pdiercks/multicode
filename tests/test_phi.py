@@ -3,6 +3,7 @@ from basix.ufl import element
 import numpy as np
 from mpi4py import MPI
 from multi.domain import RectangularDomain
+from multi.materials import LinearElasticMaterial
 from multi.problems import LinearElasticityProblem
 from multi.basis_construction import compute_phi
 from multi.misc import locate_dofs
@@ -24,8 +25,10 @@ def test_nodes():
 
     rce = RectangularDomain(domain)
     rce.create_edge_grids(20)
+    gdim = domain.ufl_cell().geometric_dimension()
 
-    problem = LinearElasticityProblem(rce, V, E=60e3, NU=0.2, plane_stress=True)
+    phases = (LinearElasticMaterial(gdim, 60e3, 0.2, plane_stress=True),)
+    problem = LinearElasticityProblem(rce, V, phases)
 
     vertices = np.array(
         [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]

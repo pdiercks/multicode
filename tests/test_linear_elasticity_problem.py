@@ -6,6 +6,7 @@ from basix.ufl import element
 import numpy as np
 from multi.boundary import plane_at
 from multi.domain import Domain, RectangularDomain
+from multi.materials import LinearElasticMaterial
 from multi.preprocessing import create_rectangle_grid
 from multi.problems import LinearElasticityProblem
 from multi.misc import x_dofs_vectorspace
@@ -33,7 +34,9 @@ def test():
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = dolfinx.fem.functionspace(domain, fe)
-    problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
+    gdim = domain.ufl_cell().geometric_dimension()
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    problem = LinearElasticityProblem(Ω, V, phases)
 
     # add dirichlet and neumann bc
     zero = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(0.0),) * 2)
@@ -85,7 +88,9 @@ def test_dirichlet():
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = dolfinx.fem.functionspace(domain, fe)
-    problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
+    gdim = domain.ufl_cell().geometric_dimension()
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    problem = LinearElasticityProblem(Ω, V, phases)
 
     # add two dirichlet bc
     zero = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(0.0),) * 2)
@@ -146,13 +151,15 @@ def test_with_edges():
             recombine=True,
             out_file=tf.name,
         )
-        domain, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+        domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     Ω = RectangularDomain(domain, None, ft)
     Ω.create_edge_grids(10)
     ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
     V = dolfinx.fem.functionspace(Ω.grid, ve)
 
-    problem = LinearElasticityProblem(Ω, V, 210e3, 0.3)
+    gdim = domain.ufl_cell().geometric_dimension()
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    problem = LinearElasticityProblem(Ω, V, phases)
     problem.setup_edge_spaces()
     problem.create_map_from_V_to_L()
 
