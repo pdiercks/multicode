@@ -249,35 +249,6 @@ class LinearElasticityProblem(LinearProblem):
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
         self.phases = phases
 
-        # assert all(
-        #     [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
-        # )
-        # if isinstance(E, float) and isinstance(NU, float):
-        #     E = (E,)
-        #     NU = (NU,)
-        #     assert domain.cell_markers is None
-        #     self.dx = ufl.dx
-        # else:
-        #     if len(E) > 1 and domain.cell_markers is None:
-        #         raise KeyError("You need to define mesh tags for multiple materials")
-        #     assert all(
-        #         [
-        #             len(E) == len(NU),
-        #             len(E) == np.unique(domain.cell_markers.values).size,
-        #         ]
-        #     )
-        #     # FIXME double check if gmsh cell data starts at 1
-        #     assert np.amin(domain.cell_markers.values) > 0
-        #     mesh = domain.grid
-        #     subdomains = domain.cell_markers
-        #     self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
-        # self.gdim = domain.grid.ufl_cell().geometric_dimension()
-        # assert self.gdim in (1, 2, 3)
-        # self.materials = [
-        #     LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
-        #     for e, nu in zip(E, NU)
-        # ]
-
     def setup_edge_spaces(self):
 
         edge_meshes = {}
