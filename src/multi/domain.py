@@ -23,8 +23,8 @@ class Domain(object):
 
         """
         self.grid = grid
-        self.cell_markers = cell_tags
-        self.facet_markers = facet_tags
+        self.cell_tags = cell_tags
+        self.facet_tags = facet_tags
         self._x = grid.geometry.x
 
     def translate(self, dx):
