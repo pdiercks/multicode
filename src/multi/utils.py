@@ -1,12 +1,10 @@
 """common helpers"""
 
+from pymor.core.logger import getLogger
 
-def to_floats(values):
-    floats = []
-    try:
-        for v in values:
-            floats.append(float(v))
-    except TypeError as e:
-        floats = [float(values)]
 
-    return floats
+class LogMixin(object):
+    @property
+    def logger(self):
+        name = self.__class__.__module__
+        return getLogger(name)
