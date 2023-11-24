@@ -2,7 +2,7 @@ from mpi4py import MPI
 import pathlib
 import yaml
 from basix.ufl import element
-from dolfinx import fem, la, mesh
+from dolfinx import fem, la, mesh, default_scalar_type
 from dolfinx.fem.petsc import create_vector, create_matrix, set_bc, apply_lifting, assemble_vector, assemble_matrix
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.io import gmshio
@@ -12,7 +12,7 @@ import numpy as np
 from petsc4py import PETSc
 
 from multi.bcs import BoundaryConditions
-from multi.domain import StructuredQuadGrid, Domain
+from multi.domain import StructuredQuadGrid, Domain, RectangularSubdomain
 from multi.dofmap import QuadrilateralDofLayout
 from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
@@ -81,26 +81,22 @@ solution.x.scatter_forward()
 # FIXME re-evaluate design, implement __del__
 # is overriding method setup_solver still required?
 class LinearProblem(LinearProblemBase):
-
     """Class for solving a linear variational problem"""
 
-    def __init__(self, domain, V):
+    def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
         """Initialize domain and FE space
 
-        Parameters
-        ----------
-        domain : multi.Domain
-            The computational domain.
-        V : dolfinx.fem.FunctionSpace
-            The FE space.
+        Args:
+            domain: The computational domain.
+            space: The FE space.
 
         """
         self.logger = getLogger("multi.problems.LinearProblem")
         self.domain = domain
-        self.V = V
-        self.trial = ufl.TrialFunction(V)
-        self.test = ufl.TestFunction(V)
-        self._bc_handler = BoundaryConditions(domain.grid, V, domain.facet_markers)
+        self.V = space
+        self.trial = ufl.TrialFunction(self.V)
+        self.test = ufl.TestFunction(self.V)
+        self._bc_handler = BoundaryConditions(domain.grid, self.V, domain.facet_markers)
 
     def add_dirichlet_bc(
         self, value, boundary=None, sub=None, method="topological", entity_dim=None
@@ -124,12 +120,12 @@ class LinearProblem(LinearProblemBase):
         return self._bc_handler.bcs
 
     @property
-    def form_lhs(self):
+    def form_lhs(self) -> ufl.Form:
         """The ufl form of the left hand side"""
         raise NotImplementedError
 
     @property
-    def form_rhs(self):
+    def form_rhs(self) -> ufl.Form:
         """The ufl form of the right hand side"""
         raise NotImplementedError
 
@@ -224,68 +220,80 @@ class LinearProblem(LinearProblemBase):
 
 
 class LinearElasticityProblem(LinearProblem):
-    """class representing a linear elastic problem
-
-    Parameters
-    ----------
-    domain : multi.domain.Domain
-        The computational domain.
-    V : dolfin.FunctionSpace
-        The finite element space.
-    E : float or tuple of float
-        Young's modulus of the linear elastic materials.
-    NU : float or tuple of float
-        Poisson ratio of the linear elastic materials.
-    plane_stress : bool, optional
-        2d constraint.
-
-    """
+    """Represents a linear elastic problem."""
 
     def __init__(
-        self, domain, V, E=210e3, NU=0.3, plane_stress=False
+            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]
     ):
-        super().__init__(domain, V)
-        assert all(
-            [isinstance(E, (float, tuple, list)), isinstance(NU, (float, tuple, list))]
-        )
-        if isinstance(E, float) and isinstance(NU, float):
-            E = (E,)
-            NU = (NU,)
-            assert domain.cell_markers is None
+        """Initializes a linear elastic problem.
+
+        Args:
+            domain: The computational domain.
+            space: The FE space.
+            phases: Tuple of linear elastic materials for each phase.
+            The order should match `domain.cell_markers` if there are
+            several phases.
+
+        """
+
+        super().__init__(domain, space)
+        if domain.cell_markers is None:
+            assert len(phases) == 1
             self.dx = ufl.dx
         else:
-            if len(E) > 1 and domain.cell_markers is None:
-                raise KeyError("You need to define mesh tags for multiple materials")
-            assert all(
-                [
-                    len(E) == len(NU),
-                    len(E) == np.unique(domain.cell_markers.values).size,
-                ]
-            )
-            # FIXME double check if gmsh cell data starts at 1
-            assert np.amin(domain.cell_markers.values) > 0
-            mesh = domain.grid
-            subdomains = domain.cell_markers
-            self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
+            if np.amin(domain.cell_markers.values) < 0:
+                raise ValueError("Gmsh cell data should start at 1!")
+            self.dx = ufl.Measure("dx", domain=domain.grid,
+                                  subdomain_data=domain.cell_markers)
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
-        assert self.gdim in (1, 2, 3)
-        self.materials = [
-            LinearElasticMaterial(self.gdim, E=e, NU=nu, plane_stress=plane_stress)
-            for e, nu in zip(E, NU)
-        ]
+        self.phases = phases
 
-    def setup_edge_spaces(self):
+    @property
+    def form_lhs(self) -> ufl.Form:
+        """get bilinear form a(u, v) of the problem"""
+        u = self.trial
+        v = self.test
+        if len(self.phases) > 1:
+            form = 0
+            for (i, mat) in enumerate(self.phases):
+                form += ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i + 1)
+            return form
+        else:
+            mat = self.phases[0]
+            return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx
+
+    # FIXME allow for body forces
+    @property
+    def form_rhs(self) -> ufl.Form:
+        """get linear form f(v) of the problem"""
+        domain = self.V.mesh
+        v = self.test
+        zero = fem.Constant(domain, (default_scalar_type(0.0),) * self.gdim)
+        rhs = ufl.inner(zero, v) * ufl.dx
+
+        if self._bc_handler.has_neumann:
+            rhs += self._bc_handler.neumann_bcs
+
+        return rhs
+
+
+class SubdomainProblem(object):
+    """Represents a subproblem in a multiscale context"""
+
+    # FIXME pyright complains: cannot access member "domain" etc
+
+    def setup_edge_spaces(self) -> None:
 
         edge_meshes = {}
         try:
             edge_meshes["fine"] = self.domain.fine_edge_grid
-        except AttributeError as err:
-            raise err("Fine grid partition of the edges does not exist.")
+        except AttributeError:
+            raise RuntimeError("Fine grid partition of the edges does not exist.")
 
         try:
             edge_meshes["coarse"] = self.domain.coarse_edge_grid
-        except AttributeError as err:
-            raise err("Coarse grid partition of the edges does not exist.")
+        except AttributeError:
+            raise RuntimeError("Coarse grid partition of the edges does not exist.")
 
         V = self.V
         ufl_element = V.ufl_element()
@@ -303,17 +311,17 @@ class LinearElasticityProblem(LinearProblem):
 
         self.edge_spaces = edge_spaces
 
-    def setup_coarse_space(self):
+    def setup_coarse_space(self) -> None:
         try:
             coarse_grid = self.domain.coarse_grid
         except AttributeError:
-            pass
+            raise AttributeError
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
         self.W = fem.VectorFunctionSpace(coarse_grid, (family_name, 1))
 
-    def create_map_from_V_to_L(self):
+    def create_map_from_V_to_L(self) -> None:
         try:
             edge_spaces = self.edge_spaces
         except AttributeError:
@@ -326,35 +334,13 @@ class LinearElasticityProblem(LinearProblem):
             V_to_L[edge] = make_mapping(L, V)
         self.V_to_L = V_to_L
 
-    @property
-    def form_lhs(self):
-        """get bilinear form a(u, v) of the problem"""
-        u = self.trial
-        v = self.test
-        if len(self.materials) > 1:
-            return sum(
-                [
-                    ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i + 1)
-                    for (i, mat) in enumerate(self.materials)
-                ]
-            )
-        else:
-            mat = self.materials[0]
-            return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx
 
-    # FIXME allow for body forces
-    @property
-    def form_rhs(self):
-        """get linear form f(v) of the problem"""
-        domain = self.V.mesh
-        v = self.test
-        zero = fem.Constant(domain, (PETSc.ScalarType(0.0),) * self.gdim)
-        rhs = ufl.inner(zero, v) * ufl.dx
+class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
+    """Linear elasticity problem defined on a subdomain."""
 
-        if self._bc_handler.has_neumann:
-            rhs += self._bc_handler.neumann_bcs
+    def __init__(self, domain: RectangularSubdomain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]):
+        super().__init__(domain, space, phases)
 
-        return rhs
 
 
 class TransferProblem(object):
@@ -669,8 +655,9 @@ class TransferProblem(object):
             return FenicsxMatrixOperator(matrix, self.range.V, self.range.V)
 
 
-class MultiscaleProblem(object):
-    """base class to handle definition of a multiscale problem"""
+# FIXME should be an ABC class
+class MultiscaleProblemDefinition(object):
+    """Base class to define a multiscale problem."""
 
     def __init__(self, coarse_grid_path, fine_grid_path):
         self.coarse_grid_path = pathlib.Path(coarse_grid_path)
@@ -713,11 +700,11 @@ class MultiscaleProblem(object):
         if boundaries is not None:
             from multi.preprocessing import create_facet_tags
 
-            fine_ft, marked_boundaries = create_facet_tags(fine_domain, boundaries)
+            fine_ft, _ = create_facet_tags(fine_domain, boundaries)
         else:
             fine_ft = None
         self.fine_grid = Domain(
-            fine_domain, cell_markers=fine_ct, facet_markers=fine_ft
+            fine_domain, cell_tags=fine_ct, facet_tags=fine_ft
         )
 
     def setup_coarse_space(self, family="P", degree=1, shape=(2,)):
