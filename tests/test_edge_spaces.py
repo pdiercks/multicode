@@ -5,7 +5,7 @@ import numpy as np
 from dolfinx.io import gmshio
 from basix.ufl import element
 
-from multi.domain import RectangularDomain
+from multi.domain import RectangularSubdomain
 from multi.preprocessing import create_rce_grid_01
 
 
@@ -21,8 +21,8 @@ def test():
         create_rce_grid_01(0., 1., 0., 1., num_cells=num_cells, out_file=tf.name)
 
         rce, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    Ω = RectangularDomain(rce, ct, ft)
-    Ω.create_edge_grids(num_cells)
+    Ω = RectangularSubdomain(1, rce, ct, ft)
+    Ω.create_edge_grids({"fine": num_cells})
 
     bottom = Ω.fine_edge_grid["bottom"]
     top = Ω.fine_edge_grid["top"]

@@ -2,10 +2,10 @@
 
 import numpy as np
 import tempfile
-import dolfinx
+from dolfinx import mesh
 from dolfinx.io import gmshio
 from mpi4py import MPI
-from multi.domain import Domain, RectangularDomain
+from multi.domain import Domain, RectangularDomain, RectangularSubdomain
 from multi.preprocessing import create_line_grid, create_rectangle_grid
 
 
@@ -52,20 +52,18 @@ def test_2d():
     assert np.isclose(xmax[1], 1.4)
     assert np.isclose(xmax[0], 3.1)
 
-    rectangle = RectangularDomain(
-        get_unit_square_mesh(10, 10), index=17
-    )
-    rectangle.create_edge_grids(10)
+    rectangle = RectangularSubdomain(17, get_unit_square_mesh(10, 10))
+    rectangle.create_edge_grids({"fine": 10, "coarse": 1})
     assert len(rectangle.fine_edge_grid.keys()) == 4
     assert len(rectangle.coarse_edge_grid.keys()) == 4
-    assert isinstance(rectangle.fine_edge_grid["bottom"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.fine_edge_grid["top"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.fine_edge_grid["right"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.fine_edge_grid["left"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["bottom"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["top"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["right"], dolfinx.mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["left"], dolfinx.mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["bottom"], mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["top"], mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["right"], mesh.Mesh)
+    assert isinstance(rectangle.fine_edge_grid["left"], mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["bottom"], mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["top"], mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["right"], mesh.Mesh)
+    assert isinstance(rectangle.coarse_edge_grid["left"], mesh.Mesh)
 
 
 if __name__ == "__main__":

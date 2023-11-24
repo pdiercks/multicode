@@ -68,14 +68,14 @@ def test_dirichlet_hom():
             recombine=True,
             out_file=tf.name,
         )
-        square, cell_markers, facet_markers = gmshio.read_from_msh(
+        square, _, facet_markers = gmshio.read_from_msh(
             tf.name, MPI.COMM_WORLD, gdim=gdim
         )
     degree = 1
     ve = element("P", square.basix_cell(), degree, shape=(2,))
     V = fem.functionspace(square, ve)
 
-    domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
+    domain = RectangularDomain(square, facet_tags=facet_markers)
     phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
@@ -152,7 +152,7 @@ def test_remove_kernel():
     ve = element("P", square.basix_cell(), degree, shape=(2,))
     V = fem.functionspace(square, ve)
 
-    domain = RectangularDomain(square, cell_markers=None, facet_markers=facet_markers)
+    domain = RectangularDomain(square, facet_tags=facet_markers)
     phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem

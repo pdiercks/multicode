@@ -5,10 +5,10 @@ from dolfinx.io import gmshio
 from basix.ufl import element
 import numpy as np
 from multi.boundary import plane_at
-from multi.domain import Domain, RectangularDomain
+from multi.domain import Domain, RectangularSubdomain
 from multi.materials import LinearElasticMaterial
 from multi.preprocessing import create_rectangle_grid
-from multi.problems import LinearElasticityProblem
+from multi.problems import LinearElasticityProblem, LinElaSubProblem
 from multi.misc import x_dofs_vectorspace
 from multi.interpolation import interpolate
 
@@ -29,7 +29,7 @@ def test():
     facet_tags = dolfinx.mesh.meshtags(
         domain, fdim, right_boundary_facets, marker_value
     )
-    Ω = Domain(domain, cell_markers=None, facet_markers=facet_tags)
+    Ω = Domain(domain, facet_tags=facet_tags)
 
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
@@ -83,7 +83,7 @@ def test_dirichlet():
     right = plane_at(1.0, "x")
     bottom = plane_at(0.0, "y")
 
-    Ω = Domain(domain, cell_markers=None, facet_markers=None)
+    Ω = Domain(domain)
 
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
@@ -152,14 +152,14 @@ def test_with_edges():
             out_file=tf.name,
         )
         domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    Ω = RectangularDomain(domain, None, ft)
-    Ω.create_edge_grids(10)
+    Ω = RectangularSubdomain(1, domain, facet_tags=ft)
+    Ω.create_edge_grids({"fine": 10})
     ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
     V = dolfinx.fem.functionspace(Ω.grid, ve)
 
     gdim = domain.ufl_cell().geometric_dimension()
     phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
-    problem = LinearElasticityProblem(Ω, V, phases)
+    problem = LinElaSubProblem(Ω, V, phases)
     problem.setup_edge_spaces()
     problem.create_map_from_V_to_L()
 
