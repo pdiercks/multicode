@@ -1,32 +1,30 @@
+from typing import Union, Optional
+from mpi4py import MPI
 import pathlib
 import gmsh
 import tempfile
 import meshio
 import numpy as np
-import dolfinx
+from dolfinx import mesh, geometry
 from dolfinx.io import gmshio
-from mpi4py import MPI
 from multi.preprocessing import create_mesh, create_line_grid, create_rectangle_grid
 
 
 class Domain(object):
-    """Class to represent a computational domain
+    """Class to represent a computational domain."""
 
-    Parameters
-    ----------
-    grid : dolfinx.mesh.Mesh
-        The partition of the domain.
-    cell_markers : TODO
-    facet_markers : TODO
-    index : optional, int
-        The identification number of the domain.
-    """
+    def __init__(self, grid: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, facet_tags: Optional[mesh.MeshTags] = None):
+        """Initializes a domain object.
 
-    def __init__(self, grid, cell_markers=None, facet_markers=None, index=None):
+        Args:
+            grid: The partition of the computational domain.
+            cell_tags: Mesh tags for cells.
+            facet_tags: Mesh tags for facets.
+
+        """
         self.grid = grid
-        self.cell_markers = cell_markers
-        self.facet_markers = facet_markers
-        self.index = index
+        self.cell_markers = cell_tags
+        self.facet_markers = facet_tags
         self._x = grid.geometry.x
 
     def translate(self, dx):
@@ -43,33 +41,49 @@ class Domain(object):
 
 
 class RectangularDomain(Domain):
-    """representation of a rectangular domain Ω=[xs, xe]x[ys, ye]
+    """Discretization of a rectangular domain Ω=[xs, xe]x[ys, ye]."""
 
-    Parameters
-    ----------
-    grid : dolfinx.mesh.Mesh
-        The fine grid partition of the domain.
-    cell_markers : optional, dolfinx.mesh.MeshTags
-        Mesh tags for the cells of the domain.
-    facet_markers : optional, dolfinx.mesh.MeshTags
-        Mesh tags for the facets of the domain.
-    index : optional, int
-        The identification number of the domain.
-    """
+    def __init__(self, grid: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, facet_tags: Optional[mesh.MeshTags] =  None):
+        """Initializes a domain object.
 
-    def __init__(
-        self, grid, cell_markers=None, facet_markers=None, index=None
-    ):
-        super().__init__(grid, cell_markers, facet_markers, index)
+        Args:
+            grid: The partition of the domain.
+            cell_tags: Mesh tags of the cells.
+            facet_tags: Mesh tags for the facets.
+            
+        """
+        super().__init__(grid, cell_tags, facet_tags)
 
-    def create_coarse_grid(self, num_cells=1):
-        """create a coarse grid partition of Ω"""
+
+class RectangularSubdomain(RectangularDomain):
+    """A subdomain in a multiscale context."""
+
+    def __init__(self, id: int, grid: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, facet_tags: Optional[mesh.MeshTags] = None):
+        """Initializes a subdomain object.
+
+        Args:
+            id: Identification number of the subdomain.
+            grid: The (fine) grid partition of the subdomain.
+            cell_tags: Mesh tags for the cells.
+            facet_tags: Mesh tags for the facets.
+
+        """
+        super().__init__(grid, cell_tags, facet_tags)
+        self.id = id
+
+    def create_coarse_grid(self, num_cells: int=1) -> None:
+        """Creates a coarse grid partition of the subdomain.
+
+        Args:
+            num_cells: Number of quadrilateral cells in each spatial direction.
+
+        """
 
         if hasattr(self, "coarse_grid"):
             raise AttributeError("Coarse grid already exists")
 
-        xmin, ymin, zmin = self.xmin
-        xmax, ymax, zmax = self.xmax
+        xmin, ymin, _ = self.xmin
+        xmax, ymax, _ = self.xmax
 
         with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
             create_rectangle_grid(
@@ -78,27 +92,27 @@ class RectangularDomain(Domain):
             coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
         self.coarse_grid = coarse
 
-    def set_coarse_grid(self, mesh):
-        """set a coarse grid partition of Ω"""
+    def create_edge_grids(self, num_cells: dict[str, Union[int, None]]) -> None:
+        """Creates coarse and fine grid partitions of the boundary of the subdomain.
 
-        if hasattr(self, "coarse_grid"):
-            raise AttributeError("Coarse grid already exists")
+        Args:
+            num_cells: Number of interval cells for each boundary.
+            The keys 'coarse' and 'fine' are expected.
 
-        self.coarse_grid = mesh
+        """
 
-    def create_edge_grids(self, num_cells=None):
-        """create coarse and fine grid partitions of the boundary of Ω"""
         parent = self.grid
         tdim = parent.topology.dim
         fdim = tdim - 1
         parent.topology.create_connectivity(fdim, tdim)
-        facets = dolfinx.mesh.locate_entities_boundary(parent, fdim, lambda x: np.full(x[0].shape, True, dtype=bool))
+        facets = mesh.locate_entities_boundary(parent, fdim, lambda x: np.full(x[0].shape, True, dtype=bool))
         # assumes a quadrilateral domain and equal number of facets
         # per boundary/edge
-        num_cells = num_cells or int(facets.size / 4)
+        num_fine_cells = num_cells.get("fine", int(facets.size / 4))
+        num_coarse_cells = num_cells.get("coarse", 1)
 
-        xmin, ymin, zmin = self.xmin
-        xmax, ymax, zmax = self.xmax
+        xmin, ymin, _ = self.xmin
+        xmax, ymax, _ = self.xmax
 
         fine_grid = {}
         coarse_grid = {}
@@ -111,11 +125,11 @@ class RectangularDomain(Domain):
                 }
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line_grid(start, end, num_cells=num_cells, out_file=tf.name)
+                create_line_grid(start, end, num_cells=num_fine_cells, out_file=tf.name)
                 fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
             fine_grid[key] = fine
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line_grid(start, end, num_cells=1, out_file=tf.name)
+                create_line_grid(start, end, num_cells=num_coarse_cells, out_file=tf.name)
                 coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
             coarse_grid[key] = coarse
 
@@ -123,29 +137,30 @@ class RectangularDomain(Domain):
         self.coarse_edge_grid = coarse_grid
 
 
-
 class StructuredQuadGrid(object):
-    """class representing a structured (coarse scale) quadrilateral grid
+    """Class representing a structured (coarse scale) quadrilateral grid.
 
     Each coarse quadrilateral cell is associated with a fine scale grid which
     can be created by setting the property `self.fine_grid_method` and
     calling `self.create_fine_grid`.
 
-    Parameters
-    ----------
-    grid : dolfinx.mesh.Mesh
-        The coarse grid partition of the domain.
-    cell_markers : TODO
-    facet_markers : TODO
     """
 
-    def __init__(self, grid, cell_markers=None, facet_markers=None):
+    def __init__(self, grid: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, facet_tags: Optional[mesh.MeshTags] = None):
+        """Initializes the grid.
+
+        Args:
+            grid: The coarse grid partition of the domain.
+            cell_tags: Mesh tags for cells.
+            facet_tags: Mesh tags for facets.
+
+        """
         self.grid = grid
-        self.cell_markers = cell_markers
-        self.facet_markers = facet_markers
+        self.cell_tags = cell_tags
+        self.facet_tags = facet_tags
 
         # bounding box tree
-        self.bb_tree = dolfinx.geometry.bb_tree(grid, grid.topology.dim)
+        self.bb_tree = geometry.bb_tree(grid, grid.topology.dim)
 
         grid.topology.create_connectivity(2, 0)
         grid.topology.create_connectivity(2, 1)
@@ -180,15 +195,15 @@ class StructuredQuadGrid(object):
 
     def get_entity_coordinates(self, dim, entities):
         """return coordinates of `entities` of dimension `dim`"""
-        return dolfinx.mesh.compute_midpoints(self.grid, dim, entities)
+        return mesh.compute_midpoints(self.grid, dim, entities)
 
     def locate_entities(self, dim, marker):
         """locate entities of `dim` geometrically using `marker`"""
-        return dolfinx.mesh.locate_entities(self.grid, dim, marker)
+        return mesh.locate_entities(self.grid, dim, marker)
 
     def locate_entities_boundary(self, dim, marker):
         """locate entities of `dim` on the boundary geometrically using `marker`"""
-        return dolfinx.mesh.locate_entities_boundary(self.grid, dim, marker)
+        return mesh.locate_entities_boundary(self.grid, dim, marker)
 
     @property
     def fine_grid_method(self):
@@ -251,7 +266,7 @@ class StructuredQuadGrid(object):
 
         for cell in active_cells:
             vertices = self.get_entities(0, cell)
-            dx = dolfinx.mesh.compute_midpoints(self.grid, 0, vertices)
+            dx = mesh.compute_midpoints(self.grid, 0, vertices)
             dx = np.around(dx, decimals=3)
 
             xmin = np.amin(dx, axis=0)
@@ -303,8 +318,9 @@ class StructuredQuadGrid(object):
         # reasoning: always convert to xdmf since (merged) msh
         # cannot be read by dolfinx.io.gmshio
         in_mesh = meshio.read(tf_msh.name)
-        if tdim < 3:
-            prune_z = True
+        prune_z = True
+        if tdim > 2:
+            prune_z = False
         cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
         meshio.write(output, cell_mesh)
         if create_facets:
