@@ -20,67 +20,17 @@ from multi.product import InnerProduct
 from multi.projection import orthogonal_part
 from multi.sampling import _create_random_values
 from multi.solver import build_nullspace
+from multi.utils import LogMixin
 
-from pymor.core.logger import getLogger
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
+from pymor.operators.interface import Operator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
 
 from scipy.sparse import csc_matrix
 
 
-"""
-Design
-
-# 1. init
-p = LinearProblem(domain, V)
-
-# 2. set bcs unique to this problem
-p.add_dirichlet_bc(...)
-p.add_neumann_bc(...)
-
-# make sure that p.get_form_lhs() and p.get_form_rhs() are implemented ...
-
-# 3. setup solver
-p.setup_solver(petsc_options, form_compiler_options, jit_options)
-
-# ----------------
-# now with the solver setup there are different use cases
-# (A) solve the problem once and be done for today
-p.solve() # will call super.solve()
-
-# ----------------
-# (B) we want to solve the same problem many times with different rhs
-solver = p.solver # first get the solver we did setup
-p.assemble_matrix(bcs) # assemble matrix once for specific set of bcs
-
-# Note that p.A is filled with values internally
-# Next, we only need to define the rhs for which we want to solve
-# One option is to assemble the vector based on p.get_form_rhs()
-
-p.assemble_vector(bcs) # let assemble vector always modify p.b
-rhs = p.b
-solution = dolfinx.fem.Function(p.V)
-solver.solve(rhs, solution.vector)
-solution.x.scatter_forward()
-
-# Another option could be to create a function and set some values to it
-rhs = dolfinx.fem.Function(p.V)
-with rhs.vector.localForm() as rhs_loc:
-    rhs_loc.set(0)
-assemble_vector(rhs.vector, some_compiled_form) or skip this
-apply_lifting(rhs.vector, [p.a], bcs=[p.get_dirichlet_bcs()])
-rhs.vector.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-set_bc(rhs.vector, p.get_dirichlet_bcs())
-solver.solve(rhs.vector, solution.vector)
-solution.x.scatter_forward()
-
-"""
-
-
-# FIXME re-evaluate design, implement __del__
-# is overriding method setup_solver still required?
-class LinearProblem(LinearProblemBase):
+class LinearProblem(LinearProblemBase, LogMixin):
     """Class for solving a linear variational problem"""
 
     def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
@@ -91,12 +41,11 @@ class LinearProblem(LinearProblemBase):
             space: The FE space.
 
         """
-        self.logger = getLogger("multi.problems.LinearProblem")
         self.domain = domain
         self.V = space
         self.trial = ufl.TrialFunction(self.V)
         self.test = ufl.TestFunction(self.V)
-        self._bc_handler = BoundaryConditions(domain.grid, self.V, domain.facet_markers)
+        self._bc_handler = BoundaryConditions(domain.grid, self.V, domain.facet_tags)
 
     def add_dirichlet_bc(
         self, value, boundary=None, sub=None, method="topological", entity_dim=None
@@ -231,20 +180,20 @@ class LinearElasticityProblem(LinearProblem):
             domain: The computational domain.
             space: The FE space.
             phases: Tuple of linear elastic materials for each phase.
-            The order should match `domain.cell_markers` if there are
+            The order should match `domain.cell_tags` if there are
             several phases.
 
         """
 
         super().__init__(domain, space)
-        if domain.cell_markers is None:
+        if domain.cell_tags is None:
             assert len(phases) == 1
             self.dx = ufl.dx
         else:
-            if np.amin(domain.cell_markers.values) < 0:
+            if np.amin(domain.cell_tags.values) < 0:
                 raise ValueError("Gmsh cell data should start at 1!")
             self.dx = ufl.Measure("dx", domain=domain.grid,
-                                  subdomain_data=domain.cell_markers)
+                                  subdomain_data=domain.cell_tags)
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
         self.phases = phases
 
@@ -276,7 +225,7 @@ class LinearElasticityProblem(LinearProblem):
 
         return rhs
 
-
+# FIXME should be an abstract base class; no direct use
 class SubdomainProblem(object):
     """Represents a subproblem in a multiscale context"""
 
@@ -343,7 +292,7 @@ class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
 
 
 
-class TransferProblem(object):
+class TransferProblem(LogMixin):
     """General class for transfer problems.
 
     This class aids the solution of transfer problems given by:
@@ -404,7 +353,6 @@ class TransferProblem(object):
         range_product=None,
         remove_kernel=False,
     ):
-        self.logger = getLogger("multi.problems.TransferProblem")
         self.problem = problem
         self.subproblem = subdomain_problem
         self.source = FenicsxVectorSpace(problem.V)
