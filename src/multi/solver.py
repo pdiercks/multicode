@@ -1,30 +1,33 @@
-from dolfinx import la
 from contextlib import ExitStack
+from typing import Optional
 import numpy as np
+
+from dolfinx import la
 from pymor.algorithms.gram_schmidt import gram_schmidt
+from pymor.vectorarrays.interface import VectorArray
+from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
 
 
-def build_nullspace(source, product=None, gdim=2):
-    """Build PETSc nullspace for 3D elasticity
+def build_nullspace(source: FenicsxVectorSpace, product: Optional[FenicsxMatrixOperator] = None, gdim: Optional[int] = 2) -> VectorArray:
+    """Builds PETSc nullspace for elasticity problem.
 
-    Parameters
-    ----------
-    source : pymor.bindings.fenicsx.FenicsxVectorSpace
-        The FE space.
-    product : optional, pymor.bindings.fenicsx.FenicsxMatrixOperator
-        The inner product wrt which to orthonormalize.
-    gdim : optional, int
-        The geometric dimension.
+    Note:
+        `gdim=1` is not supported.
 
-    Returns
-    -------
-    B : pymor VectorArray
-        The null space orthonormalized wrt to inner product.
+    Args:
+        source: The FE space.
+        product: The inner product wrt which to orthonormalize.
+        gdim: The geometric dimension.
 
-    Note
-    ----
-    The PETSc vectors can be retrieved like e.g.
-        petcs_vecs = [v.real_part.impl for v in B.vectors]
+    Returns:
+        B: The null space orthonormalized wrt to inner product.
+
+    Example:
+        How to retrieve PETSc vectors::
+
+            ns = build_nullspace(source)
+            vecs = [v.real_part.impl for v in ns.vectors]
+
     """
 
     if gdim not in (2, 3):
