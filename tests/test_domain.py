@@ -2,10 +2,11 @@
 
 import numpy as np
 import tempfile
+import pytest
 from dolfinx import mesh
 from dolfinx.io import gmshio
 from mpi4py import MPI
-from multi.domain import Domain, RectangularDomain, RectangularSubdomain
+from multi.domain import Domain, RectangularSubdomain
 from multi.preprocessing import create_line_grid, create_rectangle_grid
 
 
@@ -64,6 +65,17 @@ def test_2d():
     assert isinstance(rectangle.coarse_edge_grid["top"], mesh.Mesh)
     assert isinstance(rectangle.coarse_edge_grid["right"], mesh.Mesh)
     assert isinstance(rectangle.coarse_edge_grid["left"], mesh.Mesh)
+
+    rectangle.create_coarse_grid(2)
+    cgrid = rectangle.coarse_grid
+    assert isinstance(cgrid, mesh.Mesh)
+    assert cgrid.topology.dim == 2
+    num_cells = cgrid.topology.index_map(cgrid.topology.dim).size_local
+    assert num_cells == 4
+
+    with pytest.raises(AttributeError):
+        rectangle.create_coarse_grid(1)
+
 
 
 if __name__ == "__main__":

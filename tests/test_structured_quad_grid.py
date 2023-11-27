@@ -1,11 +1,12 @@
+from mpi4py import MPI
 import pathlib
 import tempfile
-import dolfinx
-from dolfinx.io import gmshio
+import pytest
 import numpy as np
-from mpi4py import MPI
+from dolfinx.io import gmshio
+from dolfinx.io.utils import XDMFFile
 from multi.domain import StructuredQuadGrid
-from multi.preprocessing import create_rectangle_grid, create_rce_grid_01
+from multi.preprocessing import create_rectangle_grid, create_rce_grid_01, create_line_grid
 
 
 def test():
@@ -36,6 +37,31 @@ def test():
     assert cells_67.size == 9
     assert np.allclose(cells_67, grid.get_patch(67))
 
+    cell_index = 99
+    verts = grid.get_entities(0, cell_index)
+    x_verts = grid.get_entity_coordinates(0, verts)
+    assert np.amin(x_verts[:, 0]) > 0.8
+    assert np.amin(x_verts[:, 1]) > 0.8
+    assert np.amin(x_verts[:, 2]) < 1e-3
+
+
+def test_errors():
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle_grid(
+            0.0, 1.0, 0.0, 1.0, num_cells=(10, 10), out_file=tf.name
+        )
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+
+    with pytest.raises(ValueError):
+        _ = StructuredQuadGrid(domain) # wrong cell type
+
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_line_grid([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=1)
+
+    with pytest.raises(NotImplementedError):
+        _ = StructuredQuadGrid(domain) # wrong tdim
+
 
 def test_fine_grid_creation():
     # ### create coarse grid
@@ -52,7 +78,7 @@ def test_fine_grid_creation():
         grid.create_fine_grid(
             np.array([0, 1]), tf.name, cell_type="triangle", num_cells=4
         )
-        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
+        with XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
             mesh = xdmf.read_mesh(name="Grid")
             ct = xdmf.read_meshtags(mesh, name="Grid")
 
@@ -68,7 +94,7 @@ def test_fine_grid_creation():
         grid.create_fine_grid(
             np.array([0, ]), tf.name, cell_type="triangle", num_cells=num_cells_subdomain
         )
-        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
+        with XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
             mesh = xdmf.read_mesh(name="Grid")
             ct = xdmf.read_meshtags(mesh, name="Grid")
         tdim = mesh.topology.dim
@@ -77,7 +103,7 @@ def test_fine_grid_creation():
         fpath = pathlib.Path(tf.name)
         facets = fpath.parent / (fpath.stem + "_facets.xdmf")
         assert facets.exists()
-        with dolfinx.io.XDMFFile(MPI.COMM_WORLD, facets.as_posix(), "r") as xdmf:
+        with XDMFFile(MPI.COMM_WORLD, facets.as_posix(), "r") as xdmf:
             ft = xdmf.read_meshtags(mesh, name="Grid")
 
         # remove the h5 as well
@@ -98,4 +124,5 @@ def test_fine_grid_creation():
 
 if __name__ == "__main__":
     test()
+    test_errors()
     test_fine_grid_creation()
