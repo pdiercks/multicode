@@ -11,7 +11,7 @@ import dolfinx
 import gmsh
 import meshio
 import numpy as np
-from typing import Callable
+from typing import Optional, Sequence, Callable, Union
 
 GMSH_VERBOSITY = 0
 
@@ -110,17 +110,17 @@ def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
 
 
 def create_rectangle_grid(
-    xmin,
-    xmax,
-    ymin,
-    ymax,
-    z=0.0,
-    lc=0.1,
-    num_cells=None,
-    recombine=False,
-    facets=False,
-    out_file=None,
-    options=None,
+        xmin: float,
+        xmax: float,
+        ymin: float,
+        ymax: float,
+        z: float = 0.0,
+        lc: float = 0.1,
+        num_cells: Optional[Union[int, Sequence[int]]] = None,
+        recombine: bool = False,
+        facets: bool = False,
+        out_file: Optional[str] = None,
+        options: Optional[dict[str, int]] = None,
 ):
     """TODO docstring"""
     _initialize()
@@ -146,10 +146,13 @@ def create_rectangle_grid(
     surface = gmsh.model.geo.addPlaneSurface([curve_loop])
 
     if num_cells is not None:
-        try:
-            nx, ny = num_cells
-        except TypeError:
+        if isinstance(num_cells, Sequence):
+            nx, ny = num_cells[:2]
+        elif isinstance(num_cells, int):
             nx = ny = num_cells
+        else:
+            raise NotImplementedError
+
         gmsh.model.geo.mesh.setTransfiniteCurve(l0, nx + 1)
         gmsh.model.geo.mesh.setTransfiniteCurve(l2, nx + 1)
         gmsh.model.geo.mesh.setTransfiniteCurve(l1, ny + 1)
