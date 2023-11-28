@@ -40,40 +40,39 @@ def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
     return out_mesh
 
 
-def create_facet_tags(
-    mesh: dolfinx.mesh.Mesh, boundaries: dict[str, tuple[int, Callable]]
+def create_meshtags(
+        domain: dolfinx.mesh.Mesh, entity_dim: int, markers: dict[str, tuple[int, Callable]]
 ) -> tuple[dolfinx.mesh.MeshTags, dict[str, int]]:
-    """Creates facet tags for the given mesh and boundaries.
+    """Creates meshtags for the given markers.
 
     This code is part of the FEniCSx tutorial
     by Jørgen S. Dokken.
     See https://jsdokken.com/dolfinx-tutorial/chapter3/robin_neumann_dirichlet.html?highlight=sorted_facets#implementation # noqa: E501
 
     Args:
-        mesh: The computational domain.
-        boundaries: The definition of boundaries where each key is a string
+        domain: The computational domain.
+        entity_dim: Dimension of the entities to mark.
+        markers: The definition of subdomains or boundaries where each key is a string
           and each value is a tuple of an integer and a marker function.
 
-    Returns:
-      A tuple (facet_tags, marked_boundary) where facet_tags is an array
-      with dtype int and marked_boundary is a dict where each key is a string
-      and each value is an int.
     """
+    tdim = domain.topology.dim
+    assert entity_dim in (tdim, tdim - 1)
 
-    facet_indices, facet_markers = [], []
-    fdim = mesh.topology.dim - 1
-    marked_boundary = {}
-    for key, (marker, locator) in boundaries.items():
-        facets = dolfinx.mesh.locate_entities(mesh, fdim, locator)
-        facet_indices.append(facets)
-        facet_markers.append(np.full_like(facets, marker))
-        if facets.size > 0:
-            marked_boundary[key] = marker
-    facet_indices = np.hstack(facet_indices).astype(np.int32)
-    facet_markers = np.hstack(facet_markers).astype(np.int32)
-    sorted_facets = np.argsort(facet_indices)
-    facet_tags = dolfinx.mesh.meshtags(mesh, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
-    return facet_tags, marked_boundary
+    entity_indices, entity_markers = [], []
+    edim = entity_dim
+    marked = {}
+    for key, (marker, locator) in markers.items():
+        entities = dolfinx.mesh.locate_entities(domain, edim, locator)
+        entity_indices.append(entities)
+        entity_markers.append(np.full_like(entities, marker))
+        if entities.size > 0:
+            marked[key] = marker
+    entity_indices = np.hstack(entity_indices).astype(np.int32)
+    entity_markers = np.hstack(entity_markers).astype(np.int32)
+    sorted_facets = np.argsort(entity_indices)
+    mesh_tags = dolfinx.mesh.meshtags(domain, edim, entity_indices[sorted_facets], entity_markers[sorted_facets])
+    return mesh_tags, marked
 
 
 def _initialize():
