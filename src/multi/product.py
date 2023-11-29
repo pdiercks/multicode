@@ -1,5 +1,6 @@
 import ufl
 from dolfinx import fem
+from dolfinx.fem.petsc import create_matrix, assemble_matrix
 
 
 class InnerProduct(object):
@@ -36,7 +37,7 @@ class InnerProduct(object):
             elif product in ("h1-semi", "stiffness"):
                 form = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
             elif product in ("h1",):
-                form = (ufl.inner(u, v) + ufl.inner(ufl.grad(u), ufl.grad(v))) * ufl.dx
+                form = ufl.inner(u, v) *ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
             else:
                 raise KeyError(
                     f"I don't know how to compute inner product with name '{product}'."
@@ -63,8 +64,9 @@ class InnerProduct(object):
             return None
         else:
             compiled_form = fem.form(ufl_form)
-            A = fem.petsc.create_matrix(compiled_form)
-            fem.petsc.assemble_matrix(A, compiled_form, bcs=self.bcs)
+            A = create_matrix(compiled_form) # type: ignore
+            A.zeroEntries()
+            assemble_matrix(A, compiled_form, bcs=self.bcs)
             A.assemble()
 
             return A
