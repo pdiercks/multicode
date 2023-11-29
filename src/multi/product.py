@@ -66,7 +66,7 @@ class InnerProduct(object):
             return None
         else:
             compiled_form = fem.form(ufl_form)
-            A = create_matrix(compiled_form) # type: ignore
+            A = create_matrix(compiled_form)
             A.zeroEntries()
             assemble_matrix(A, compiled_form, bcs=self.bcs)
             A.assemble()
