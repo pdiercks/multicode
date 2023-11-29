@@ -155,6 +155,13 @@ class StructuredQuadGrid(object):
             facet_tags: Mesh tags for facets.
 
         """
+        if not grid.topology.dim == 2:
+            raise NotImplementedError("Only grids of tdim=2 are supported!")
+
+        cell_type = grid.basix_cell()
+        if not cell_type.name == "quadrilateral":
+            raise ValueError(f"Expected cell type 'quadrilateral'. Got {cell_type=}")
+
         self.grid = grid
         self.cell_tags = cell_tags
         self.facet_tags = facet_tags
@@ -319,8 +326,6 @@ class StructuredQuadGrid(object):
         # cannot be read by dolfinx.io.gmshio
         in_mesh = meshio.read(tf_msh.name)
         prune_z = True
-        if tdim > 2:
-            prune_z = False
         cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
         meshio.write(output, cell_mesh)
         if create_facets:

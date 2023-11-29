@@ -1,11 +1,14 @@
 """test dofmap"""
 
 import tempfile
+import pytest
+
+import numpy as np
+from mpi4py import MPI
 from dolfinx import fem
 from dolfinx.io import gmshio
 from basix.ufl import element
-import numpy as np
-from mpi4py import MPI
+
 from multi.dofmap import DofMap
 from multi.domain import StructuredQuadGrid
 from multi.preprocessing import create_rectangle_grid
@@ -34,6 +37,13 @@ def test():
 
     grid = StructuredQuadGrid(domain)
     dofmap = DofMap(grid)
+
+    # dofs are not distributed yet
+    with pytest.raises(AttributeError):
+        print(f"{dofmap.num_dofs=}")
+    with pytest.raises(AttributeError):
+        print(f"{dofmap.cell_dofs(0)=}")
+
     dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, n_face_dofs)
 
     assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
