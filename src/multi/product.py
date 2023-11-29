@@ -1,4 +1,6 @@
 import ufl
+from typing import Optional, Union, Sequence
+from petsc4py import PETSc
 from dolfinx import fem
 from dolfinx.fem.petsc import create_matrix, assemble_matrix
 
@@ -21,9 +23,9 @@ class InnerProduct(object):
 
     """
 
-    def __init__(self, V, product=None, bcs=(), name=None):
-        if not isinstance(bcs, (list, tuple)):
-            bcs = (bcs,)
+    def __init__(self, V: fem.FunctionSpaceBase, product: Optional[Union[str, ufl.Form]] = None, bcs: Optional[Sequence[fem.DirichletBC]] = None, name=None):
+        if bcs is None:
+            bcs = ()
         self.V = V
         self.bcs = bcs
         if isinstance(product, str):
@@ -54,7 +56,7 @@ class InnerProduct(object):
         """returns the weak form of the inner product"""
         return self.form
 
-    def assemble_matrix(self):
+    def assemble_matrix(self) -> Union[PETSc.Mat, None]:
         """returns the matrix (`PETSc.Mat`) representing the inner product or None
         in case euclidean product is used"""
         ufl_form = self.get_form()
