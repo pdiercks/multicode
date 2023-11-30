@@ -1,13 +1,14 @@
-from typing import Union, Callable
+from typing import Union, Callable, Optional
 from dolfinx import fem, mesh
 from dolfinx.fem.petsc import set_bc
 import ufl
 import numpy as np
+import numpy.typing as npt
 from petsc4py.PETSc import InsertMode, ScatterMode
 
 
-def get_boundary_dofs(V, marker=None):
-    """get dofs on the boundary"""
+def get_boundary_dofs(V: fem.FunctionSpaceBase, marker: Optional[Callable] = None) -> npt.ArrayLike:
+    """Returns dofs on the boundary"""
     domain = V.mesh
     tdim = domain.topology.dim
     fdim = tdim - 1
