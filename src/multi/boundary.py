@@ -15,7 +15,7 @@ def plane_at(coordinate: float, dim: typing.Union[str, int]) -> typing.Callable:
         dim: dimension
 
     Returns:
-        function defining the boundary
+        Function defining the boundary.
     """
 
     if dim in ["x", "X"]:
