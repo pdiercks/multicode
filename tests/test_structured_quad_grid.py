@@ -63,7 +63,10 @@ def test_errors():
         _ = StructuredQuadGrid(domain) # wrong tdim
 
 
-def test_fine_grid_creation():
+@pytest.mark.parametrize("fine_grid_method",[
+    create_rce_grid_01,
+    tempfile.NamedTemporaryFile(suffix=".msh")])
+def test_fine_grid_creation(fine_grid_method):
     # ### create coarse grid
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle_grid(
@@ -72,11 +75,20 @@ def test_fine_grid_creation():
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     grid = StructuredQuadGrid(domain)
-    grid.fine_grid_method = [create_rce_grid_01]
+
+    # ### subdomain grid creation
+    num_cells_subdomain = 10
+    if isinstance(fine_grid_method, tempfile._TemporaryFileWrapper):
+        # create the grid and pass filepath as string
+        create_rce_grid_01(xmin=0., xmax=1., ymin=0., ymax=1.,
+                           num_cells=num_cells_subdomain, out_file=fine_grid_method.name)
+        grid.fine_grid_method = [fine_grid_method.name]
+    else:
+        grid.fine_grid_method = [fine_grid_method]
 
     with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
         grid.create_fine_grid(
-            np.array([0, 1]), tf.name, cell_type="triangle", num_cells=4
+            np.array([0, 1]), tf.name, cell_type="triangle", num_cells=num_cells_subdomain
         )
         with XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
             mesh = xdmf.read_mesh(name="Grid")
@@ -89,7 +101,6 @@ def test_fine_grid_creation():
     assert ct.find(1).size > 0
     assert ct.find(2).size > 0
 
-    num_cells_subdomain = 10
     with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
         grid.create_fine_grid(
             np.array([0, ]), tf.name, cell_type="triangle", num_cells=num_cells_subdomain
@@ -121,8 +132,5 @@ def test_fine_grid_creation():
     assert ft.find(3).size == num_cells_subdomain
     assert ft.find(4).size == num_cells_subdomain
 
-
-if __name__ == "__main__":
-    test()
-    test_errors()
-    test_fine_grid_creation()
+    if isinstance(fine_grid_method, tempfile._TemporaryFileWrapper):
+        fine_grid_method.close()
