@@ -15,7 +15,7 @@ def plane_at(coordinate: float, dim: typing.Union[str, int]) -> typing.Callable:
         dim: dimension
 
     Returns:
-        function defining the boundary
+        Function defining the boundary.
     """
 
     if dim in ["x", "X"]:
@@ -41,7 +41,7 @@ def line_at(coordinates: list[float], dims: list[typing.Union[str, int]]) -> typ
         dims: list of dimension
 
     Returns:
-        function defining the boundary
+        Function defining the boundary.
     """
 
     assert len(coordinates) == 2

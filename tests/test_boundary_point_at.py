@@ -1,9 +1,15 @@
+import pytest
 from mpi4py import MPI
 from dolfinx import fem, mesh, default_scalar_type
 from basix.ufl import element
 import numpy as np
 from multi.boundary import point_at
 
+
+def test_wrong_input():
+    with pytest.raises(TypeError):
+        # arg must be iterable
+        point_at(0.)
 
 def test_function_space():
     n = 101

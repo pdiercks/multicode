@@ -5,7 +5,7 @@ from multi.boundary import within_range
 
 
 def test():
-    n = 200
+    n = 20
     domain = dolfinx.mesh.create_unit_square(
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
@@ -15,7 +15,9 @@ def test():
     Δx = Δy = 1 / (
         n + 1
     )  # exclude the right and top boundary, Δ must be smaller than cell size
-    boundary = within_range([0.0, 0.0, 0.0], [1.0 - Δx, 1.0 - Δy, 0.0])
+    # note the start and end for the x coordinate are swapped
+    # within_range should take care of that
+    boundary = within_range([1.0 - Δx, 0.0, 0.0], [0.0, 1.0 - Δy, 0.0])
 
     facet_dim = 1
     boundary_facets = dolfinx.mesh.locate_entities_boundary(domain, facet_dim, boundary)
