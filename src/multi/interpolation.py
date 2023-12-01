@@ -1,12 +1,19 @@
-from dolfinx.fem import Function, create_nonmatching_meshes_interpolation_data
+from dolfinx import fem
 from dolfinx.geometry import bb_tree, compute_collisions_points, compute_colliding_cells
 import numpy as np
+import numpy.typing as npt
 
 
 # this code is part of the fenicsx-tutorial written by Jørgen S. Dokken
 # see https://jorgensd.github.io/dolfinx-tutorial/chapter1/membrane_code.html#making-curve-plots-throughout-the-domain
-def interpolate(u, points):
-    """evaluate u at points"""
+def interpolate(u: fem.Function, points: npt.NDArray[np.float64]):
+    """Evaluates u at points.
+
+    Args:
+        u: The function to evaluate.
+        points: The points at which to evaluate.
+
+    """
     V = u.function_space
     domain = V.mesh
     tree = bb_tree(domain, domain.topology.dim)
@@ -38,13 +45,13 @@ def make_mapping(subspace, superspace):
     dofs : np.ndarray
         The dofs of `superspace` corresponding to dofs of `subspace`.
     """
-    u = Function(superspace)
+    u = fem.Function(superspace)
     ndofs = superspace.dofmap.index_map.size_global * superspace.dofmap.bs
     u.vector.array[:] = np.arange(ndofs, dtype=np.intc)
 
-    f = Function(subspace)
+    f = fem.Function(subspace)
 
-    f.interpolate(u, nmm_interpolation_data=create_nonmatching_meshes_interpolation_data(
+    f.interpolate(u, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
         f.function_space.mesh._cpp_object,
         f.function_space.element,
         u.function_space.mesh._cpp_object))
