@@ -21,3 +21,9 @@ classifiers = [
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+
+[tool.coverage.run]
+omit = [
+    "src/multi/plotting_context.py",
+    "src/multi/pymor_defaults.py",
+    ]
