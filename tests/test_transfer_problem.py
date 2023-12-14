@@ -158,7 +158,7 @@ def test_remove_kernel():
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
     submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
-    Vsub = fem.FunctionSpace(submesh, ve)
+    Vsub = fem.functionspace(submesh, ve)
 
     subdomain = RectangularDomain(submesh)
     subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
