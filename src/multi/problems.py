@@ -23,7 +23,6 @@ from multi.solver import build_nullspace
 from multi.utils import LogMixin
 
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
-from pymor.operators.interface import Operator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
 
