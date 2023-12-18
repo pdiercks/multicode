@@ -12,7 +12,7 @@ from multi.bcs import get_boundary_dofs
 from multi.boundary import within_range, plane_at
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
-from multi.projection import project, orthogonal_part
+from multi.projection import orthogonal_part
 from multi.problems import LinearElasticityProblem
 from multi.solver import build_nullspace
 from multi.transfer_operator import transfer_operator_subdomains_2d
