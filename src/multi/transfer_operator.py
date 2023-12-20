@@ -1,9 +1,11 @@
 from typing import Optional
-import time
 import numpy as np
 import numpy.typing as npt
+from scipy.sparse import csr_array
 from scipy.sparse.linalg import factorized
+from multi.product import InnerProduct
 from pymor.operators.numpy import NumpyMatrixOperator
+from dolfinx import fem
 
 
 def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: npt.NDArray[np.int32], target_dofs: npt.NDArray[np.int32], projection_matrix: Optional[npt.NDArray[np.float64]]=None) -> NumpyMatrixOperator:
@@ -28,11 +30,7 @@ def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: 
     operator = full_operator[:, all_inner_dofs][all_inner_dofs, :]
 
     # factorization
-    matrix_shape = operator.shape
-    start = time.time()
     operator = factorized(operator)
-    end = time.time()
-    print(f"factorization of {matrix_shape} matrix in {end-start}", flush=True)
 
     # mapping from old to new dof numbers
     newdofs = np.zeros((num_dofs,), dtype=int)
@@ -40,10 +38,7 @@ def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: 
     range_dofs = newdofs[target_dofs]
 
     rhs_op = full_operator[:, dirichlet_dofs][all_inner_dofs, :]
-    start = time.time()
     transfer_operator = -operator(rhs_op.todense())[range_dofs, :] # type: ignore
-    end = time.time()
-    print(f"applied operator to rhs in {end-start}", flush=True)
 
     if projection_matrix is not None:
         # remove kernel
@@ -52,3 +47,25 @@ def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: 
         transfer_operator = P.dot(transfer_operator)
 
     return NumpyMatrixOperator(transfer_operator)
+
+
+def discretize_source_product(V: fem.FunctionSpaceBase, product: str, dirichlet_dofs: npt.NDArray[np.int32], bcs: Optional[list[fem.DirichletBC]] = []):
+    """Discretizes source product for transfer operator.
+
+    Args:
+        V: FE space on oversampling domain.
+        product: The inner product to use.
+        dirichlet_dofs: DOFs on Gamma out.
+        bcs: Optional homogeneous boundary conditions.
+
+    """
+    # FIXME double check if optional bcs are necessary | make a difference
+    # If present, these should be far away from dirichlet_dofs and hence
+    # corresponding entries in A are zero anyway?
+    inner_product = InnerProduct(V, product, bcs=bcs)
+    matrix = inner_product.assemble_matrix()
+    ai, aj, av = matrix.getValuesCSR()
+    A = csr_array((av, aj, ai))
+    source_matrix = A[dirichlet_dofs, :][:, dirichlet_dofs]
+    source_product = NumpyMatrixOperator(source_matrix, name=inner_product.name)
+    return source_product
