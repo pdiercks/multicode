@@ -11,7 +11,7 @@ from multi.domain import RectangularDomain
 from multi.materials import LinearElasticMaterial
 from multi.problems import LinearElasticityProblem, TransferProblem
 from multi.boundary import plane_at, within_range
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 from multi.projection import orthogonal_part
 
 
@@ -58,7 +58,7 @@ def test_dirichlet_hom():
     n = 20
     gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0,
             1.0,
             0.0,
@@ -135,7 +135,7 @@ def test_remove_kernel():
     n = 60
     gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0,
             3.0,
             0.0,

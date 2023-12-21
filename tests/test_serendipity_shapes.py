@@ -6,13 +6,13 @@ from mpi4py import MPI
 import tempfile
 import numpy as np
 from multi.domain import Domain
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 from multi.shapes import NumpyQuad
 
 
 def test():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 2.0, 0.0, 2.0, num_cells=(20, 20), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)

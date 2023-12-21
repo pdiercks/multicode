@@ -5,6 +5,7 @@ import typing
 import dolfinx
 import numpy as np
 from basix.ufl import element
+from multi.misc import to_floats
 
 
 def plane_at(coordinate: float, dim: typing.Union[str, int]) -> typing.Callable:
@@ -175,25 +176,3 @@ def show_marked(
         plt.savefig(filename)
     else:
         plt.show()
-
-
-def to_floats(x: typing.Union[typing.Iterable[int], typing.Iterable[float]]) -> list[float]:
-    """Converts `x` to a 3d coordinate.
-
-    Args:
-        x: point coordinates at least 1D
-
-    Returns:
-        point described as list with x,y,z value
-    """
-
-    floats = []
-    try:
-        for v in x:
-            floats.append(float(v))
-        while len(floats) < 3:
-            floats.append(0.0)
-    except TypeError:
-        raise TypeError(f"x={x} is not iterable!")
-
-    return floats

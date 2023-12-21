@@ -7,19 +7,19 @@ from dolfinx import mesh
 from dolfinx.io import gmshio
 from mpi4py import MPI
 from multi.domain import Domain, RectangularSubdomain
-from multi.preprocessing import create_line_grid, create_rectangle_grid
+from multi.preprocessing import create_line, create_rectangle
 
 
 def get_unit_square_mesh(nx=8, ny=8):
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(0., 1., 0., 1., num_cells=(nx, ny), recombine=True, out_file=tf.name)
+        create_rectangle(0., 1., 0., 1., num_cells=(nx, ny), recombine=True, out_file=tf.name)
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     return domain
 
 
 def get_unit_interval_mesh():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_line_grid([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
+        create_line([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     return domain
 

@@ -1,8 +1,31 @@
 """miscellaneous helpers"""
 
+import typing
 import numpy as np
 import numpy.typing as npt
 from dolfinx.fem import FunctionSpaceBase
+
+
+def to_floats(x: typing.Union[typing.Iterable[int], typing.Iterable[float]]) -> list[float]:
+    """Converts `x` to a 3d coordinate.
+
+    Args:
+        x: point coordinates at least 1D
+
+    Returns:
+        point described as list with x,y,z value
+    """
+
+    floats = []
+    try:
+        for v in x:
+            floats.append(float(v))
+        while len(floats) < 3:
+            floats.append(0.0)
+    except TypeError:
+        raise TypeError(f"x={x} is not iterable!")
+
+    return floats
 
 
 def x_dofs_vectorspace(V: FunctionSpaceBase) -> npt.NDArray:

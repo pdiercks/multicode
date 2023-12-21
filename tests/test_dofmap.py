@@ -11,14 +11,14 @@ from basix.ufl import element
 
 from multi.dofmap import DofMap
 from multi.domain import StructuredQuadGrid
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 
 
 def test():
     """test dofmap with type(dofs_per_edge)==int"""
     n = 8
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(n, n), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -95,7 +95,7 @@ def test():
 def test_array_uniform():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -154,7 +154,7 @@ def test_array_uniform():
 def test_array():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)

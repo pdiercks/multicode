@@ -7,7 +7,7 @@ import meshio
 import numpy as np
 from dolfinx import mesh, geometry
 from dolfinx.io import gmshio
-from multi.preprocessing import create_mesh, create_line_grid, create_rectangle_grid
+from multi.preprocessing import create_mesh, create_line, create_rectangle
 
 
 class Domain(object):
@@ -86,7 +86,7 @@ class RectangularSubdomain(RectangularDomain):
         xmax, ymax, _ = self.xmax
 
         with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-            create_rectangle_grid(
+            create_rectangle(
                     xmin, xmax, ymin, ymax, 0.,
                     recombine=True, num_cells=num_cells, out_file=tf.name)
             coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
@@ -125,11 +125,11 @@ class RectangularSubdomain(RectangularDomain):
                 }
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line_grid(start, end, num_cells=num_fine_cells, out_file=tf.name)
+                create_line(start, end, num_cells=num_fine_cells, out_file=tf.name)
                 fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
             fine_grid[key] = fine
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line_grid(start, end, num_cells=num_coarse_cells, out_file=tf.name)
+                create_line(start, end, num_cells=num_coarse_cells, out_file=tf.name)
                 coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
             coarse_grid[key] = coarse
 
@@ -225,7 +225,7 @@ class StructuredQuadGrid(object):
         ----------
         methods : list of str or list of callable
             The method can either be a function with an appropriate
-            signature (see e.g. multi.preprocessing.create_rectangle_grid)
+            signature (see e.g. multi.preprocessing.create_rectangle)
             or a `str`, i.e. the filepath to a reference mesh
             that should be duplicated for the respective coarse grid cell.
             If the length of list is 1, the same 'method' is used for 

@@ -3,7 +3,7 @@ from dolfinx.io.utils import XDMFFile
 import gmsh
 import tempfile
 import meshio
-from multi.preprocessing import create_mesh,  create_rce_grid_01
+from multi.preprocessing import create_mesh,  create_unit_cell_01
 
 
 def merge(mshfiles, output):
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     for i in range(num_cells):
         tmp = tfiles[i]
         xmin, xmax, ymin, ymax = coord[i]
-        create_rce_grid_01(xmin, xmax, ymin, ymax, 
+        create_unit_cell_01(xmin, xmax, ymin, ymax, 
                 num_cells=10, facets=False, out_file=tmp.name)
         to_be_merged.append(tmp.name)
     merge(to_be_merged, "final_mesh.msh")

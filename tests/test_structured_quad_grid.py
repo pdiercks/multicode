@@ -6,12 +6,12 @@ import numpy as np
 from dolfinx.io import gmshio
 from dolfinx.io.utils import XDMFFile
 from multi.domain import StructuredQuadGrid
-from multi.preprocessing import create_rectangle_grid, create_rce_grid_01, create_line_grid
+from multi.preprocessing import create_rectangle, create_unit_cell_01, create_line
 
 
 def test():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(10, 10), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -47,7 +47,7 @@ def test():
 
 def test_errors():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(10, 10), out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -56,7 +56,7 @@ def test_errors():
         _ = StructuredQuadGrid(domain) # wrong cell type
 
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_line_grid([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
+        create_line([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=1)
 
     with pytest.raises(NotImplementedError):
@@ -64,12 +64,12 @@ def test_errors():
 
 
 @pytest.mark.parametrize("fine_grid_method",[
-    create_rce_grid_01,
+    create_unit_cell_01,
     tempfile.NamedTemporaryFile(suffix=".msh")])
 def test_fine_grid_creation(fine_grid_method):
     # ### create coarse grid
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 2.0, 0.0, 2.0, num_cells=(2, 2), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -80,7 +80,7 @@ def test_fine_grid_creation(fine_grid_method):
     num_cells_subdomain = 10
     if isinstance(fine_grid_method, tempfile._TemporaryFileWrapper):
         # create the grid and pass filepath as string
-        create_rce_grid_01(xmin=0., xmax=1., ymin=0., ymax=1.,
+        create_unit_cell_01(xmin=0., xmax=1., ymin=0., ymax=1.,
                            num_cells=num_cells_subdomain, out_file=fine_grid_method.name)
         grid.fine_grid_method = [fine_grid_method.name]
     else:

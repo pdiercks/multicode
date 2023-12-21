@@ -11,20 +11,10 @@ import dolfinx
 import gmsh
 import meshio
 import numpy as np
-from typing import Optional, Sequence, Callable, Union
+from typing import Optional, Sequence, Callable, Union, Iterable
+from multi.misc import to_floats
 
 GMSH_VERBOSITY = 0
-
-
-def to_array(values):
-    floats = []
-    try:
-        for v in values:
-            floats.append(float(v))
-    except TypeError:
-        floats = [float(values)]
-
-    return np.array(floats, dtype=float)
 
 
 # this code is part of the FEniCSx tutorial
@@ -80,18 +70,36 @@ def _initialize():
     gmsh.option.setNumber("General.Verbosity", 0)  # silent except for fatal errors
 
 
+def _set_gmsh_options(options):
+    if options is not None:
+        # Example: {'Mesh.ElementOrder': 2, 'Mesh.SecondOrderIncomplete': 1}
+        # will result in 'quad8' cell type for quadrilateral mesh
+        for key, value in options.items():
+            gmsh.option.setNumber(key, value)
+
 def _generate_and_write_grid(dim, filepath):
     gmsh.model.mesh.generate(dim)
     gmsh.write(filepath)
     gmsh.finalize()
 
 
-def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
-    """TODO docstring"""
-    start = to_array(start)
-    end = to_array(end)
+def create_line(start: Iterable[float], end: Iterable[float], lc: float = 0.1, num_cells: Optional[int] = None, out_file: Optional[str] = None, options: Optional[dict[str, int]] = None):
+    """Creates a grid of a line.
+
+    Args:
+        start: Coordinate.
+        end: Coordinate.
+        lc: Characteristic length of cells.
+        num_cells: If not None, a structured mesh with `num_cells` will be created.
+        out_file: Write mesh to `out_file`. Default: './rectangle.msh'
+        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+
+    """
+    start = np.array(to_floats(start))
+    end = np.array(to_floats(end))
 
     _initialize()
+    _set_gmsh_options(options)
     gmsh.model.add("line")
 
     p0 = gmsh.model.geo.addPoint(*start, lc)
@@ -108,28 +116,39 @@ def create_line_grid(start, end, lc=0.1, num_cells=None, out_file=None):
     _generate_and_write_grid(1, filepath)
 
 
-def create_rectangle_grid(
-        xmin: float,
-        xmax: float,
-        ymin: float,
-        ymax: float,
-        z: float = 0.0,
-        lc: float = 0.1,
-        num_cells: Optional[Union[int, Sequence[int]]] = None,
-        recombine: bool = False,
-        facets: bool = False,
-        out_file: Optional[str] = None,
-        options: Optional[dict[str, int]] = None,
+def create_rectangle(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    z: float = 0.0,
+    lc: float = 0.1,
+    num_cells: Optional[Union[int, Sequence[int]]] = None,
+    recombine: bool = False,
+    facets: bool = False,
+    out_file: Optional[str] = None,
+    options: Optional[dict[str, int]] = None,
 ):
-    """TODO docstring"""
-    _initialize()
-    gmsh.model.add("rectangle")
+    """Creates a grid of a rectangle.
 
-    if options is not None:
-        # Example: {'Mesh.ElementOrder', 2, 'Mesh.SecondOrderIncomplete': 1}
-        # will result in 'quad8' cell type
-        for key, value in options.items():
-            gmsh.option.setNumber(key, value)
+    Args:
+        xmin: Coordinate.
+        xmax: Coordinate.
+        ymin: Coordinate.
+        ymax: Coordinate.
+        z: Coordinate.
+        lc: Characteristic length of cells.
+        num_cells: If not None, a structured mesh with `num_cells` per edge will
+        be created.
+        recombine: If True, recombine triangles to quadrilaterals.
+        facets: If True, create physical groups for facets.
+        out_file: Write mesh to `out_file`. Default: './rectangle.msh'
+        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+
+    """
+    _initialize()
+    _set_gmsh_options(options)
+    gmsh.model.add("rectangle")
 
     p0 = gmsh.model.geo.addPoint(xmin, ymin, z, lc)
     p1 = gmsh.model.geo.addPoint(xmax, ymin, z, lc)
@@ -145,12 +164,10 @@ def create_rectangle_grid(
     surface = gmsh.model.geo.addPlaneSurface([curve_loop])
 
     if num_cells is not None:
-        if isinstance(num_cells, Sequence):
-            nx, ny = num_cells[:2]
-        elif isinstance(num_cells, int):
+        if isinstance(num_cells, int):
             nx = ny = num_cells
         else:
-            raise NotImplementedError
+            nx, ny = num_cells[:2]
 
         gmsh.model.geo.mesh.setTransfiniteCurve(l0, nx + 1)
         gmsh.model.geo.mesh.setTransfiniteCurve(l2, nx + 1)
@@ -179,24 +196,42 @@ def create_rectangle_grid(
     _generate_and_write_grid(2, filepath)
 
 
-def create_rce_grid_01(
-    xmin,
-    xmax,
-    ymin,
-    ymax,
-    z=0.0,
-    radius=0.2,
-    lc=0.1,
-    num_cells=None,
-    facets=True,
-    out_file=None,
+def create_unit_cell_01(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    z: float = 0.0,
+    radius: float = 0.2,
+    lc: float = 0.1,
+    num_cells: Optional[int] = None,
+    facets: bool = True,
+    out_file: Optional[str] = None,
+    options: Optional[dict[str, int]] = None,
 ):
-    """TODO docstring"""
+    """Create grid of unit cell with single circular inclusion.
+
+    Args:
+        xmin: Coordinate.
+        xmax: Coordinate.
+        ymin: Coordinate.
+        ymax: Coordinate.
+        z: Coordinate.
+        radius: Radius of the inclusion.
+        lc: Characteristic length of cells.
+        num_cells: If not None, a structured mesh with `num_cells` per edge will
+        be created. `num_cells` must be even.
+        facets: If True, create physical groups for facets.
+        out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
+        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+
+    """
 
     width = abs(xmax - xmin)
     height = abs(ymax - ymin)
 
     _initialize()
+    _set_gmsh_options(options)
     gmsh.model.add("rce_01")
 
     # options
@@ -332,24 +367,34 @@ def create_rce_grid_01(
         )
         gmsh.model.add_physical_group(1, rectangle_lines[1:3], 4, name="top")
 
-    filepath = out_file or "./rce_type_01.msh"
+    filepath = out_file or "./unit_cell_01.msh"
     _generate_and_write_grid(2, filepath)
 
 
-def create_rce_grid_02(
-    xmin,
-    xmax,
-    ymin,
-    ymax,
-    z=0.0,
-    num_cells=None,
-    facets=True,
-    out_file=None,
+def create_unit_cell_02(
+    num_cells: Optional[int] = None,
+    facets: bool = True,
+    out_file: Optional[str] = None,
+    options: Optional[dict[str, int]] = None,
 ):
-    """TODO"""
+    """Creates a unit cell with several inclusions.
+
+    Args:
+        num_cells: If not None, `num_cells` cells per edge will be created.
+        facets: If True, create physical groups for facets.
+        out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
+        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+    """
 
     _initialize()
-    gmsh.model.add("rce_02")
+    _set_gmsh_options(options)
+    gmsh.model.add("unit_cell_02")
+
+    xmin = 0.
+    xmax = 20.
+    ymin = 0.
+    ymax = 20.
+    z = 0.
 
     # options
     gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 0)
@@ -358,6 +403,7 @@ def create_rce_grid_02(
     gmsh.option.setNumber("Mesh.Optimize", 2)
     gmsh.option.setNumber("Mesh.Smoothing", 2)
 
+    num_cells = num_cells or 20
     lc_matrix = 20.0 / num_cells
     lc_aggregates = lc_matrix * 0.7
 
@@ -438,5 +484,5 @@ def create_rce_grid_02(
         gmsh.model.add_physical_group(1, right, 3, name="right")
         gmsh.model.add_physical_group(1, top, 4, name="top")
 
-    filepath = out_file or "./rce_type_02.msh"
+    filepath = out_file or "./unit_cell_02.msh"
     _generate_and_write_grid(2, filepath)

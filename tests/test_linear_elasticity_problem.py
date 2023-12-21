@@ -7,7 +7,7 @@ import numpy as np
 from multi.boundary import plane_at
 from multi.domain import Domain, RectangularSubdomain
 from multi.materials import LinearElasticMaterial
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 from multi.problems import LinearElasticityProblem, LinElaSubProblem
 from multi.misc import x_dofs_vectorspace
 from multi.interpolation import interpolate
@@ -141,7 +141,7 @@ def test_dirichlet():
 
 def test_with_edges():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0,
             1.0,
             0.0,
