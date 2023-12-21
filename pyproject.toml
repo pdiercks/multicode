@@ -24,6 +24,8 @@ filterwarnings = [
 
 [tool.coverage.run]
 omit = [
+    "src/multi/debug.py",
     "src/multi/plotting_context.py",
+    "src/multi/postprocessing.py",
     "src/multi/pymor_defaults.py",
     ]
