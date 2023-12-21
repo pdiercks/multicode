@@ -92,16 +92,10 @@ def correlation_function(
 
 def correlation_matrix(points, correlation_length, mean, distance_metric="euclidean"):
     distance = squareform(pdist(points, metric=distance_metric))
-
-    # TODO open questions regarding rrf
-    # 1. variation of the correlation length based on maxnorm? (other criteria?)
-    # 2. does the variation improve the quality of the reduced basis?
     Σ_exp = correlation_function(
         distance, correlation_length, function_type="exponential"
     )
-
     # scaling of the covariance
     W = np.diag(mean)
     Σ_scaled = np.dot(W, np.dot(Σ_exp, W))
-    # Σ_scaled = W + Σ_exp
     return Σ_scaled
