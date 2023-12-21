@@ -9,17 +9,7 @@ from multi.domain import RectangularDomain
 from multi.bcs import BoundaryDataFactory
 from multi.extension import extend
 
-# from multi.misc import locate_dofs
-# from multi.product import InnerProduct
-from multi.shapes import NumpyQuad  # , get_hierarchical_shape_functions
-
-# from scipy.sparse.linalg import eigsh, LinearOperator
-# from scipy.special import erfinv
-
-# from pymor.algorithms.gram_schmidt import gram_schmidt
-# from pymor.bindings.fenics import FenicsVectorSpace
-# from pymor.operators.interface import Operator
-# from pymor.vectorarrays.interface import VectorArray
+from multi.shapes import NumpyQuad
 
 
 def compute_phi(problem, nodes):
