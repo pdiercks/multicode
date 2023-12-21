@@ -1,44 +1,31 @@
 """miscellaneous helpers"""
 
 import numpy as np
+import numpy.typing as npt
+from dolfinx.fem import FunctionSpaceBase
 
 
-def x_dofs_vectorspace(V):
+def x_dofs_vectorspace(V: FunctionSpaceBase) -> npt.NDArray:
     bs = V.dofmap.bs
     x = V.tabulate_dof_coordinates()
     x_dofs = np.repeat(x, repeats=bs, axis=0)
     return x_dofs
 
 
-def locate_dofs(x_dofs, X, gdim=2, s_=np.s_[:], tol=1e-9):
-    """returns dofs at coordinates X
+def locate_dofs(x_dofs: npt.NDArray, X: npt.NDArray, s_: slice = np.s_[:], tol: float = 1e-9) -> npt.NDArray:
+    """Returns DOFs at coordinates X.
 
-    Parameters
-    ----------
-    x_dofs : np.ndarray
-        An array containing the coordinates of the DoFs of the FE space.
-        Most likely the return value of V.tabulate_dof_coordinates().
-    X : list, np.ndarray
-        A list of points, where each point is given as list of len(gdim).
-    gdim : int, optional
-        The geometrical dimension of the domain.
-    s_ : slice, optional
-        Return slice of the dofs at each point.
-    tol : float, optional
-        Tolerance used to find coordinate.
+    Args:
+        x_dofs: Coordinates of the DOFs of a FE space.
+        X: Coordinates for which to determine DOFs.
+        s_: Use slice to restrict which DOFs are returned.
+        tol: Tolerance used to find coordinates.
 
-    Returns
-    -------
-    dofs : np.ndarray
-        DoFs at given coordinates.
     """
-    if isinstance(X, list):
-        X = np.array(X).reshape(len(X), gdim)
-    elif isinstance(X, np.ndarray):
-        if X.ndim == 1:
-            X = X[np.newaxis, :]
-        elif X.ndim > 2:
-            raise NotImplementedError
+    if X.ndim == 1:
+        X = X[np.newaxis, :]
+    elif X.ndim > 2:
+        raise NotImplementedError
 
     dofs = np.array([], int)
     for x in X:

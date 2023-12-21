@@ -6,18 +6,11 @@ from multi.domain import RectangularSubdomain
 from multi.materials import LinearElasticMaterial
 from multi.problems import LinearElasticityProblem
 from multi.basis_construction import compute_phi
-from multi.misc import locate_dofs
+from multi.misc import locate_dofs, x_dofs_vectorspace
 from pymor.bindings.fenicsx import FenicsxVectorSpace
 
 
-def xdofs_VectorFunctionSpace(V):
-    bs = V.dofmap.bs
-    x = V.tabulate_dof_coordinates()
-    x_dofs = np.repeat(x, repeats=bs, axis=0)
-    return x_dofs
-
-
-def test_nodes():
+def test():
     n = 20
     domain = mesh.create_unit_square(MPI.COMM_WORLD, n, n)
     ve = element("P", domain.basix_cell(), 2, shape=(2,))
@@ -30,10 +23,8 @@ def test_nodes():
     phases = (LinearElasticMaterial(gdim, 60e3, 0.2, plane_stress=True),)
     problem = LinearElasticityProblem(rce, V, phases)
 
-    vertices = np.array(
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]
-    )
-    vertex_dofs = locate_dofs(xdofs_VectorFunctionSpace(V), vertices, gdim=3)
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])
+    vertex_dofs = locate_dofs(x_dofs_vectorspace(V), vertices)
 
     phi = compute_phi(problem, vertices)
     source = FenicsxVectorSpace(V)
@@ -47,4 +38,4 @@ def test_nodes():
 
 
 if __name__ == "__main__":
-    test_nodes()
+    test()
