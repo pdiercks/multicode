@@ -156,7 +156,7 @@ class LinearProblem(LinearProblemBase, LogMixin):
         # Apply boundary conditions to the rhs
         apply_lifting(self._b, [self._a], bcs=[bcs])
         self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-        set_bc(self._b, self.bcs)
+        set_bc(self._b, bcs)
 
     def __del__(self):
         # problem may be instantiated without call to `setup_solver`
