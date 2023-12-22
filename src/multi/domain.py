@@ -23,6 +23,17 @@ class Domain(object):
 
         """
         self.grid = grid
+        if cell_tags is not None:
+            entities = cell_tags.find(0)
+            if entities.size > 0:
+                raise ValueError("Cell tags should start at 1."
+                                 "Found {entities.size} entities marked with 0.")
+        if facet_tags is not None:
+            entities = facet_tags.find(0)
+            if entities.size > 0:
+                raise ValueError("Facet tags should start at 1."
+                                 "Found {entities.size} entities marked with 0.")
+
         self.cell_tags = cell_tags
         self.facet_tags = facet_tags
         self._x = grid.geometry.x

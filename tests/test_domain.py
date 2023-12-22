@@ -6,8 +6,9 @@ import pytest
 from dolfinx import mesh
 from dolfinx.io import gmshio
 from mpi4py import MPI
+from multi.boundary import within_range, plane_at
 from multi.domain import Domain, RectangularSubdomain
-from multi.preprocessing import create_line, create_rectangle
+from multi.preprocessing import create_line, create_rectangle, create_meshtags
 
 
 def get_unit_square_mesh(nx=8, ny=8):
@@ -45,14 +46,24 @@ def test_1d():
 
 
 def test_2d():
-    domain = Domain(get_unit_square_mesh())
+    unit_square = get_unit_square_mesh()
+
+    # ### invalid MeshTags
+    ct, _ = create_meshtags(unit_square, 2, {"my_subdomain": (0, within_range([0.0, 0.0], [0.5, 0.5]))})
+    ft, _ = create_meshtags(unit_square, 1, {"bottom": (0, plane_at(0., "y"))})
+    with pytest.raises(ValueError):
+        Domain(unit_square, cell_tags=ct, facet_tags=None)
+    with pytest.raises(ValueError):
+        Domain(unit_square, cell_tags=None, facet_tags=ft)
+
+    # ### translation
+    domain = Domain(unit_square, cell_tags=None, facet_tags=None)
     domain.translate([2.1, 0.4, 0.0])
-
     xmax = domain.xmax
-
     assert np.isclose(xmax[1], 1.4)
     assert np.isclose(xmax[0], 3.1)
 
+    # ### RectangularSubdomain
     rectangle = RectangularSubdomain(17, get_unit_square_mesh(10, 10))
     rectangle.create_edge_grids({"fine": 10, "coarse": 1})
     assert len(rectangle.fine_edge_grid.keys()) == 4
