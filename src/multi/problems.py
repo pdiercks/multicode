@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pathlib
 import yaml
@@ -31,7 +32,7 @@ from multi.solver import build_nullspace
 from multi.utils import LogMixin
 
 
-class LinearProblem(LinearProblemBase, LogMixin):
+class LinearProblem(ABC, LinearProblemBase, LogMixin):
     """Class for solving a linear variational problem"""
 
     def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
@@ -70,14 +71,14 @@ class LinearProblem(LinearProblemBase, LogMixin):
         return self._bc_handler.bcs
 
     @property
+    @abstractmethod
     def form_lhs(self) -> ufl.Form:
         """The ufl form of the left hand side"""
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def form_rhs(self) -> ufl.Form:
         """The ufl form of the right hand side"""
-        raise NotImplementedError
 
     def setup_solver(self, petsc_options={}, form_compiler_options={}, jit_options={}):
         """setup the solver for a linear variational problem
@@ -191,8 +192,6 @@ class LinearElasticityProblem(LinearProblem):
             assert len(phases) == 1
             self.dx = ufl.dx
         else:
-            if np.amin(domain.cell_tags.values) < 0:
-                raise ValueError("Gmsh cell data should start at 1!")
             self.dx = ufl.Measure("dx", domain=domain.grid,
                                   subdomain_data=domain.cell_tags)
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
