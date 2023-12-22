@@ -7,9 +7,9 @@ import numpy as np
 from dolfinx import fem, mesh, default_scalar_type
 from dolfinx.io import gmshio
 from basix.ufl import element
-from multi.domain import RectangularDomain
+from multi.domain import RectangularSubdomain, RectangularDomain
 from multi.materials import LinearElasticMaterial
-from multi.problems import LinearElasticityProblem, TransferProblem
+from multi.problems import LinearElasticityProblem, TransferProblem, LinElaSubProblem
 from multi.boundary import plane_at, within_range
 from multi.preprocessing import create_rectangle
 from multi.projection import orthogonal_part
@@ -85,8 +85,8 @@ def test_dirichlet_hom():
     # submesh has same cell type, reuse ve
     Vsub = fem.functionspace(submesh, ve)
 
-    subdomain = RectangularDomain(submesh)
-    subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
+    subdomain = RectangularSubdomain(99, submesh)
+    subproblem = LinElaSubProblem(subdomain, Vsub, phases)
 
     zero = fem.Constant(square, (default_scalar_type(0.0), default_scalar_type(0.0)))
     right = plane_at(1.0, "x")
@@ -160,8 +160,8 @@ def test_remove_kernel():
     submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
     Vsub = fem.FunctionSpace(submesh, ve)
 
-    subdomain = RectangularDomain(submesh)
-    subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
+    subdomain = RectangularSubdomain(1023, submesh)
+    subproblem = LinElaSubProblem(subdomain, Vsub, phases)
 
     gamma_out = lambda x: np.full(x[0].shape, True, dtype=bool)  # noqa: E731
 
