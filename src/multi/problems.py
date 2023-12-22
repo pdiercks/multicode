@@ -1,15 +1,23 @@
-from mpi4py import MPI
+from typing import Any, Optional
 import pathlib
 import yaml
+import numpy as np
+import numpy.typing as npt
+from scipy.sparse import csc_matrix
+
+import ufl
+from mpi4py import MPI
 from basix.ufl import element
 from dolfinx import fem, la, mesh, default_scalar_type
 from dolfinx.fem.petsc import create_vector, create_matrix, set_bc, apply_lifting, assemble_vector, assemble_matrix
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.io import gmshio
 from dolfinx.io.utils import XDMFFile
-import ufl
-import numpy as np
 from petsc4py import PETSc
+
+from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
+from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.operators.numpy import NumpyMatrixOperator
 
 from multi.bcs import BoundaryConditions
 from multi.domain import StructuredQuadGrid, Domain, RectangularSubdomain
@@ -18,16 +26,9 @@ from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
-from multi.sampling import _create_random_values
+from multi.sampling import create_random_values
 from multi.solver import build_nullspace
 from multi.utils import LogMixin
-
-from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
-from pymor.operators.interface import Operator
-from pymor.vectorarrays.numpy import NumpyVectorSpace
-from pymor.operators.numpy import NumpyMatrixOperator
-
-from scipy.sparse import csc_matrix
 
 
 class LinearProblem(LinearProblemBase, LogMixin):
@@ -487,13 +488,21 @@ class TransferProblem(LogMixin):
         p.assemble_vector(bcs=[bc_inhom])
 
     def generate_random_boundary_data(
-        self, count, distribution="normal", seed_seq=None, **kwargs
-    ):
-        """generate random values shape (count, num_dofs_Γ_out)"""
+            self, count: int, distribution: str, options: Optional[dict[str, Any]] = None
+    ) -> npt.NDArray:
+        """Generates random vectors of shape (count, num_dofs_Γ_out).
+
+        Args:
+            count: Number of random vectors.
+            distribution: The distribution used for sampling.
+            options: Arguments passed to sampling method of random number generator.
+
+        """
 
         bc_dofs = self.bc_dofs_gamma_out  # actual size of the source space
-        values = _create_random_values(
-            (count, bc_dofs.size), distribution, seed_seq, **kwargs
+        options = options or {}
+        values = create_random_values(
+            (count, bc_dofs.size), distribution, **options
         )
 
         return values

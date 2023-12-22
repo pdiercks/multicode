@@ -97,7 +97,7 @@ def test_dirichlet_hom():
         problem, subproblem, gamma_out, dirichlet=dirichlet_bc
     )
     # generate boundary data
-    D = tp.generate_random_boundary_data(2, seed_seq=6)
+    D = tp.generate_random_boundary_data(2, distribution='normal')
     U = tp.solve(D)
     u_arr = U.to_numpy()
 
@@ -173,7 +173,7 @@ def test_remove_kernel():
         problem, subproblem, gamma_out, dirichlet=[], remove_kernel=True
     )
     # generate boundary data
-    D = tp.generate_random_boundary_data(10, seed_seq=13)
+    D = tp.generate_random_boundary_data(10, distribution='normal')
     U = tp.solve(D)
     u_arr = U.to_numpy()
 
