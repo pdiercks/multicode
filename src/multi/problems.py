@@ -172,7 +172,7 @@ class LinearElasticityProblem(LinearProblem):
     """Represents a linear elastic problem."""
 
     def __init__(
-            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]
+            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial, ...]
     ):
         """Initializes a linear elastic problem.
 
@@ -383,6 +383,7 @@ class TransferProblem(LogMixin):
 
         # initialize kernel
         if remove_kernel:
+            # FIXME using self.range_product instead of "l2" as default would be more consistent?
             # build null space
             l2_product = self._get_range_product(product="l2")
             self.range_l2_product = l2_product
