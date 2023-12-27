@@ -1,25 +1,31 @@
-import pathlib
+from typing import Union, Optional
+from pathlib import Path
 import numpy as np
+import numpy.typing as npt
 from multi.dofmap import QuadrilateralDofLayout
 
 
-def select_modes(basis, max_modes, active_modes):
-    """select modes according to local dof layout and currently active
-    number of modes
+def select_modes(basis: npt.NDArray, max_modes: Union[int, list[int]], active_modes: Union[int, list[int]]) -> npt.NDArray:
+    """Selects modes according to multi.dofmap.QuadrilateralDofLayout.
 
-    Parameters
-    ----------
-    basis : np.ndarray
-        The multiscale basis used.
-    max_modes : int or list of int
-        Maximum number of modes per edge.
-    active_modes : int or list of int
-        Number of modes per edge to be used.
+    Args:
+        basis: The full multiscale basis.
+        max_modes: The maximum number of modes per edge.
+        active_modes: The number of modes per edge to be selected.
 
-    Returns
-    -------
-    basis : np.ndarray
-        Subset of the full basis.
+    Returns:
+        modes: A subset of the full multiscale basis.
+
+    Note:
+        It assumes that the max. number of functions for each set (phi, bottom,
+        right, top, left) of the multiscale basis are given in order
+        compliant to multi.dofmap.QuadrilateralDofLayout.
+        See also ``BasesLoader.read_bases()``.
+        This function is mainly useful for selection of active modes for the
+        local basis for a particular cell:
+
+        for cell_index in range(coarse_grid.num_cells):
+            local_basis = select_modes(bases[cell_index], max_modes[cell_index], dofs_per_edge[cell_index])
 
     """
     if isinstance(max_modes, (int, np.integer)):
@@ -59,28 +65,18 @@ def select_modes(basis, max_modes, active_modes):
     return basis[mask]
 
 
-def read_bases(bases, modes_per_edge=None, return_num_modes=False):
-    """read basis functions for multiple reduced bases
+def read_bases(bases: list[tuple[Path, str]], modes_per_edge: Optional[int] = None, return_num_modes: Optional[bool] = False):
+    """Reads basis functions for multiple reduced bases.
 
-    Parameters
-    ----------
-    bases : list of tuple
-        Each element of ``bases`` is a tuple where the first element is a
-        FilePath and the second element is a string specifying which basis
-        functions to load. Possible string values are 'phi' (coarse
-        scale functions), and 'bottom', 'right', 'top', 'left'
-        (for respective fine scale functions).
-    modes_per_edge : int, optional
-        Maximum number of modes per edge for the fine scale bases.
-    return_num_modes : bool, optional
-        If True, return number of modes per edge.
+    Args:
+        bases: Define data to be read (filepath) for each set given as string.
+        Possible string values are 'phi', 'bottom', 'right', 'top', 'left'.
+        modes_per_edge: Maximum number of modes per edge for the fine scale bases.
+        return_num_modes: If True, return number of modes per edge.
 
-    Returns
-    -------
-    B : np.ndarray
-        The full reduced basis.
-    num_modes : tuple of int
-        The maximum number of modes per edge (if ``return_num_modes`` is True).
+    Returns:
+        B: The full multiscale basis.
+        num_modes: The maximum number of modes per edge if `return_num_modes` is True.
 
     """
     loaded = set()
@@ -122,8 +118,8 @@ def read_bases(bases, modes_per_edge=None, return_num_modes=False):
 
 
 class BasesLoader(object):
-    def __init__(self, directory, num_cells):
-        folder = pathlib.Path(directory)
+    def __init__(self, directory: Union[str, Path], num_cells: int):
+        folder = Path(directory)
         assert folder.is_dir()
         self.dir = folder
         self.num_cells = num_cells
