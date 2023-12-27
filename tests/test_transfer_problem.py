@@ -198,7 +198,7 @@ def test_remove_kernel():
 
     # remove kernel of exact solution
     UEX = tp.range.from_numpy(u_ex)
-    U_proj = orthogonal_part(tp.kernel, UEX, tp.range_l2_product, orth=True)
+    U_proj = orthogonal_part(UEX, tp.kernel, product=tp.range_l2_product, orthonormal=True)
 
     u_ex = U_proj.to_numpy()
     error = u_ex - u_arr

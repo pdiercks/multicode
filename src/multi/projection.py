@@ -1,13 +1,14 @@
 """projection module"""
 
-# NOTE regarding functions compute_proj_errors, project and compute_proj_errors_orth_basis
+# NOTE regarding functions compute_proj_errors and compute_proj_errors_orth_basis
 # Authorship: the pyMOR developers
 # the original code is part of the pymor tutorial https://docs.pymor.org/2020.2.0/tutorial_basis_generation.html
-from typing import Union
+from typing import Union, Optional
 import numpy as np
 from dolfinx import fem
 from pymor.operators.interface import Operator
 from pymor.vectorarrays.interface import VectorArray
+from pymor.algorithms.basic import project_array
 
 
 def compute_proj_errors(basis: VectorArray, V: VectorArray, product: Operator, relative: bool = True):
@@ -30,40 +31,18 @@ def compute_proj_errors(basis: VectorArray, V: VectorArray, product: Operator, r
     return errors
 
 
-def project(basis: VectorArray, V: VectorArray, product: Operator, orth: bool):
-    """Projects V onto basis.
-
-    Args:
-        basis: The basis to project onto.
-        V: The function to project.
-        product: The inner product to use.
-        orth: If the basis is orthonormal or not.
-
-    """
-    if orth:
-        v = V.inner(basis, product=product)
-        V_proj = basis.lincomb(v)
-    else:
-        G = basis.gramian(product=product)
-        R = basis.inner(V, product=product)
-        v = np.linalg.solve(G, R)
-        V_proj = basis.lincomb(v.T)
-
-    return V_proj
-
-
-def orthogonal_part(basis: VectorArray, V: VectorArray, product: Operator, orth: bool):
+def orthogonal_part(U: VectorArray, basis: VectorArray, product: Optional[Operator] = None, orthonormal: bool = True):
     """Returns part of V that is orthogonal to span(basis).
 
     Args:
+        U: The VectorArray to project.
         basis: The basis to project onto.
-        V: The function to project.
         product: The inner product to use.
-        orth: If the basis is orthonormal or not.
+        orthonormal: If the basis is orthonormal wrt product.
 
     """
-    V_proj = project(basis, V, product, orth)
-    return V - V_proj
+    U_proj = project_array(U, basis, product=product, orthonormal=orthonormal)
+    return U - U_proj
 
 
 def compute_proj_errors_orth_basis(basis: VectorArray, V: VectorArray, product: Operator, relative: bool = True):

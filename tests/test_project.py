@@ -1,10 +1,11 @@
 from mpi4py import MPI
 from dolfinx import fem, mesh
 from basix.ufl import element
-from multi.projection import project, orthogonal_part, compute_proj_errors, compute_proj_errors_orth_basis
+from multi.projection import orthogonal_part, compute_proj_errors, compute_proj_errors_orth_basis
 from multi.shapes import NumpyQuad
 import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.algorithms.basic import project_array
 from pymor.algorithms.gram_schmidt import gram_schmidt
 
 
@@ -23,7 +24,7 @@ def test():
     beta = np.array([0.0, 1.0, 2.0, 1.0, 4.0, 6.0, 7.0, 0.1])
     U = basis.lincomb(alpha)
     U.append(basis.lincomb(beta))
-    U_orth = orthogonal_part(basis, U, product=None, orth=False)
+    U_orth = orthogonal_part(U, basis, product=None, orthonormal=False)
 
     err = U_orth
     assert np.all(err.norm() < 1e-12)
@@ -33,7 +34,7 @@ def test():
     assert np.isclose(errors[-1], 0.)
 
     other = gram_schmidt(basis, product=None, copy=True)
-    V_proj = project(other, U, product=None, orth=True)
+    V_proj = project_array(U, other, product=None, orthonormal=True)
 
     err_v = U - V_proj
     assert np.all(err_v.norm() < 1e-12)
