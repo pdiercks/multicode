@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Union
 import pathlib
 import yaml
 import numpy as np
 import numpy.typing as npt
-from scipy.sparse import csc_matrix
+from scipy.sparse import csr_array
 
 import ufl
 from mpi4py import MPI
@@ -257,7 +257,7 @@ class SubdomainProblem(object):
         try:
             coarse_grid = self.domain.coarse_grid
         except AttributeError:
-            raise AttributeError
+            raise AttributeError("Coarse grid partition of the domain does not exist.")
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
@@ -286,19 +286,16 @@ class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
 
 
 class TransferProblem(LogMixin):
-    """General class for transfer problems.
+    """Represents a Transfer Problem.
 
     This class aids the solution of transfer problems given by:
 
         A(u) = 0 in Ω,
-        with homogeneous Dirichlet bcs on Γ_D,
-        with arbitrary Dirichlet boundary conditions on Γ_out.
-
-    Additional Neumann bcs can be set via property `neumann`.
+        with optional homogeneous Dirichlet bcs on Γ_D,
+        with arbitrary inhomogeneous Dirichlet boundary conditions on Γ_out.
 
     Here, we are only interested in the solution u restricted to the
     space defined on a target subdomain Ω_in ⊂ Ω.
-
     The boundaries Γ_D, Γ_N and Γ_N_inhom are the part of ∂Ω that
     intersects with the (respective dirichlet or neumann) boundary
     of the global domain Ω_gl ( Ω ⊂ Ω_gl).
@@ -311,45 +308,32 @@ class TransferProblem(LogMixin):
     of a domain (yet), the full space is defined as the source space.
     The range space is the space defined on Ω_in.
 
-    Parameters
-    ----------
-    problem : multi.problems.LinearProblem
-        The problem defined on the oversampling domain Ω.
-    subdomain_problem : multi.problem.LinearProblem
-        The problem defined on the target subdomain.
-    gamma_out : callable
-        A function that defines facets of Γ_out geometrically.
-        `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
-        Γ_out is the part of the boundary of the oversampling domain that does
-        not intersect with the boundary of the global domain.
-    dirichlet : list of dict or dict, optional
-        Homogeneous dirichlet boundary conditions.
-        See multi.bcs.BoundaryConditions.add_dirichlet_bc for suitable values.
-    source_product : dict, optional
-        The inner product to use for the source space. The dictionary should define
-        the key `product` and optionally `bcs` and `product_name`.
-    range_product : dict, optional
-        The inner product to use for the range space. The dictionary should define
-        the key `product` and optionally `bcs` and `product_name`.
-    remove_kernel : bool, optional
-        If True, remove kernel (rigid body modes) from solution.
+    Args:
+        problem: The problem defined on the oversampling domain Ω.
+        subproblem: The problem defined on the target subdomain Ω_in.
+        gamma_out: Marker function that defines the boundary Γ_out geometrically.
+        Note that `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
+        dirichlet: Optional homogeneous Dirichlet BCs. See `multi.bcs.BoundaryConditions.add_dirichlet_bc` for suitable values.
+        source_product: The inner product to use for the source space. See `multi.product.InnerProduct`.
+        range_product: The inner product to use for the range space. See `multi.product.InnerProduct`.
+        remove_kernel: If True, remove kernel (rigid body modes) from solution.
 
     """
 
     def __init__(
         self,
-        problem,
-        subdomain_problem,
-        gamma_out,
-        dirichlet=None,
-        source_product=None,
-        range_product=None,
-        remove_kernel=False,
+        problem: LinearElasticityProblem,
+        subproblem: LinElaSubProblem,
+        gamma_out: Callable,
+        dirichlet: Optional[Union[dict, list[dict]]] = None,
+        source_product: Optional[dict] = None,
+        range_product: Optional[dict] = None,
+        remove_kernel: Optional[bool] = False,
     ):
         self.problem = problem
-        self.subproblem = subdomain_problem
+        self.subproblem = subproblem
         self.source = FenicsxVectorSpace(problem.V)
-        self.range = FenicsxVectorSpace(subdomain_problem.V)
+        self.range = FenicsxVectorSpace(subproblem.V)
         self.gamma_out = gamma_out
         self.remove_kernel = remove_kernel
 
@@ -358,14 +342,14 @@ class TransferProblem(LogMixin):
         self._S_to_R = self._make_mapping()
 
         # initialize fixed set of dirichlet boundary conditions on Γ_D
+        self._bc_hom = list()
         if dirichlet is not None:
             if isinstance(dirichlet, (list, tuple)):
                 for dirichlet_bc in dirichlet:
                     problem.add_dirichlet_bc(**dirichlet_bc)
             else:
                 problem.add_dirichlet_bc(**dirichlet)
-            dirichlet = problem.get_dirichlet_bcs()
-        self._bc_hom = dirichlet or []
+            self._bc_hom = problem.get_dirichlet_bcs()
 
         # ### inner products
         default_product = {"product": None, "bcs": (), "product_name": None}
@@ -571,9 +555,7 @@ class TransferProblem(LogMixin):
                 self.problem.V, product, bcs=bcs, name=product_name
             )
             M = inner_product.assemble_matrix()
-            # FIXME figure out how to do this with PETSc.Mat and
-            # use FenicsxMatrixOperator instead of NumpyMatrixOperator
-            full_matrix = csc_matrix(M.getValuesCSR()[::-1], shape=M.size)
+            full_matrix = csr_array(M.getValuesCSR()[::-1])
             dofs = self.bc_dofs_gamma_out
             source_matrix = full_matrix[dofs, :][:, dofs]
             source_product = NumpyMatrixOperator(source_matrix, name=product_name)
