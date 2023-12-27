@@ -6,6 +6,7 @@ from dolfinx import mesh, fem, default_scalar_type
 from basix.ufl import element
 from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
 from pymor.operators.numpy import NumpyMatrixOperator
+from pymor.operators.constructions import LincombOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from multi.domain import Domain
@@ -91,7 +92,10 @@ def test(product_name):
     # FIXME: this conversion should be avoided
     basis = T_hat.range.from_numpy(nullspace.to_numpy())
     Tproj = OrthogonallyProjectedOperator(T_hat, basis, product=product_numpy, orthonormal=True)
-    TpU = T_hat.apply(U) - Tproj.apply(U)
+    ops = [T_hat, Tproj]
+    coeffs = [1., -1.]
+    T = LincombOperator(ops, coeffs)
+    TpU = T.apply(U)
 
 
     # reference solution
