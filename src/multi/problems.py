@@ -530,7 +530,7 @@ class TransferProblem(LogMixin):
             U.append(self.range.make_array([u_in.vector.copy()]))
 
         if self.remove_kernel:
-            return orthogonal_part(self.kernel, U, self.range_l2_product, orth=True)
+            return orthogonal_part(U, self.kernel, product=self.range_l2_product, orthonormal=True)
         else:
             return U
 

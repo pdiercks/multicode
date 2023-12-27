@@ -51,7 +51,7 @@ def test(product_name):
     # test data not in span of basis
     # compare to alternative method of computing orthogonal part
     U = source.random(1)
-    r1 = orthogonal_part(basis, U, product, orth=True).to_numpy().flatten()
+    r1 = orthogonal_part(U, basis, product=product, orthonormal=True).to_numpy().flatten()
     r2 = (np.eye(P.shape[0]) - P).dot(U.to_numpy().flatten())
     assert np.allclose(r1, r2)
 

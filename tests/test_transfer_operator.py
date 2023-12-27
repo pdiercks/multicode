@@ -114,7 +114,7 @@ def test(product_name):
 
     # test against alternative orthogonal part computation
     UIN = rangespace.from_numpy([u_in])
-    U_orth = orthogonal_part(nullspace, UIN, product, orth=True)
+    U_orth = orthogonal_part(UIN, nullspace, product=product, orthonormal=True)
     error = U_orth.to_numpy().flatten() - TpU.to_numpy().flatten()
     assert np.linalg.norm(error).item() < 1e-9
 
@@ -217,13 +217,13 @@ def test_bc_hom(product_name):
     # check that u is not in ker(A)
     # if u in ker(A) then the projection error should be zero
     UIN = rangespace.from_numpy([u_in])
-    Uorth = orthogonal_part(basis, UIN, product, orth=True)
+    Uorth = orthogonal_part(UIN, basis, product=product, orthonormal=True)
     assert Uorth.norm(product).item() > 0
     
     space = NumpyVectorSpace(3)
     alpha = space.random(3)
     va = basis.lincomb(alpha.to_numpy())
-    va_orth = orthogonal_part(basis, va, product, orth=True)
+    va_orth = orthogonal_part(va, basis, product=product, orthonormal=True)
     assert np.allclose(va_orth.norm(product), np.zeros(3))
 
 
