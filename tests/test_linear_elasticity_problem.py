@@ -7,7 +7,7 @@ import numpy as np
 from multi.boundary import plane_at
 from multi.domain import Domain, RectangularSubdomain
 from multi.materials import LinearElasticMaterial
-from multi.preprocessing import create_rectangle
+from multi.preprocessing import create_rectangle, create_unit_cell_01
 from multi.problems import LinearElasticityProblem, LinElaSubProblem
 from multi.misc import x_dofs_vectorspace
 from multi.interpolation import interpolate
@@ -73,7 +73,18 @@ def test():
 
 
 def test_dirichlet():
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_unit_cell_01(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=8,
+            facets=False,
+            out_file=tf.name,
+        )
+        domain, ct, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    Ω = RectangularSubdomain(1, domain, cell_tags=ct)
     tdim = domain.topology.dim
     fdim = tdim - 1
     domain.topology.create_connectivity(tdim, fdim)
@@ -83,13 +94,11 @@ def test_dirichlet():
     right = plane_at(1.0, "x")
     bottom = plane_at(0.0, "y")
 
-    Ω = Domain(domain)
-
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = dolfinx.fem.functionspace(domain, fe)
     gdim = domain.ufl_cell().geometric_dimension()
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),) * 2
     problem = LinearElasticityProblem(Ω, V, phases)
 
     # add two dirichlet bc
