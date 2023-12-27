@@ -22,7 +22,7 @@ def test():
 
         rce, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     Ω = RectangularSubdomain(1, rce, ct, ft)
-    Ω.create_edge_grids({"fine": num_cells})
+    Ω.create_edge_grids(fine=num_cells)
 
     bottom = Ω.fine_edge_grid["bottom"]
     top = Ω.fine_edge_grid["top"]

@@ -1,3 +1,4 @@
+import pytest
 from mpi4py import MPI
 import tempfile
 import dolfinx
@@ -161,14 +162,19 @@ def test_with_edges():
             out_file=tf.name,
         )
         domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    Ω = RectangularSubdomain(1, domain, facet_tags=ft)
-    Ω.create_edge_grids({"fine": 10})
-    ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
-    V = dolfinx.fem.functionspace(Ω.grid, ve)
 
+    ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
+    V = dolfinx.fem.functionspace(domain, ve)
     gdim = domain.ufl_cell().geometric_dimension()
     phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    Ω = RectangularSubdomain(1, domain, facet_tags=ft)
     problem = LinElaSubProblem(Ω, V, phases)
+
+    with pytest.raises(AttributeError):
+        # edge meshes are not yet setup for Ω
+        problem.setup_edge_spaces()
+
+    Ω.create_edge_grids(fine=10)
     problem.setup_edge_spaces()
     problem.create_map_from_V_to_L()
 

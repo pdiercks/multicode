@@ -17,7 +17,7 @@ def test():
     V = fem.functionspace(domain, ve)
 
     rce = RectangularSubdomain(1, domain)
-    rce.create_edge_grids({"fine": 20})
+    rce.create_edge_grids(fine=n)
     gdim = domain.ufl_cell().geometric_dimension()
 
     phases = (LinearElasticMaterial(gdim, 60e3, 0.2, plane_stress=True),)

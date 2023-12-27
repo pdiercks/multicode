@@ -229,21 +229,14 @@ class LinearElasticityProblem(LinearProblem):
 class SubdomainProblem(object):
     """Represents a subproblem in a multiscale context"""
 
-    # FIXME pyright complains: cannot access member "domain" etc
 
     def setup_edge_spaces(self) -> None:
 
-        edge_meshes = {}
-        try:
-            edge_meshes["fine"] = self.domain.fine_edge_grid
-        except AttributeError:
-            raise RuntimeError("Fine grid partition of the edges does not exist.")
+        if not all([hasattr(self.domain, "fine_edge_grid"), hasattr(self.domain, "coarse_edge_grid")]):
+            raise AttributeError("Fine and coarse grid partition of the edges does not exist.")
 
-        try:
-            edge_meshes["coarse"] = self.domain.coarse_edge_grid
-        except AttributeError:
-            raise RuntimeError("Coarse grid partition of the edges does not exist.")
-
+        # FIXME pyright complains: cannot access member "domain" etc
+        edge_meshes = {"fine": self.domain.fine_edge_grid, "coarse": self.domain.coarse_edge_grid}
         V = self.V
         ufl_element = V.ufl_element()
         family = ufl_element.family_name

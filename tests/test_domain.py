@@ -65,7 +65,7 @@ def test_2d():
 
     # ### RectangularSubdomain
     rectangle = RectangularSubdomain(17, get_unit_square_mesh(10, 10))
-    rectangle.create_edge_grids({"fine": 10, "coarse": 1})
+    rectangle.create_edge_grids(coarse=1, fine=10)
     assert len(rectangle.fine_edge_grid.keys()) == 4
     assert len(rectangle.coarse_edge_grid.keys()) == 4
     assert isinstance(rectangle.fine_edge_grid["bottom"], mesh.Mesh)

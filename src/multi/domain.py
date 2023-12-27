@@ -103,12 +103,12 @@ class RectangularSubdomain(RectangularDomain):
             coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
         self.coarse_grid = coarse
 
-    def create_edge_grids(self, num_cells: dict[str, Union[int, None]]) -> None:
-        """Creates coarse and fine grid partitions of the boundary of the subdomain.
+    def create_edge_grids(self, coarse: Optional[int] = None, fine: Optional[int] = None) -> None:
+        """Creates coarse and fine grid partitions of the boundary of the rectangular subdomain.
 
         Args:
-            num_cells: Number of interval cells for each boundary.
-            The keys 'coarse' and 'fine' are expected.
+            coarse: Number of cells for the coarse grid partition.
+            fine: Number of cells for the fine grid partition.
 
         """
 
@@ -119,8 +119,8 @@ class RectangularSubdomain(RectangularDomain):
         facets = mesh.locate_entities_boundary(parent, fdim, lambda x: np.full(x[0].shape, True, dtype=bool))
         # assumes a quadrilateral domain and equal number of facets
         # per boundary/edge
-        num_fine_cells = num_cells.get("fine", int(facets.size / 4))
-        num_coarse_cells = num_cells.get("coarse", 1)
+        num_coarse_cells = coarse or 1
+        num_fine_cells = fine or int(facets.size / 4)
 
         xmin, ymin, _ = self.xmin
         xmax, ymax, _ = self.xmax
@@ -137,12 +137,12 @@ class RectangularSubdomain(RectangularDomain):
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line(start, end, num_cells=num_fine_cells, out_file=tf.name)
-                fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
-            fine_grid[key] = fine
+                fine_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
+            fine_grid[key] = fine_edge_grid
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line(start, end, num_cells=num_coarse_cells, out_file=tf.name)
-                coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
-            coarse_grid[key] = coarse
+                coarse_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
+            coarse_grid[key] = coarse_edge_grid
 
         self.fine_edge_grid = fine_grid
         self.coarse_edge_grid = coarse_grid
