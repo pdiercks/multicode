@@ -7,9 +7,8 @@ import numpy as np
 from multi.boundary import plane_at
 from multi.domain import Domain, RectangularSubdomain
 from multi.materials import LinearElasticMaterial
-from multi.preprocessing import create_rectangle_grid
-from multi.problems import LinearElasticityProblem, LinElaSubProblem
-from multi.misc import x_dofs_vectorspace
+from multi.preprocessing import create_unit_cell_01
+from multi.problems import LinearElasticityProblem
 from multi.interpolation import interpolate
 
 
@@ -73,7 +72,18 @@ def test():
 
 
 def test_dirichlet():
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_unit_cell_01(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=8,
+            facets=False,
+            out_file=tf.name,
+        )
+        domain, ct, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    Ω = RectangularSubdomain(1, domain, cell_tags=ct)
     tdim = domain.topology.dim
     fdim = tdim - 1
     domain.topology.create_connectivity(tdim, fdim)
@@ -83,13 +93,11 @@ def test_dirichlet():
     right = plane_at(1.0, "x")
     bottom = plane_at(0.0, "y")
 
-    Ω = Domain(domain)
-
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = dolfinx.fem.functionspace(domain, fe)
     gdim = domain.ufl_cell().geometric_dimension()
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),) * 2
     problem = LinearElasticityProblem(Ω, V, phases)
 
     # add two dirichlet bc
@@ -139,66 +147,6 @@ def test_dirichlet():
     assert np.isclose(np.sum(u_values), f_x * 9)
 
 
-def test_with_edges():
-    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
-            0.0,
-            1.0,
-            0.0,
-            1.0,
-            num_cells=10,
-            facets=True,
-            recombine=True,
-            out_file=tf.name,
-        )
-        domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
-    Ω = RectangularSubdomain(1, domain, facet_tags=ft)
-    Ω.create_edge_grids({"fine": 10})
-    ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
-    V = dolfinx.fem.functionspace(Ω.grid, ve)
-
-    gdim = domain.ufl_cell().geometric_dimension()
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
-    problem = LinElaSubProblem(Ω, V, phases)
-    problem.setup_edge_spaces()
-    problem.create_map_from_V_to_L()
-
-    x_dofs = x_dofs_vectorspace(problem.V)
-    bottom = x_dofs[problem.V_to_L["bottom"]]
-    assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
-    left = x_dofs[problem.V_to_L["left"]]
-    assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
-
-    left = plane_at(0.0, "x")
-    gdim = domain.geometry.dim
-    zero = np.array((0,) * gdim, dtype=dolfinx.default_scalar_type)
-    problem.add_dirichlet_bc(zero, boundary=left, method="geometrical")
-    T = dolfinx.fem.Constant(domain, dolfinx.default_scalar_type((1000.0, 0.0)))
-    problem.add_neumann_bc(3, T)
-
-    petsc_options = {
-            "ksp_type": "preonly",
-            "pc_type": "lu",
-            "pc_factor_mat_solver_type": "mumps",
-            }
-    problem.setup_solver(petsc_options=petsc_options)
-    solver = problem.solver
-
-    bcs = problem.get_dirichlet_bcs()
-    problem.assemble_matrix(bcs)
-    problem.assemble_vector(bcs)
-
-    u = dolfinx.fem.Function(V)
-    solver.solve(problem.b, u.vector)
-    u.x.scatter_forward()
-
-    Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
-    assert np.sum(problem.b[:]) > 0.0
-    assert problem.A[:, :].shape == (Vdim, Vdim)
-    assert np.sum(np.abs(u.vector.array[:])) > 0.0
-
-
 if __name__ == "__main__":
     test()
     test_dirichlet()
-    test_with_edges()

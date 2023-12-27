@@ -1,7 +1,11 @@
 """standard and hierarchical shape functions"""
+
+from typing import Callable
 import numpy as np
+import numpy.typing as npt
 import sympy
 from math import factorial
+from dolfinx import fem
 
 
 class NumpyLine:
@@ -10,8 +14,7 @@ class NumpyLine:
     tdim = 1
     gdim = 2
 
-    def __init__(self, nodes):
-        assert isinstance(nodes, np.ndarray)
+    def __init__(self, nodes: npt.NDArray):
         assert nodes.ndim == self.tdim
         self.nodes = nodes
         self.nn = nodes.shape[0]
@@ -22,54 +25,45 @@ class NumpyLine:
         else:
             raise NotImplementedError
 
-    def interpolate(self, function_space, sub):
+    def interpolate(self, function_space: fem.FunctionSpaceBase, orientation: int) -> npt.NDArray:
         """interpolate line shape functions to given Lagrange space.
 
-        Parameters
-        ----------
-        function_space : dolfin.FunctionSpace
-            The Lagrange space used.
-        sub : int
-            Integer specifying if the line is horizontal (0) or vertical (1).
+        Args:
+            function_space: The FE space.
+            orientation: Integer specifying if the line is horizontal (0) or vertical (1).
 
-        Returns
-        -------
-        phi : np.ndarray
-            The shape functions.
         """
         assert function_space.ufl_element().family() in ("Lagrange", "P")
+        assert isinstance(orientation, int)
+        assert 0 <= orientation <= 1
         coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
-        coordinates = coordinates[:, sub]
+        coordinates = coordinates[:, orientation]
         if self.nn == 2:
             X = np.column_stack((np.ones(coordinates.size), coordinates))
-        elif self.nn == 3:
+        else:
             X = np.column_stack(
                 (np.ones(coordinates.size), coordinates, coordinates**2)
             )
-        else:
-            assert False
-
         Id = np.eye(self.nn)
         shapes = []
         for i in range(self.nn):
             coeff = np.linalg.solve(self.G, Id[:, i])
             shapes.append(X @ coeff)
-        phi = np.vstack(shapes)
+        phi = np.vstack(shapes) # shape (num_nodes, Vdim)
 
         value_shape = function_space.ufl_element().value_shape()
-        if value_shape == (2,):
-            dim = value_shape[0]
-            G = np.zeros((phi.shape[0] * dim, phi.shape[1] * dim))
+        if len(value_shape) > 0:
+            # vector valued function space
+            ncomp = value_shape[0] # either 2 or 3
+            G = np.zeros((phi.shape[0] * ncomp, phi.shape[1] * ncomp))
             for i in range(self.nn):
-                G[2 * i, 0::2] = phi[i, :]
-                G[2 * i + 1, 1::2] = phi[i, :]
-
+                for j in range(ncomp):
+                    G[ncomp * i + j, j::ncomp] = phi[i, :]
             return G
-        elif value_shape == ():
-            return phi
         else:
-            raise NotImplementedError
+            # scalar function space
+            return phi
 
 
 def get_P_matrix(X, nn):
@@ -108,20 +102,18 @@ class NumpyQuad:
     tdim = 2
     gdim = 2
 
-    def __init__(self, nodes):
+    def __init__(self, nodes: npt.NDArray):
         """initialize quadrilateral with nodes
 
-        Parameters
-        ----------
-        nodes : list or np.ndarray
-            Node coordinates of the quadrilateral.
+        Args:
+            nodes: Node coordinates of the quadrilateral.
         """
-        if isinstance(nodes, list):
-            nodes = np.array(nodes).reshape(len(nodes), len(nodes[0]))
         assert isinstance(nodes, np.ndarray)
+        assert nodes.shape[-1] <= 3
+        # shape = (num_nodes, gdim)
         # prune zero z component
         self.nodes = nodes[:, : self.gdim]
-        self.nn = self.nodes.shape[0]
+        self.nn = nodes.shape[0]
         self.P = get_P_matrix(self.nodes, self.nn)
 
     def interpolate(self, function_space):
@@ -150,41 +142,32 @@ class NumpyQuad:
         phi = np.vstack(shapes)
 
         value_shape = function_space.ufl_element().value_shape()
-        if value_shape == (2,):
-            dim = value_shape[0]
-            G = np.zeros((phi.shape[0] * dim, phi.shape[1] * dim))
+        if len(value_shape) > 0:
+            # vector valued function space
+            ncomp = value_shape[0] # either 2 or 3
+            G = np.zeros((phi.shape[0] * ncomp, phi.shape[1] * ncomp))
             for i in range(self.nn):
-                G[2 * i, 0::2] = phi[i, :]
-                G[2 * i + 1, 1::2] = phi[i, :]
-
+                for j in range(ncomp):
+                    G[ncomp * i + j, j::ncomp] = phi[i, :]
             return G
-        elif value_shape == ():
-            return phi
         else:
-            raise NotImplementedError
+            # scalar function space
+            return phi
 
+def get_hierarchical_shape_functions(x: npt.NDArray, max_degree: int, ncomp: int = 2) -> npt.NDArray:
+    """Constructs hierarchical shape functions.
 
-def get_hierarchical_shape_functions(x, max_degree, ncomp=2):
-    """construct hierarchical shape functions
+    Args:
+        x: The physical coordinates of the function space (interval mesh).
+        max_degree: Max polynomial degree. Must be >= 2.
+        ncomp: Number of components of the field variable.
 
-    Parameters
-    ----------
-    x : np.ndarray
-        The physical coordinates.
-        An array of ``ndim`` 1.
-    max_degree : int
-        The maximum polynomial degree of the shape functions.
-        Must be greater than or equal to 2.
-    ncomp : int, optional
-        The number of components of the field variable.
-
-    Returns
-    -------
-    shape_functions : np.ndarray
-        The hierarchical shape functions.
-        ``len(edge_basis)`` equals ``ncomp * (max_degree-1)``.
+    Returns:
+        shape_functions : The hierarchical shape functions.
 
     """
+    if max_degree < 2:
+        raise ValueError("Requires max_degree >= 2.")
     # reference coordinates
     xi = mapping(x, x.min(), x.max())
 
@@ -193,70 +176,44 @@ def get_hierarchical_shape_functions(x, max_degree, ncomp=2):
         fun = _get_hierarchical_shape_fun_expr(degree)
         shapes.append(fun(xi))
 
-    shape_functions = np.kron(shapes, np.eye(ncomp))
+    shape_functions = np.kron(np.array(shapes), np.eye(ncomp))
     return shape_functions
 
 
-def _get_hierarchical_shape_fun_expr(degree):
-    """get hierarchical shape function of degree
+def _get_hierarchical_shape_fun_expr(degree: int) -> Callable:
+    """Returs hierarchical shape function expression as 'lambdified' callable.
 
-    Note
-    ----
-    For degree >= 2 return the integrand of the Legendre polynomial of degree
-    p = degree - 1.
-    The functions are defined on the interval [-1, 1].
-    This method implements equation (8.61) in the book
-    "The finite element method volume 1" by Zienkiewicz and Taylor
+    Args:
+        degree: The degree of the hierarchical shape function.
 
-    Parameters
-    ----------
-    degree : int
-        The degree of the hierarchical shape function.
+    Notes:
+        For degree >= 2 return the integrand of the Legendre polynomial of degree p = `degree` - 1.
+        The functions are defined on the interval [-1, 1].
+        This method implements equation (8.61) in the book
+        "The finite element method volume 1" by Zienkiewicz and Taylor
 
-    Returns
-    -------
-    shape_function : function
-        A polynomial of degree `degree`.
+    Returns:
+        shape_function: A hierarchical shape function of degree `degree`.
+
     """
-    if degree < 2:
-        raise NotImplementedError
-    else:
-        p = degree - 1
-        x = sympy.symbols("x")
-        N = sympy.diff((x**2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1)
-        return sympy.lambdify(x, N, "numpy")
+    p = degree - 1
+    x = sympy.symbols("x")
+    N = sympy.diff((x**2 - 1) ** p, x, p - 1) / factorial(p - 1) / 2 ** (p - 1) # type: ignore
+    return sympy.lambdify(x, N, "numpy")
 
 
-def mapping(x, a, b, a_tol=1e-3):
-    """compute linear mapping from physical (x) to reference
-    coordinate (xi)
+def mapping(x: npt.NDArray, a: float, b: float, a_tol: float = 1e-3) -> npt.NDArray:
+    """Computes linear mapping from physical (x) to reference coordinate (xi).
 
-    map x in [a, b] to xi in [-1, 1]
-    xi = alpha * x + beta
+    Args:
+        x: The phyiscal coordinates.
+        a: Min value of x.
+        b: Max value of x.
+        a_tol: If a <= a_tol, assume a=0.
 
-    conditions
-    (i)  xi(x=a) = -1,
-    (ii) xi(x=b) = 1,
-    lead to
-    beta = (1 + b/a) / (1 - b/a)
-    alpha = - 1/a - beta/a
+    Returns:
+        xi: The reference coordinates.
 
-    Parameters
-    ----------
-    x : np.ndarray
-        The physical coordinates.
-    a : float
-        The lower limit of x.
-    b : float
-        The upper limit of x.
-    a_tol : float, optional
-        Use sympy.limit to compute alpha and beta if
-        a is smaller than or equal to this value.
-
-    Returns
-    -------
-    xi : np.ndarray
-        The reference coordinates.
     """
     assert b > a
     if a > a_tol:

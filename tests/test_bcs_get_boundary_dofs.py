@@ -1,7 +1,9 @@
 from mpi4py import MPI
-import dolfinx
+import numpy as np
+from dolfinx import mesh, fem
 from basix.ufl import element
-from multi.bcs import get_boundary_dofs, BoundaryConditions
+from multi.bcs import get_boundary_dofs
+from multi.boundary import within_range
 
 
 def test():
@@ -9,13 +11,15 @@ def test():
     degree = 2
     ncomp = 2
 
-    domain = dolfinx.mesh.create_unit_square(
-        MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
+    domain = mesh.create_unit_square(
+        MPI.COMM_WORLD, n, n, mesh.CellType.quadrilateral
     )
     fe = element("Lagrange", domain.basix_cell(), degree, shape=(ncomp,))
-    V = dolfinx.fem.functionspace(domain, fe)
+    V = fem.functionspace(domain, fe)
 
     dd = get_boundary_dofs(V)
+    ddm = get_boundary_dofs(V, within_range([0., 0.], [1., 1.]))
+    assert np.allclose(dd, ddm)
 
     xdofs = V.tabulate_dof_coordinates()
     xx = xdofs[dd]

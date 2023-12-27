@@ -1,15 +1,24 @@
-from mpi4py import MPI
+from abc import ABC, abstractmethod
+from typing import Any, Optional, Callable, Union
 import pathlib
 import yaml
+import numpy as np
+import numpy.typing as npt
+from scipy.sparse import csr_array
+
+import ufl
+from mpi4py import MPI
 from basix.ufl import element
 from dolfinx import fem, la, mesh, default_scalar_type
 from dolfinx.fem.petsc import create_vector, create_matrix, set_bc, apply_lifting, assemble_vector, assemble_matrix
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.io import gmshio
 from dolfinx.io.utils import XDMFFile
-import ufl
-import numpy as np
 from petsc4py import PETSc
+
+from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
+from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.operators.numpy import NumpyMatrixOperator
 
 from multi.bcs import BoundaryConditions
 from multi.domain import StructuredQuadGrid, Domain, RectangularSubdomain
@@ -18,19 +27,12 @@ from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
-from multi.sampling import _create_random_values
+from multi.sampling import create_random_values
 from multi.solver import build_nullspace
 from multi.utils import LogMixin
 
-from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
-from pymor.operators.interface import Operator
-from pymor.vectorarrays.numpy import NumpyVectorSpace
-from pymor.operators.numpy import NumpyMatrixOperator
 
-from scipy.sparse import csc_matrix
-
-
-class LinearProblem(LinearProblemBase, LogMixin):
+class LinearProblem(ABC, LinearProblemBase, LogMixin):
     """Class for solving a linear variational problem"""
 
     def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
@@ -69,14 +71,14 @@ class LinearProblem(LinearProblemBase, LogMixin):
         return self._bc_handler.bcs
 
     @property
+    @abstractmethod
     def form_lhs(self) -> ufl.Form:
         """The ufl form of the left hand side"""
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def form_rhs(self) -> ufl.Form:
         """The ufl form of the right hand side"""
-        raise NotImplementedError
 
     def setup_solver(self, petsc_options={}, form_compiler_options={}, jit_options={}):
         """setup the solver for a linear variational problem
@@ -155,7 +157,7 @@ class LinearProblem(LinearProblemBase, LogMixin):
         # Apply boundary conditions to the rhs
         apply_lifting(self._b, [self._a], bcs=[bcs])
         self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-        set_bc(self._b, self.bcs)
+        set_bc(self._b, bcs)
 
     def __del__(self):
         # problem may be instantiated without call to `setup_solver`
@@ -172,7 +174,7 @@ class LinearElasticityProblem(LinearProblem):
     """Represents a linear elastic problem."""
 
     def __init__(
-            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]
+            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial, ...]
     ):
         """Initializes a linear elastic problem.
 
@@ -190,8 +192,6 @@ class LinearElasticityProblem(LinearProblem):
             assert len(phases) == 1
             self.dx = ufl.dx
         else:
-            if np.amin(domain.cell_tags.values) < 0:
-                raise ValueError("Gmsh cell data should start at 1!")
             self.dx = ufl.Measure("dx", domain=domain.grid,
                                   subdomain_data=domain.cell_tags)
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
@@ -229,21 +229,14 @@ class LinearElasticityProblem(LinearProblem):
 class SubdomainProblem(object):
     """Represents a subproblem in a multiscale context"""
 
-    # FIXME pyright complains: cannot access member "domain" etc
 
     def setup_edge_spaces(self) -> None:
 
-        edge_meshes = {}
-        try:
-            edge_meshes["fine"] = self.domain.fine_edge_grid
-        except AttributeError:
-            raise RuntimeError("Fine grid partition of the edges does not exist.")
+        if not all([hasattr(self.domain, "fine_edge_grid"), hasattr(self.domain, "coarse_edge_grid")]):
+            raise AttributeError("Fine and coarse grid partition of the edges does not exist.")
 
-        try:
-            edge_meshes["coarse"] = self.domain.coarse_edge_grid
-        except AttributeError:
-            raise RuntimeError("Coarse grid partition of the edges does not exist.")
-
+        # FIXME pyright complains: cannot access member "domain" etc
+        edge_meshes = {"fine": self.domain.fine_edge_grid, "coarse": self.domain.coarse_edge_grid}
         V = self.V
         ufl_element = V.ufl_element()
         family = ufl_element.family_name
@@ -264,7 +257,7 @@ class SubdomainProblem(object):
         try:
             coarse_grid = self.domain.coarse_grid
         except AttributeError:
-            raise AttributeError
+            raise AttributeError("Coarse grid partition of the domain does not exist.")
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
@@ -293,19 +286,16 @@ class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
 
 
 class TransferProblem(LogMixin):
-    """General class for transfer problems.
+    """Represents a Transfer Problem.
 
     This class aids the solution of transfer problems given by:
 
         A(u) = 0 in Ω,
-        with homogeneous Dirichlet bcs on Γ_D,
-        with arbitrary Dirichlet boundary conditions on Γ_out.
-
-    Additional Neumann bcs can be set via property `neumann`.
+        with optional homogeneous Dirichlet bcs on Γ_D,
+        with arbitrary inhomogeneous Dirichlet boundary conditions on Γ_out.
 
     Here, we are only interested in the solution u restricted to the
     space defined on a target subdomain Ω_in ⊂ Ω.
-
     The boundaries Γ_D, Γ_N and Γ_N_inhom are the part of ∂Ω that
     intersects with the (respective dirichlet or neumann) boundary
     of the global domain Ω_gl ( Ω ⊂ Ω_gl).
@@ -318,45 +308,32 @@ class TransferProblem(LogMixin):
     of a domain (yet), the full space is defined as the source space.
     The range space is the space defined on Ω_in.
 
-    Parameters
-    ----------
-    problem : multi.problems.LinearProblem
-        The problem defined on the oversampling domain Ω.
-    subdomain_problem : multi.problem.LinearProblem
-        The problem defined on the target subdomain.
-    gamma_out : callable
-        A function that defines facets of Γ_out geometrically.
-        `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
-        Γ_out is the part of the boundary of the oversampling domain that does
-        not intersect with the boundary of the global domain.
-    dirichlet : list of dict or dict, optional
-        Homogeneous dirichlet boundary conditions.
-        See multi.bcs.BoundaryConditions.add_dirichlet_bc for suitable values.
-    source_product : dict, optional
-        The inner product to use for the source space. The dictionary should define
-        the key `product` and optionally `bcs` and `product_name`.
-    range_product : dict, optional
-        The inner product to use for the range space. The dictionary should define
-        the key `product` and optionally `bcs` and `product_name`.
-    remove_kernel : bool, optional
-        If True, remove kernel (rigid body modes) from solution.
+    Args:
+        problem: The problem defined on the oversampling domain Ω.
+        subproblem: The problem defined on the target subdomain Ω_in.
+        gamma_out: Marker function that defines the boundary Γ_out geometrically.
+        Note that `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
+        dirichlet: Optional homogeneous Dirichlet BCs. See `multi.bcs.BoundaryConditions.add_dirichlet_bc` for suitable values.
+        source_product: The inner product to use for the source space. See `multi.product.InnerProduct`.
+        range_product: The inner product to use for the range space. See `multi.product.InnerProduct`.
+        remove_kernel: If True, remove kernel (rigid body modes) from solution.
 
     """
 
     def __init__(
         self,
-        problem,
-        subdomain_problem,
-        gamma_out,
-        dirichlet=None,
-        source_product=None,
-        range_product=None,
-        remove_kernel=False,
+        problem: LinearElasticityProblem,
+        subproblem: LinElaSubProblem,
+        gamma_out: Callable,
+        dirichlet: Optional[Union[dict, list[dict]]] = None,
+        source_product: Optional[dict] = None,
+        range_product: Optional[dict] = None,
+        remove_kernel: Optional[bool] = False,
     ):
         self.problem = problem
-        self.subproblem = subdomain_problem
+        self.subproblem = subproblem
         self.source = FenicsxVectorSpace(problem.V)
-        self.range = FenicsxVectorSpace(subdomain_problem.V)
+        self.range = FenicsxVectorSpace(subproblem.V)
         self.gamma_out = gamma_out
         self.remove_kernel = remove_kernel
 
@@ -365,17 +342,17 @@ class TransferProblem(LogMixin):
         self._S_to_R = self._make_mapping()
 
         # initialize fixed set of dirichlet boundary conditions on Γ_D
+        self._bc_hom = list()
         if dirichlet is not None:
             if isinstance(dirichlet, (list, tuple)):
                 for dirichlet_bc in dirichlet:
                     problem.add_dirichlet_bc(**dirichlet_bc)
             else:
                 problem.add_dirichlet_bc(**dirichlet)
-            dirichlet = problem.get_dirichlet_bcs()
-        self._bc_hom = dirichlet or []
+            self._bc_hom = problem.get_dirichlet_bcs()
 
         # ### inner products
-        default_product = {"product": None, "bcs": (), "product_name": None}
+        default_product = {"product": "euclidean", "bcs": ()}
         source_prod = source_product or default_product
         range_prod = range_product or default_product
         self.source_product = self._get_source_product(**source_prod)
@@ -383,6 +360,7 @@ class TransferProblem(LogMixin):
 
         # initialize kernel
         if remove_kernel:
+            # FIXME using self.range_product instead of "l2" as default would be more consistent?
             # build null space
             l2_product = self._get_range_product(product="l2")
             self.range_l2_product = l2_product
@@ -486,13 +464,21 @@ class TransferProblem(LogMixin):
         p.assemble_vector(bcs=[bc_inhom])
 
     def generate_random_boundary_data(
-        self, count, distribution="normal", seed_seq=None, **kwargs
-    ):
-        """generate random values shape (count, num_dofs_Γ_out)"""
+            self, count: int, distribution: str, options: Optional[dict[str, Any]] = None
+    ) -> npt.NDArray:
+        """Generates random vectors of shape (count, num_dofs_Γ_out).
+
+        Args:
+            count: Number of random vectors.
+            distribution: The distribution used for sampling.
+            options: Arguments passed to sampling method of random number generator.
+
+        """
 
         bc_dofs = self.bc_dofs_gamma_out  # actual size of the source space
-        values = _create_random_values(
-            (count, bc_dofs.size), distribution, seed_seq, **kwargs
+        options = options or {}
+        values = create_random_values(
+            (count, bc_dofs.size), distribution, **options
         )
 
         return values
@@ -548,63 +534,41 @@ class TransferProblem(LogMixin):
         else:
             return U
 
-    def _get_source_product(self, product=None, bcs=(), product_name=None):
-        """get source product
+    def _get_source_product(self, product: Union[str, ufl.Form], bcs=()):
+        """Create the source product.
 
-        Parameters
-        ----------
-        product : str, optional
-            The inner product to use.
-        bcs : list of df.DirichletBC, optional
-            The bcs to be applied to the product matrix.
-        product_name : str, optional
-            Name of the NumpyMatrixOperator.
+        Args:
+            see multi.product.InnerProduct.
 
-        Returns
-        -------
-        source_product : NumpyMatrixOperator or None
         """
-        if product is not None:
-            inner_product = InnerProduct(
-                self.problem.V, product, bcs=bcs, name=product_name
-            )
-            M = inner_product.assemble_matrix()
-            # FIXME figure out how to do this with PETSc.Mat and
-            # use FenicsxMatrixOperator instead of NumpyMatrixOperator
-            full_matrix = csc_matrix(M.getValuesCSR()[::-1], shape=M.size)
+        inner_product = InnerProduct(self.problem.V, product, bcs=bcs)
+        matrix = inner_product.assemble_matrix()
+        if matrix is None:
+            return None
+        else:
+            full_matrix = csr_array(matrix.getValuesCSR()[::-1])
             dofs = self.bc_dofs_gamma_out
             source_matrix = full_matrix[dofs, :][:, dofs]
-            source_product = NumpyMatrixOperator(source_matrix, name=product_name)
+            source_product = NumpyMatrixOperator(source_matrix)
             return source_product
-        else:
-            return None
 
-    def _get_range_product(self, product=None, bcs=(), product_name=None):
-        """discretize range product
+    def _get_range_product(self, product: Union[str, ufl.Form], bcs=()):
+        """Create the range product.
 
-        Parameters
-        ----------
-        product : str, optional
-            The inner product to use.
-        bcs : list of df.DirichletBC, optional
-            The bcs to be applied to the product matrix.
-        product_name : str, optional
-            Name of the FenicsMatrixOperator.
+        Args:
+            see multi.product.InnerProduct.
 
-        Returns
-        -------
-        range_product : FenicsMatrixOperator or None
         """
-        range_product = InnerProduct(self.range.V, product, bcs=bcs, name=product_name)
+        range_product = InnerProduct(self.range.V, product, bcs=bcs)
         matrix = range_product.assemble_matrix()
-        if product is None:
+        if matrix is None:
             return None
         else:
             return FenicsxMatrixOperator(matrix, self.range.V, self.range.V)
 
 
 # FIXME should be an ABC class
-class MultiscaleProblemDefinition(object):
+class MultiscaleProblemDefinition(ABC):
     """Base class to define a multiscale problem."""
 
     def __init__(self, coarse_grid_path, fine_grid_path):
@@ -646,9 +610,10 @@ class MultiscaleProblemDefinition(object):
 
         boundaries = self.boundaries
         if boundaries is not None:
-            from multi.preprocessing import create_facet_tags
-
-            fine_ft, _ = create_facet_tags(fine_domain, boundaries)
+            from multi.preprocessing import create_meshtags
+            tdim = fine_domain.topology.dim
+            fdim = tdim - 1
+            fine_ft, _ = create_meshtags(fine_domain, fdim, boundaries)
         else:
             fine_ft = None
         self.fine_grid = Domain(
@@ -672,24 +637,30 @@ class MultiscaleProblemDefinition(object):
         self.V = fem.functionspace(grid, fe)
 
     @property
+    @abstractmethod
     def cell_sets(self):
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def boundaries(self):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_dirichlet(self, cell_index=None):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_neumann(self, cell_index=None):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_gamma_out(self, cell_index):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_remove_kernel(self, cell_index):
-        raise NotImplementedError
+        pass
 
     def build_edge_basis_config(self, cell_sets):
         """defines which oversampling problem is used to

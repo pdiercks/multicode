@@ -1,21 +1,24 @@
 """test dofmap"""
 
 import tempfile
+import pytest
+
+import numpy as np
+from mpi4py import MPI
 from dolfinx import fem
 from dolfinx.io import gmshio
 from basix.ufl import element
-import numpy as np
-from mpi4py import MPI
+
 from multi.dofmap import DofMap
 from multi.domain import StructuredQuadGrid
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 
 
 def test():
     """test dofmap with type(dofs_per_edge)==int"""
     n = 8
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(n, n), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -34,6 +37,13 @@ def test():
 
     grid = StructuredQuadGrid(domain)
     dofmap = DofMap(grid)
+
+    # dofs are not distributed yet
+    with pytest.raises(AttributeError):
+        print(f"{dofmap.num_dofs=}")
+    with pytest.raises(AttributeError):
+        print(f"{dofmap.cell_dofs(0)=}")
+
     dofmap.distribute_dofs(n_vertex_dofs, n_edge_dofs, n_face_dofs)
 
     assert dofmap.num_dofs == n_vertex_dofs * num_vertices + n_edge_dofs * num_edges
@@ -85,7 +95,7 @@ def test():
 def test_array_uniform():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -144,7 +154,7 @@ def test_array_uniform():
 def test_array():
     """test dofmap with type(dofs_per_edge)==np.ndarray"""
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0, 1.0, 0.0, 1.0, num_cells=(2, 1), recombine=True, out_file=tf.name
         )
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)

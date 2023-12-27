@@ -1,50 +1,64 @@
 import numpy as np
+import numpy.typing as npt
 from scipy.spatial.distance import pdist, squareform
-from pymor.tools.random import new_rng
+from pymor.tools.random import get_rng
 
 
 # modified version of pymor.vectorarrays.interface._create_random_values
 # to be used with transfer_problem.generate_random_boundary_data
 # shape = (count, source.dim)
-def _create_random_values(shape, distribution, seed_seq, **kwargs):
-    if distribution not in ('uniform', 'normal', 'multivariate_normal'):
-        raise NotImplementedError
+def create_random_values(shape: tuple[int, int], distribution: str, **kwargs) -> npt.NDArray:
+    """Draws random samples from given `distribution`.
 
-    with new_rng(seed_seq) as random_state:
+    Args:
+        shape: The shape of the returned array.
+        distribution: The distribution to draw samples from.
+        kwargs: Arguments to pass to distribution method.
+        See e.g. `numpy.random.Generator.normal`.
 
-        if distribution == 'uniform':
-            if not kwargs.keys() <= {'low', 'high'}:
-                raise ValueError
-            low = kwargs.get('low', 0.)
-            high = kwargs.get('high', 1.)
-            if high <= low:
-                raise ValueError
-            return random_state.uniform(low, high, shape)
-        elif distribution == 'normal':
-            if not kwargs.keys() <= {'loc', 'scale'}:
-                raise ValueError
-            loc = kwargs.get('loc', 0.)
-            scale = kwargs.get('scale', 1.)
-            return random_state.normal(loc, scale, shape)
-        elif distribution == 'multivariate_normal':
-            if not kwargs.keys() <= {'mean', 'cov', 'check_valid', 'tol'}:
-                raise ValueError
-            mean = kwargs.get('mean')
-            cov = kwargs.get('cov')
-            check_valid = kwargs.get('check_valid', 'warn')
-            tol = kwargs.get('tol', 1e-8)
-            if mean is None:
-                raise ValueError
-            if cov is None:
-                raise ValueError
-            return random_state.multivariate_normal(mean, cov, size=shape[0], check_valid=check_valid, tol=tol)
-        else:
-            assert False
+    """
+    supported = ['uniform', 'normal', 'multivariate_normal']
+    if distribution not in supported:
+        msg = f"Unsupported {distribution=}. It has to be one of {','.join(supported)}."
+        raise NotImplementedError(msg)
+
+    rng = get_rng()
+
+    if distribution == 'uniform':
+        if not kwargs.keys() <= {'low', 'high'}:
+            raise ValueError
+        low = kwargs.get('low', 0.)
+        high = kwargs.get('high', 1.)
+        if high <= low:
+            raise ValueError
+        return rng.uniform(low, high, shape)
+    elif distribution == 'normal':
+        if not kwargs.keys() <= {'loc', 'scale'}:
+            raise ValueError
+        loc = kwargs.get('loc', 0.)
+        scale = kwargs.get('scale', 1.)
+        return rng.normal(loc, scale, shape)
+    elif distribution == 'multivariate_normal':
+        if not kwargs.keys() <= {'mean', 'cov', 'size', 'check_valid', 'tol', 'method'}:
+            raise ValueError
+        mean = kwargs.get('mean')
+        cov = kwargs.get('cov')
+        size = kwargs.get('size', None) or shape[0]
+        check_valid = kwargs.get('check_valid', 'warn')
+        tol = kwargs.get('tol', 1e-8)
+        method = kwargs.get('method', 'svd')
+        if mean is None:
+            raise ValueError
+        if cov is None:
+            raise ValueError
+        return rng.multivariate_normal(mean, cov, size=size, check_valid=check_valid, tol=tol, method=method)
+    else: # pragma: no cover
+        assert False
 
 
 def correlation_function(
     d, correlation_length, function_type="exponential", exponent=2
-):
+    ): # pragma: no cover
     """
     Statistical correlation between measurements made at two points that are at `d`
     units distance from each other.
@@ -90,18 +104,9 @@ def correlation_function(
     return rho
 
 
-def correlation_matrix(points, correlation_length, mean, distance_metric="euclidean"):
+def correlation_matrix(points, correlation_length, distance_metric="euclidean"): # pragma: no cover
     distance = squareform(pdist(points, metric=distance_metric))
-
-    # TODO open questions regarding rrf
-    # 1. variation of the correlation length based on maxnorm? (other criteria?)
-    # 2. does the variation improve the quality of the reduced basis?
-    Σ_exp = correlation_function(
+    Σ = correlation_function(
         distance, correlation_length, function_type="exponential"
     )
-
-    # scaling of the covariance
-    W = np.diag(mean)
-    Σ_scaled = np.dot(W, np.dot(Σ_exp, W))
-    # Σ_scaled = W + Σ_exp
-    return Σ_scaled
+    return Σ

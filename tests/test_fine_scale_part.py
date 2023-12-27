@@ -38,7 +38,7 @@ def test_square():
     u = dolfinx.fem.Function(V)
     u.interpolate(lambda x: (x[0] ** 2, x[1] ** 2))
 
-    f = fine_scale_part(u, W)
+    fine_scale_part(u, W, in_place=True)
 
     points = np.array([
         [0.0, 0.0, 0.],
@@ -56,9 +56,9 @@ def test_square():
         bc = dolfinx.fem.dirichletbc(np.array([0, 0], dtype=float), dd, V)
         dofs = bc._cpp_object.dof_indices()[0]
 
-        np.testing.assert_allclose(f.x.array[dofs], np.zeros(dofs.size), atol=1e-12)
+        np.testing.assert_allclose(u.x.array[dofs], np.zeros(dofs.size), atol=1e-12)
 
-    assert np.sum(np.abs(f.x.array[:])) > 0.
+    assert np.sum(np.abs(u.x.array[:])) > 0.
 
 
 if __name__ == "__main__":

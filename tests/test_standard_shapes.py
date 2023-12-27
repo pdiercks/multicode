@@ -1,5 +1,6 @@
 """test standard shape functions"""
 
+import pytest
 from mpi4py import MPI
 from dolfinx import fem, mesh
 from basix.ufl import element
@@ -7,21 +8,29 @@ import numpy as np
 from multi.shapes import NumpyLine, NumpyQuad
 
 
-def test():
+@pytest.mark.parametrize("value_shape",[(),(2,)])
+def test_numpy_line(value_shape):
     interval = mesh.create_unit_interval(MPI.COMM_WORLD, 10)
-    fe = element("P", interval.basix_cell(), 2, shape=())
+    fe = element("P", interval.basix_cell(), 2, shape=value_shape)
     V = fem.functionspace(interval, fe)
 
     line2 = NumpyLine(np.array([0, 1]))
     line3 = NumpyLine(np.array([0, 1, 0.5]))
-    x_dofs = V.tabulate_dof_coordinates()
+    with pytest.raises(NotImplementedError):
+        NumpyLine(np.array([0, 1, 0.25, 0.5]))
+
+    bs = V.dofmap.bs
+    x = V.tabulate_dof_coordinates()
+    x_dofs = np.repeat(x, repeats=bs, axis=0)
     n_verts = len(x_dofs)
 
-    shapes = line2.interpolate(V, sub=0)
+    shapes = line2.interpolate(V, 0)
     assert np.isclose(np.sum(shapes), n_verts)
-    shapes = line3.interpolate(V, sub=0)
+    shapes = line3.interpolate(V, 0)
     assert np.isclose(np.sum(shapes), n_verts)
 
+
+def test_numpy_quad():
     square = mesh.create_unit_square(
         MPI.COMM_WORLD, 20, 20, mesh.CellType.quadrilateral
     )
@@ -78,7 +87,3 @@ def test():
     u = analytic(x, y)
     e = u - shapes9[0]
     assert np.linalg.norm(e) < 1e-14
-
-
-if __name__ == "__main__":
-    test()

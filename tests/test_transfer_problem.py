@@ -7,11 +7,11 @@ import numpy as np
 from dolfinx import fem, mesh, default_scalar_type
 from dolfinx.io import gmshio
 from basix.ufl import element
-from multi.domain import RectangularDomain
+from multi.domain import RectangularSubdomain, RectangularDomain
 from multi.materials import LinearElasticMaterial
-from multi.problems import LinearElasticityProblem, TransferProblem
+from multi.problems import LinearElasticityProblem, TransferProblem, LinElaSubProblem
 from multi.boundary import plane_at, within_range
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 from multi.projection import orthogonal_part
 
 
@@ -58,7 +58,7 @@ def test_dirichlet_hom():
     n = 20
     gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0,
             1.0,
             0.0,
@@ -85,8 +85,8 @@ def test_dirichlet_hom():
     # submesh has same cell type, reuse ve
     Vsub = fem.functionspace(submesh, ve)
 
-    subdomain = RectangularDomain(submesh)
-    subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
+    subdomain = RectangularSubdomain(99, submesh)
+    subproblem = LinElaSubProblem(subdomain, Vsub, phases)
 
     zero = fem.Constant(square, (default_scalar_type(0.0), default_scalar_type(0.0)))
     right = plane_at(1.0, "x")
@@ -94,11 +94,13 @@ def test_dirichlet_hom():
     gamma_out = plane_at(0.0, "x")  # left
 
     tp = TransferProblem(
-        problem, subproblem, gamma_out, dirichlet=dirichlet_bc
+        problem, subproblem, gamma_out, dirichlet=dirichlet_bc, 
     )
     # generate boundary data
-    D = tp.generate_random_boundary_data(2, seed_seq=6)
+    D = tp.generate_random_boundary_data(2, distribution='normal')
+    assert np.isclose(tp.source_gamma_out.dim, D.shape[-1])
     U = tp.solve(D)
+    assert np.isclose(U.dim, tp.S_to_R.size)
     u_arr = U.to_numpy()
 
     # compute reference solutions
@@ -135,7 +137,7 @@ def test_remove_kernel():
     n = 60
     gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle_grid(
+        create_rectangle(
             0.0,
             3.0,
             0.0,
@@ -160,8 +162,8 @@ def test_remove_kernel():
     submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
     Vsub = fem.FunctionSpace(submesh, ve)
 
-    subdomain = RectangularDomain(submesh)
-    subproblem = LinearElasticityProblem(subdomain, Vsub, phases)
+    subdomain = RectangularSubdomain(1023, submesh)
+    subproblem = LinElaSubProblem(subdomain, Vsub, phases)
 
     gamma_out = lambda x: np.full(x[0].shape, True, dtype=bool)  # noqa: E731
 
@@ -170,10 +172,10 @@ def test_remove_kernel():
     )
 
     tp = TransferProblem(
-        problem, subproblem, gamma_out, dirichlet=[], remove_kernel=True
+            problem, subproblem, gamma_out, dirichlet=[], source_product={"product": "mass"}, range_product={"product": "h1"}, remove_kernel=True
     )
     # generate boundary data
-    D = tp.generate_random_boundary_data(10, seed_seq=13)
+    D = tp.generate_random_boundary_data(10, distribution='normal')
     U = tp.solve(D)
     u_arr = U.to_numpy()
 

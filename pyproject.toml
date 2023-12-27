@@ -16,3 +16,16 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+omit = [
+    "src/multi/debug.py",
+    "src/multi/plotting_context.py",
+    "src/multi/postprocessing.py",
+    "src/multi/pymor_defaults.py",
+    ]

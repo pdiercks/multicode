@@ -7,7 +7,7 @@ import meshio
 import numpy as np
 from dolfinx import mesh, geometry
 from dolfinx.io import gmshio
-from multi.preprocessing import create_mesh, create_line_grid, create_rectangle_grid
+from multi.preprocessing import create_mesh, create_line, create_rectangle
 
 
 class Domain(object):
@@ -23,6 +23,17 @@ class Domain(object):
 
         """
         self.grid = grid
+        if cell_tags is not None:
+            entities = cell_tags.find(0)
+            if entities.size > 0:
+                raise ValueError("Cell tags should start at 1."
+                                 "Found {entities.size} entities marked with 0.")
+        if facet_tags is not None:
+            entities = facet_tags.find(0)
+            if entities.size > 0:
+                raise ValueError("Facet tags should start at 1."
+                                 "Found {entities.size} entities marked with 0.")
+
         self.cell_tags = cell_tags
         self.facet_tags = facet_tags
         self._x = grid.geometry.x
@@ -86,18 +97,18 @@ class RectangularSubdomain(RectangularDomain):
         xmax, ymax, _ = self.xmax
 
         with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-            create_rectangle_grid(
+            create_rectangle(
                     xmin, xmax, ymin, ymax, 0.,
                     recombine=True, num_cells=num_cells, out_file=tf.name)
             coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
         self.coarse_grid = coarse
 
-    def create_edge_grids(self, num_cells: dict[str, Union[int, None]]) -> None:
-        """Creates coarse and fine grid partitions of the boundary of the subdomain.
+    def create_edge_grids(self, coarse: Optional[int] = None, fine: Optional[int] = None) -> None:
+        """Creates coarse and fine grid partitions of the boundary of the rectangular subdomain.
 
         Args:
-            num_cells: Number of interval cells for each boundary.
-            The keys 'coarse' and 'fine' are expected.
+            coarse: Number of cells for the coarse grid partition.
+            fine: Number of cells for the fine grid partition.
 
         """
 
@@ -108,8 +119,8 @@ class RectangularSubdomain(RectangularDomain):
         facets = mesh.locate_entities_boundary(parent, fdim, lambda x: np.full(x[0].shape, True, dtype=bool))
         # assumes a quadrilateral domain and equal number of facets
         # per boundary/edge
-        num_fine_cells = num_cells.get("fine", int(facets.size / 4))
-        num_coarse_cells = num_cells.get("coarse", 1)
+        num_coarse_cells = coarse or 1
+        num_fine_cells = fine or int(facets.size / 4)
 
         xmin, ymin, _ = self.xmin
         xmax, ymax, _ = self.xmax
@@ -125,13 +136,13 @@ class RectangularSubdomain(RectangularDomain):
                 }
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line_grid(start, end, num_cells=num_fine_cells, out_file=tf.name)
-                fine, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
-            fine_grid[key] = fine
+                create_line(start, end, num_cells=num_fine_cells, out_file=tf.name)
+                fine_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
+            fine_grid[key] = fine_edge_grid
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line_grid(start, end, num_cells=num_coarse_cells, out_file=tf.name)
-                coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
-            coarse_grid[key] = coarse
+                create_line(start, end, num_cells=num_coarse_cells, out_file=tf.name)
+                coarse_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
+            coarse_grid[key] = coarse_edge_grid
 
         self.fine_edge_grid = fine_grid
         self.coarse_edge_grid = coarse_grid
@@ -155,6 +166,13 @@ class StructuredQuadGrid(object):
             facet_tags: Mesh tags for facets.
 
         """
+        if not grid.topology.dim == 2:
+            raise NotImplementedError("Only grids of tdim=2 are supported!")
+
+        cell_type = grid.basix_cell()
+        if not cell_type.name == "quadrilateral":
+            raise ValueError(f"Expected cell type 'quadrilateral'. Got {cell_type=}")
+
         self.grid = grid
         self.cell_tags = cell_tags
         self.facet_tags = facet_tags
@@ -218,7 +236,7 @@ class StructuredQuadGrid(object):
         ----------
         methods : list of str or list of callable
             The method can either be a function with an appropriate
-            signature (see e.g. multi.preprocessing.create_rectangle_grid)
+            signature (see e.g. multi.preprocessing.create_rectangle)
             or a `str`, i.e. the filepath to a reference mesh
             that should be duplicated for the respective coarse grid cell.
             If the length of list is 1, the same 'method' is used for 
@@ -319,8 +337,6 @@ class StructuredQuadGrid(object):
         # cannot be read by dolfinx.io.gmshio
         in_mesh = meshio.read(tf_msh.name)
         prune_z = True
-        if tdim > 2:
-            prune_z = False
         cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
         meshio.write(output, cell_mesh)
         if create_facets:

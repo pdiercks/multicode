@@ -3,7 +3,7 @@ import tempfile
 import dolfinx
 from dolfinx.io import gmshio
 from mpi4py import MPI
-from multi.preprocessing import create_rectangle_grid
+from multi.preprocessing import create_rectangle
 from numpy import allclose
 
 
@@ -11,7 +11,7 @@ def test():
     tmp_msh = tempfile.NamedTemporaryFile(suffix=".msh")
     tmp_xdmf = tempfile.NamedTemporaryFile(suffix=".xdmf")
 
-    create_rectangle_grid(
+    create_rectangle(
         0.0, 1.0, 0.0, 1.0, num_cells=5, recombine=True, out_file=tmp_msh.name
     )
 

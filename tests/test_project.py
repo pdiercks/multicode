@@ -1,7 +1,7 @@
 from mpi4py import MPI
 from dolfinx import fem, mesh
 from basix.ufl import element
-from multi.projection import project
+from multi.projection import project, orthogonal_part, compute_proj_errors, compute_proj_errors_orth_basis
 from multi.shapes import NumpyQuad
 import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorSpace
@@ -23,16 +23,24 @@ def test():
     beta = np.array([0.0, 1.0, 2.0, 1.0, 4.0, 6.0, 7.0, 0.1])
     U = basis.lincomb(alpha)
     U.append(basis.lincomb(beta))
-    U_proj = project(basis, U, product=None, orth=False)
+    U_orth = orthogonal_part(basis, U, product=None, orth=False)
 
-    err = U - U_proj
+    err = U_orth
     assert np.all(err.norm() < 1e-12)
+
+    errors = compute_proj_errors(basis, U, None)
+    assert np.isclose(errors[0], 1.)
+    assert np.isclose(errors[-1], 0.)
 
     other = gram_schmidt(basis, product=None, copy=True)
     V_proj = project(other, U, product=None, orth=True)
 
     err_v = U - V_proj
     assert np.all(err_v.norm() < 1e-12)
+
+    errors = compute_proj_errors_orth_basis(other, U, None)
+    assert np.isclose(errors[0], 1.)
+    assert np.isclose(errors[-1], 0.)
 
 
 if __name__ == "__main__":

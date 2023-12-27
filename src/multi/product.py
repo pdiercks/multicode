@@ -1,29 +1,23 @@
 import ufl
+from typing import Optional, Union, Sequence
+from petsc4py import PETSc
 from dolfinx import fem
 from dolfinx.fem.petsc import create_matrix, assemble_matrix
 
 
 class InnerProduct(object):
-    """class to represent an inner product
+    """Represents an inner product.
 
-    Parameters
-    ----------
-    V : dolfinx.fem.function.FunctionSpace
-        The finite element space.
-    product : str or ufl.form.Form, optional
-        The inner product given as string or weak form expressed in UFL.
-        Supported string values are euclidean, mass, l2, h1-semi, stiffness, h1.
-    bcs : tuple, list, optional
-        Boundary conditions to apply.
-    name : str, optional
-        The name that will be given to the FenicsMatrixOperator when
-        self.assemble_operator is called.
+    Args:
+        V: The FE space.
+        product: The inner product.
+        bcs: Optional Dirichlet BCs to apply.
 
     """
 
-    def __init__(self, V, product=None, bcs=(), name=None):
-        if not isinstance(bcs, (list, tuple)):
-            bcs = (bcs,)
+    def __init__(self, V: fem.FunctionSpaceBase, product: Union[str, ufl.Form], bcs: Optional[Sequence[fem.DirichletBC]] = None):
+        if bcs is None:
+            bcs = ()
         self.V = V
         self.bcs = bcs
         if isinstance(product, str):
@@ -43,28 +37,21 @@ class InnerProduct(object):
                     f"I don't know how to compute inner product with name '{product}'."
                     + f"You need to provide the UFL form yourself or choose one of {names}."
                 )
-            self.name = name or product
         else:
-            # product should be either an ufl.form.Form or None
             form = product
-            self.name = name
         self.form = form
 
-    def get_form(self):
-        """returns the weak form of the inner product"""
-        return self.form
-
-    def assemble_matrix(self):
+    def assemble_matrix(self) -> Union[PETSc.Mat, None]:
         """returns the matrix (`PETSc.Mat`) representing the inner product or None
         in case euclidean product is used"""
-        ufl_form = self.get_form()
+        ufl_form = self.form
         if ufl_form is None:
             # such that product=None is equal to euclidean inner product
             # when using pymor code
             return None
         else:
             compiled_form = fem.form(ufl_form)
-            A = create_matrix(compiled_form) # type: ignore
+            A = create_matrix(compiled_form)
             A.zeroEntries()
             assemble_matrix(A, compiled_form, bcs=self.bcs)
             A.assemble()

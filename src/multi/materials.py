@@ -45,19 +45,3 @@ class LinearElasticMaterial:
             )
         else:
             return e
-
-    def forms(self, u: ufl.Argument, v: ufl.Argument) -> list[ufl.Form]:
-        """Returns parameter separated forms in case μ=(E, ν).
-
-        Args:
-            u: TrialFunction.
-            v: TestFunction.
-
-        """
-        forms = []
-        e = self.eps(u)
-        δe = self.eps(v)
-        i, j = ufl.indices(2)
-        forms.append(e[i, i] * δe[j, j])
-        forms.append(e[i, j] * δe[i, j])
-        return forms
