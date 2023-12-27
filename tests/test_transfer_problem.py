@@ -94,11 +94,13 @@ def test_dirichlet_hom():
     gamma_out = plane_at(0.0, "x")  # left
 
     tp = TransferProblem(
-        problem, subproblem, gamma_out, dirichlet=dirichlet_bc
+        problem, subproblem, gamma_out, dirichlet=dirichlet_bc, 
     )
     # generate boundary data
     D = tp.generate_random_boundary_data(2, distribution='normal')
+    assert np.isclose(tp.source_gamma_out.dim, D.shape[-1])
     U = tp.solve(D)
+    assert np.isclose(U.dim, tp.S_to_R.size)
     u_arr = U.to_numpy()
 
     # compute reference solutions
@@ -170,7 +172,7 @@ def test_remove_kernel():
     )
 
     tp = TransferProblem(
-        problem, subproblem, gamma_out, dirichlet=[], remove_kernel=True
+            problem, subproblem, gamma_out, dirichlet=[], source_product={"product": "mass"}, range_product={"product": "h1"}, remove_kernel=True
     )
     # generate boundary data
     D = tp.generate_random_boundary_data(10, distribution='normal')

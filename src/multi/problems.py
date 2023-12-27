@@ -352,7 +352,7 @@ class TransferProblem(LogMixin):
             self._bc_hom = problem.get_dirichlet_bcs()
 
         # ### inner products
-        default_product = {"product": None, "bcs": (), "product_name": None}
+        default_product = {"product": "euclidean", "bcs": ()}
         source_prod = source_product or default_product
         range_prod = range_product or default_product
         self.source_product = self._get_source_product(**source_prod)
@@ -534,61 +534,41 @@ class TransferProblem(LogMixin):
         else:
             return U
 
-    def _get_source_product(self, product=None, bcs=(), product_name=None):
-        """get source product
+    def _get_source_product(self, product: Union[str, ufl.Form], bcs=()):
+        """Create the source product.
 
-        Parameters
-        ----------
-        product : str, optional
-            The inner product to use.
-        bcs : list of df.DirichletBC, optional
-            The bcs to be applied to the product matrix.
-        product_name : str, optional
-            Name of the NumpyMatrixOperator.
+        Args:
+            see multi.product.InnerProduct.
 
-        Returns
-        -------
-        source_product : NumpyMatrixOperator or None
         """
-        if product is not None:
-            inner_product = InnerProduct(
-                self.problem.V, product, bcs=bcs, name=product_name
-            )
-            M = inner_product.assemble_matrix()
-            full_matrix = csr_array(M.getValuesCSR()[::-1])
+        inner_product = InnerProduct(self.problem.V, product, bcs=bcs)
+        matrix = inner_product.assemble_matrix()
+        if matrix is None:
+            return None
+        else:
+            full_matrix = csr_array(matrix.getValuesCSR()[::-1])
             dofs = self.bc_dofs_gamma_out
             source_matrix = full_matrix[dofs, :][:, dofs]
-            source_product = NumpyMatrixOperator(source_matrix, name=product_name)
+            source_product = NumpyMatrixOperator(source_matrix)
             return source_product
-        else:
-            return None
 
-    def _get_range_product(self, product=None, bcs=(), product_name=None):
-        """discretize range product
+    def _get_range_product(self, product: Union[str, ufl.Form], bcs=()):
+        """Create the range product.
 
-        Parameters
-        ----------
-        product : str, optional
-            The inner product to use.
-        bcs : list of df.DirichletBC, optional
-            The bcs to be applied to the product matrix.
-        product_name : str, optional
-            Name of the FenicsMatrixOperator.
+        Args:
+            see multi.product.InnerProduct.
 
-        Returns
-        -------
-        range_product : FenicsMatrixOperator or None
         """
-        range_product = InnerProduct(self.range.V, product, bcs=bcs, name=product_name)
+        range_product = InnerProduct(self.range.V, product, bcs=bcs)
         matrix = range_product.assemble_matrix()
-        if product is None:
+        if matrix is None:
             return None
         else:
             return FenicsxMatrixOperator(matrix, self.range.V, self.range.V)
 
 
 # FIXME should be an ABC class
-class MultiscaleProblemDefinition(object):
+class MultiscaleProblemDefinition(ABC):
     """Base class to define a multiscale problem."""
 
     def __init__(self, coarse_grid_path, fine_grid_path):
@@ -630,9 +610,10 @@ class MultiscaleProblemDefinition(object):
 
         boundaries = self.boundaries
         if boundaries is not None:
-            from multi.preprocessing import create_facet_tags
-
-            fine_ft, _ = create_facet_tags(fine_domain, boundaries)
+            from multi.preprocessing import create_meshtags
+            tdim = fine_domain.topology.dim
+            fdim = tdim - 1
+            fine_ft, _ = create_meshtags(fine_domain, fdim, boundaries)
         else:
             fine_ft = None
         self.fine_grid = Domain(
@@ -656,24 +637,30 @@ class MultiscaleProblemDefinition(object):
         self.V = fem.functionspace(grid, fe)
 
     @property
+    @abstractmethod
     def cell_sets(self):
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def boundaries(self):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_dirichlet(self, cell_index=None):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_neumann(self, cell_index=None):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_gamma_out(self, cell_index):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def get_remove_kernel(self, cell_index):
-        raise NotImplementedError
+        pass
 
     def build_edge_basis_config(self, cell_sets):
         """defines which oversampling problem is used to
