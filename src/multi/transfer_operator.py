@@ -1,23 +1,24 @@
 from typing import Optional
 import numpy as np
 import numpy.typing as npt
+from dolfinx import fem
 from scipy.sparse import csr_array
 from scipy.sparse.linalg import factorized
 from multi.product import InnerProduct
+from pymor.algorithms.basic import project_array
+from pymor.operators.interface import Operator
 from pymor.operators.numpy import NumpyMatrixOperator
-from dolfinx import fem
+from pymor.vectorarrays.interface import VectorArray
 
 
-def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: npt.NDArray[np.int32], target_dofs: npt.NDArray[np.int32], projection_matrix: Optional[npt.NDArray[np.float64]]=None) -> NumpyMatrixOperator:
+def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: npt.NDArray[np.int32], target_dofs: npt.NDArray[np.int32]) -> NumpyMatrixOperator:
     """Builds transfer operator
 
     Args:
         A: The full operator over domain Ω.
         dirichlet_dofs: All DOFs of boundary Γ_out.
         target_dofs: All DOFs of the target subdomain.
-        projection_matrix: Matrix used for projection onto the nullspace of A.
-        If not None, the kernel (i.e. rigid body modes in linear elasticity) will
-        be removed from the solution.
+
     """
     # FIXME what format (csr, csc) should A have for efficient slicing?
 
@@ -39,13 +40,6 @@ def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: 
 
     rhs_op = full_operator[:, dirichlet_dofs][all_inner_dofs, :]
     transfer_operator = -operator(rhs_op.todense())[range_dofs, :] # type: ignore
-
-    if projection_matrix is not None:
-        # remove kernel
-        assert transfer_operator.shape[0] == projection_matrix.shape[0]
-        P = np.eye(transfer_operator.shape[0]) - projection_matrix
-        transfer_operator = P.dot(transfer_operator)
-
     return NumpyMatrixOperator(transfer_operator)
 
 
@@ -59,13 +53,38 @@ def discretize_source_product(V: fem.FunctionSpaceBase, product: str, dirichlet_
         bcs: Optional homogeneous boundary conditions.
 
     """
-    # FIXME double check if optional bcs are necessary | make a difference
-    # If present, these should be far away from dirichlet_dofs and hence
-    # corresponding entries in A are zero anyway?
     inner_product = InnerProduct(V, product, bcs=bcs)
     matrix = inner_product.assemble_matrix()
-    ai, aj, av = matrix.getValuesCSR()
-    A = csr_array((av, aj, ai))
+    A = csr_array(matrix.getValuesCSR()[::-1])
     source_matrix = A[dirichlet_dofs, :][:, dirichlet_dofs]
-    source_product = NumpyMatrixOperator(source_matrix, name=inner_product.name)
-    return source_product
+    return NumpyMatrixOperator(source_matrix)
+
+
+class OrthogonallyProjectedOperator(Operator):
+    """Represents the orthogonal projection of an operator.
+
+    This operator is implemented as the concatenation of the application
+    of the original operator and orthogonal projection of the image onto the subspace.
+
+    """
+
+    linear = False
+
+    def __init__(self, operator: Operator, basis: VectorArray, product: Optional[Operator] = None, orthonormal: Optional[bool] = True):
+        assert isinstance(operator, Operator)
+        assert basis in operator.range
+        assert (product is None
+                or (isinstance(product, Operator)
+                    and operator.range == product.source
+                    and product.range == product.source))
+        self.__auto_init(locals())
+        self.range = operator.range
+        self.source = operator.source
+        self.linear = operator.linear
+
+    def apply(self, U, mu=None):
+        self.parameters.assert_compatible(mu)
+        V = self.operator.apply(U, mu=mu)
+        V_proj = project_array(V, self.basis, self.product, self.orthonormal)
+        return V_proj
+

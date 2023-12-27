@@ -5,6 +5,7 @@ from mpi4py import MPI
 from dolfinx import mesh, fem, default_scalar_type
 from basix.ufl import element
 from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
+from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from multi.domain import Domain
@@ -15,7 +16,7 @@ from multi.product import InnerProduct
 from multi.projection import orthogonal_part
 from multi.problems import LinearElasticityProblem
 from multi.solver import build_nullspace
-from multi.transfer_operator import transfer_operator_subdomains_2d
+from multi.transfer_operator import transfer_operator_subdomains_2d, OrthogonallyProjectedOperator
 import pytest
 
 
@@ -26,13 +27,14 @@ def test(product_name):
     # create oversampling domain 3x3 coarse cells
     # each coarse cell is discretized with resolutionxresolution quads
     num_cells = 3
-    resolution = 6
+    resolution = 10 # manually tested resolution = 50 with success
     nn = num_cells * resolution
     domain = mesh.create_unit_square(MPI.COMM_WORLD, nn, nn, mesh.CellType.quadrilateral)
     # discretize A
     fe_deg = 1
     fe = element("P", domain.basix_cell(), fe_deg, shape=(2,))
     V = fem.functionspace(domain, fe)
+    print(f"V dim: {V.dofmap.index_map.size_global * V.dofmap.bs}")
 
     gdim = domain.ufl_cell().geometric_dimension()
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
@@ -41,7 +43,6 @@ def test(product_name):
     problem.setup_solver()
     problem.assemble_matrix()
     ai, aj, av = problem._A.getValuesCSR()
-    # convert to other format? csc?
     A = csr_array((av, aj, ai))
 
     # dof indices
@@ -65,53 +66,33 @@ def test(product_name):
     rangespace = FenicsxVectorSpace(W)
 
     product = None
-    M = np.eye(rangespace.dim)
-    if not product_name == "eulidean":
-        product = InnerProduct(W, product=product_name)
+    product_numpy = None
+    if not product_name == "euclidean":
+        product = InnerProduct(W, product_name)
         product_mat = product.assemble_matrix()
         product = FenicsxMatrixOperator(product_mat, W, W)
-        M = product.matrix[:, :] # type: ignore
+        product_numpy = NumpyMatrixOperator(
+                csr_array(product.matrix.getValuesCSR()[::-1])
+                )
 
-    basis = build_nullspace(rangespace, product=product)
-    R = basis.to_numpy().T
-
-    right = np.dot(R.T, M)
-    middle = np.linalg.inv(np.dot(R.T, np.dot(M, R)))
-    left = R
-    P = np.dot(left, np.dot(middle, right))
-
-    random_values = rangespace.random(1)
-    coeff = np.array([[1.3, 4.9, 0.6]])
-    U = basis.lincomb(coeff) + random_values
-
-    # ### compute orthogonal part
-    # 1. via matrix
-    r1 = (np.eye(P.shape[0]) - P).dot(U.to_numpy().flatten())
-
-    # 2. solving linear system
-    G = basis.gramian(product=product)
-    rhs = basis.inner(U, product=product)
-    v = np.linalg.solve(G, rhs)
-    U_proj = basis.lincomb(v.T)
-    r2 = U - U_proj
-    # r1 and r2 are equal
-    # but they do not match random values due to projection error
-    error = r1 - r2.to_numpy().flatten()
-    norm = np.linalg.norm(error)
-    assert norm.item() < 1e-9
+    nullspace = build_nullspace(rangespace, product=product)
 
     # build transfer operator
     boundary_dofs_full = bc_boundary._cpp_object.dof_indices()[0]
     range_dofs_full = bc_target._cpp_object.dof_indices()[0]
 
     # without removing kernel
-    T = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full, projection_matrix=None)
-    U = T.source.random(1)
-    TU = T.apply(U)
+    T_hat = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full)
+    U = T_hat.source.random(1)
+    ThatU = T_hat.apply(U)
 
     # with removing kernel
-    Tproj = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full, projection_matrix=P)
-    TpU = Tproj.apply(U)
+    # T_hat is a NumpyMatrixOperator and therefore nullspace is not in T_hat.range
+    # FIXME: this conversion should be avoided
+    basis = T_hat.range.from_numpy(nullspace.to_numpy())
+    Tproj = OrthogonallyProjectedOperator(T_hat, basis, product=product_numpy, orthonormal=True)
+    TpU = T_hat.apply(U) - Tproj.apply(U)
+
 
     # reference solution
     g = fem.Function(V)
@@ -124,17 +105,12 @@ def test(product_name):
     u_in = u.vector.array[range_dofs_full]
 
     # comparison without removing the kernel
-    error = u_in - TU.to_numpy().flatten()
-    assert np.linalg.norm(error).item() < 1e-9
-
-    # comparison with removing the kernel
-    u_in_orth = (np.eye(P.shape[0]) - P).dot(u_in)
-    error = u_in_orth - TpU.to_numpy().flatten()
+    error = u_in - ThatU.to_numpy().flatten()
     assert np.linalg.norm(error).item() < 1e-9
 
     # test against alternative orthogonal part computation
     UIN = rangespace.from_numpy([u_in])
-    U_orth = orthogonal_part(basis, UIN, product, orth=False)
+    U_orth = orthogonal_part(nullspace, UIN, product, orth=True)
     error = U_orth.to_numpy().flatten() - TpU.to_numpy().flatten()
     assert np.linalg.norm(error).item() < 1e-9
 
@@ -194,8 +170,8 @@ def test_bc_hom(product_name):
     rangespace = FenicsxVectorSpace(W)
 
     product = None
-    if not product_name == "eulidean":
-        product = InnerProduct(W, product=product_name)
+    if not product_name == "euclidean":
+        product = InnerProduct(W, product_name)
         product_mat = product.assemble_matrix()
         product = FenicsxMatrixOperator(product_mat, W, W)
 
@@ -212,7 +188,7 @@ def test_bc_hom(product_name):
     boundary_dofs_full = bc_boundary._cpp_object.dof_indices()[0]
     range_dofs_full = bc_target._cpp_object.dof_indices()[0]
     # projection to remove kernel should not be necessary
-    T = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full, projection_matrix=None)
+    T = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full)
     U = T.source.random(1)
     TU = T.apply(U)
 
