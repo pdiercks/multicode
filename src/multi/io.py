@@ -65,7 +65,7 @@ def select_modes(basis: npt.NDArray, max_modes: Union[int, list[int]], active_mo
     return basis[mask]
 
 
-def read_bases(bases: list[tuple[Path, str]], modes_per_edge: Optional[int] = None, return_num_modes: Optional[bool] = False):
+def read_bases(bases: list[tuple[Path, str]], modes_per_edge: Optional[int] = None) -> tuple[npt.NDArray, tuple[int, ...]]:
     """Reads basis functions for multiple reduced bases.
 
     Args:
@@ -76,7 +76,7 @@ def read_bases(bases: list[tuple[Path, str]], modes_per_edge: Optional[int] = No
 
     Returns:
         B: The full multiscale basis.
-        num_modes: The maximum number of modes per edge if `return_num_modes` is True.
+        num_modes: The maximum number of modes per edge.
 
     """
     loaded = set()
@@ -111,10 +111,7 @@ def read_bases(bases: list[tuple[Path, str]], modes_per_edge: Optional[int] = No
         if len(rb) > 0:
             R.append(rb)
 
-    if return_num_modes:
-        return np.vstack(R), tuple(num_max_modes)
-    else:
-        return np.vstack(R)
+    return np.vstack(R), tuple(num_max_modes)
 
 
 class BasesLoader(object):
@@ -132,9 +129,7 @@ class BasesLoader(object):
         bases = []
         num_max_modes = []
         for cell_index in range(self.num_cells):
-            basis, modes = read_bases(
-                self._config[cell_index], return_num_modes=True
-            )
+            basis, modes = read_bases(self._config[cell_index])
             bases.append(basis)
             num_max_modes.append(modes)
 
