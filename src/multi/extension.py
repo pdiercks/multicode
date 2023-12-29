@@ -1,17 +1,21 @@
-from dolfinx import fem
-from dolfinx import mesh
+from typing import Union, Optional
+from multi.problems import LinearProblem
+from dolfinx import fem, mesh
+from petsc4py.PETSc import Vec as PETScVec
 
-def extend(problem, boundary_data, petsc_options={}):
-    """extend the `boundary_data` into the domain of the `problem`
 
-    Parameters
-    ----------
-    problem : multi.LinearProblem
-        The linear problem.
-    boundary_data : list of list of dolfinx.fem.dirichletbc
-        The boundary data to be extended.
-    petsc_options : optional
-        The petsc options for the linear problem.
+def extend(
+    problem: LinearProblem,
+    boundary_data: list[list[Union[fem.DirichletBC, dict]]],
+    petsc_options: Optional[dict] = None,
+) -> list[PETScVec]:
+    """Extends the `boundary_data` into the domain of the `problem`.
+
+    Args:
+        problem: The linear problem, i.e. extension problem.
+        boundary_data: The functions to be extended into the domain.
+        See `multi.bcs.BoundaryConditions.add_dirichlet_bc` for `dict` values.
+        petsc_options: PETSc options.
 
     """
     problem.clear_bcs()
@@ -21,46 +25,40 @@ def extend(problem, boundary_data, petsc_options={}):
     tdim = domain.topology.dim
     fdim = tdim - 1
 
-    # add dummy bc on whole boundary
-    # to zero out rows and columns of matrix A
+    # ### Assemble operator A
     zero_fun = fem.Function(V)
     zero_fun.vector.zeroEntries()
     boundary_facets = mesh.exterior_facet_indices(domain.topology)
     problem.add_dirichlet_bc(
         zero_fun, boundary_facets, method="topological", entity_dim=fdim
     )
-    bcs = problem.get_dirichlet_bcs()
-
     problem.setup_solver(petsc_options=petsc_options)
-    solver = problem.solver
-
-    problem.assemble_matrix(bcs)
-    # clear bcs
-    problem.clear_bcs()
-
+    problem.assemble_matrix(bcs=problem.get_dirichlet_bcs())
 
     # define all extensions that should be computed
     assert all(
         [
-            isinstance(bc, fem.DirichletBC)
+            isinstance(bc, Union[fem.DirichletBC, dict])
             for bcs in boundary_data
             for bc in bcs
         ]
     )
 
-    # initialize rhs vector
+    # ### initialize
+    u = fem.Function(V)
     rhs = problem.b
-    # initialize solution
-    u = fem.Function(problem.V)
-
+    solver = problem.solver
     extensions = []
+
     for bcs in boundary_data:
         problem.clear_bcs()
         for bc in bcs:
-            problem.add_dirichlet_bc(bc)
+            if isinstance(bc, dict):
+                problem.add_dirichlet_bc(**bc)
+            else:
+                problem.add_dirichlet_bc(bc)
         current_bcs = problem.get_dirichlet_bcs()
 
-        # set values to rhs
         problem.assemble_vector(current_bcs)
         solver.solve(rhs, u.vector)
         extensions.append(u.vector.copy())
