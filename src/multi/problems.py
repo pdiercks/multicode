@@ -80,7 +80,9 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
     def form_rhs(self) -> ufl.Form:
         """The ufl form of the right hand side"""
 
-    def setup_solver(self, petsc_options={}, form_compiler_options={}, jit_options={}):
+    def setup_solver(self, petsc_options: Optional[dict] = None,
+                     form_compiler_options: Optional[dict] = None,
+                     jit_options: Optional[dict] = None):
         """setup the solver for a linear variational problem
 
         This code is part of dolfinx.fem.petsc.py:
@@ -133,6 +135,8 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
         self._solver = PETSc.KSP().create(self.u.function_space.mesh.comm)
         self._solver.setOperators(self._A)
 
+        # set petsc options
+        petsc_options = petsc_options or {}
         ksp_type = petsc_options.get("ksp_type", "preonly")
         pc_type = petsc_options.get("pc_type", "lu")
         pc_factor_mat_solver_type = petsc_options.get("pc_factor_mat_solver_type", "mumps")

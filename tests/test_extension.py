@@ -1,8 +1,9 @@
 from mpi4py import MPI
-import dolfinx
+from dolfinx import fem, mesh, default_scalar_type
 from basix.ufl import element
 import numpy as np
 import ufl
+from multi.boundary import plane_at
 from multi.domain import Domain
 from multi.problems import LinearProblem
 from multi.extension import extend
@@ -10,11 +11,11 @@ from multi.extension import extend
 
 def test():
     num_cells = int(100 / 1.41)
-    domain = dolfinx.mesh.create_unit_square(
-        MPI.COMM_WORLD, num_cells, num_cells, dolfinx.mesh.CellType.quadrilateral
+    domain = mesh.create_unit_square(
+        MPI.COMM_WORLD, num_cells, num_cells, mesh.CellType.quadrilateral
     )
     quad = element("Lagrange", domain.basix_cell(), 2, shape=())
-    V = dolfinx.fem.functionspace(domain, quad)
+    V = fem.functionspace(domain, quad)
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
     print(f"Number of DoFs={Vdim}")
 
@@ -31,8 +32,8 @@ def test():
         @property
         def form_rhs(self):
             v = self.test
-            f = dolfinx.fem.Constant(self.V.mesh, dolfinx.default_scalar_type(0.0))
-            return f * v * ufl.dx
+            f = fem.Constant(self.V.mesh, default_scalar_type(0.0))
+            return ufl.inner(f, v) * ufl.dx
 
     def boundary_expression_factory(k):
         def expr(x):
@@ -42,17 +43,37 @@ def test():
 
     Ω = Domain(domain)
     problem = DummyProblem(Ω, V)
-    boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+    boundary_facets = mesh.exterior_facet_indices(domain.topology)
 
     boundary_data = []
     num_test = 20
     for i in range(1, num_test + 1):
         problem.clear_bcs()
-        g = dolfinx.fem.Function(V)
+        g = fem.Function(V)
         g.interpolate(boundary_expression_factory(i))
-        problem.add_dirichlet_bc(g, boundary_facets, entity_dim=1)
-        bcs = problem.get_dirichlet_bcs()
-        boundary_data.append(bcs.copy())
+        if i < 15:
+            # add fem.DirichletBC
+            problem.add_dirichlet_bc(g, boundary_facets, entity_dim=1)
+            bcs = problem.get_dirichlet_bcs()
+            boundary_data.append(bcs.copy())
+        else:
+            # add dict
+            bc = {"value": g, "boundary": boundary_facets, "entity_dim": 1, "method": "topological"}
+            boundary_data.append(list([bc]))
+
+    # add another extension as list of dict
+    zero = fem.Constant(domain, default_scalar_type(0.))
+    one = fem.Constant(domain, default_scalar_type(1.))
+    bottom = plane_at(0., "y")
+    right = plane_at(1., "x")
+    top = plane_at(1., "y")
+    left = plane_at(0., "x")
+    bcs = []
+    bcs.append({"value": zero, "boundary": bottom, "method": "geometrical"})
+    bcs.append({"value": zero, "boundary": right, "method": "geometrical"})
+    bcs.append({"value": zero, "boundary": left, "method": "geometrical"})
+    bcs.append({"value": one, "boundary": top, "method": "geometrical"})
+    boundary_data.append(bcs)
 
     # compute extensions
     petsc_options = {
@@ -61,20 +82,23 @@ def test():
         "pc_factor_mat_solver_type": "mumps",
     }
     extensions = extend(problem, boundary_data, petsc_options=petsc_options)
-    assert len(extensions) == num_test
-    for fun in extensions:
-        print(np.sum(fun[:]))
-    # assert np.allclose(extensions[1][:], extensions[7][:])
+    assert len(extensions) == num_test + 1
+    assert all([not np.allclose(extensions[0].array, vec.array) for vec in extensions[1:]])
 
-    # check one of the solutions
-    j = 3
-    problem.clear_bcs()
-    g = dolfinx.fem.Function(V)
-    g.interpolate(boundary_expression_factory(j))
-    problem.add_dirichlet_bc(g, boundary_facets, entity_dim=1)
-    uex = problem.solve()
+    def check_solution(j):
+        problem.clear_bcs()
+        if j == 21:
+            for bc in bcs:
+                problem.add_dirichlet_bc(**bc)
+        else:
+            g = fem.Function(V)
+            g.interpolate(boundary_expression_factory(j))
+            problem.add_dirichlet_bc(g, boundary_facets, entity_dim=1)
+        uex = problem.solve()
+        assert np.allclose(uex.vector[:], extensions[j - 1][:])
 
-    assert np.allclose(uex.vector[:], extensions[j - 1][:])
+    for i in range(1, num_test + 2):
+        check_solution(i)
 
 
 if __name__ == "__main__":
