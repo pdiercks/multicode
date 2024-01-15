@@ -22,31 +22,23 @@ def get_boundary_dofs(V: fem.FunctionSpaceBase, marker: Optional[Callable] = Non
 
 
 class BoundaryDataFactory(object):
-    """handles creation of Functions for extension into a domain Ω
+    """Handles creation of Functions for extension into a domain Ω.
 
-    the Functions are constructed such that
-        u=g on Γ and u=0 on ∂Ω \\ Γ
+    Args:
+        domain: The computational domain.
+        V: The FE space.
 
-    (for the extension also the latter condition is important).
-    Usually, we have a bc known as {value, boundary(=Γ)} and
-    can create a bc and apply it to a function (dolfinx.fem.petsc.set_bc)
-    to achieve the above.
-    However, for the extension we require a dirichletbc object that
-    applies to the entire boundary ∂Ω.
+    Notes:
+        The Functions are constructed such that
+            u=g on Γ and u=0 on ∂Ω \\ Γ.
+
+        Usually, we have a BC known as {value, boundary(=Γ)} and
+        can create a BC and apply it to a function (dolfinx.fem.petsc.set_bc)
+        to achieve the above. However, for the extension we require a dirichletbc
+        object that applies to the entire boundary ∂Ω.
     """
 
-    def __init__(self, domain, V):
-        """
-
-        Parameters
-        ----------
-        domain : dolfinx.mesh.Mesh
-            The computational domain.
-        V : dolfinx.fem.FunctionSpace
-            The FE space.
-
-        """
-
+    def __init__(self, domain: mesh.Mesh, V: fem.FunctionSpaceBase):
         self.domain = domain
         self.V = V
 
@@ -62,42 +54,32 @@ class BoundaryDataFactory(object):
             V, fdim, boundary_facets
         )
 
-    def create_function_values(self, values, boundary_dofs):
-        """create a function and set values
+    def create_function_values(self, values: npt.NDArray, dofs: npt.NDArray) -> fem.Function:
+        """Creates a function with `values` at `boundary_dofs`.
 
-        Parameters
-        ----------
-        values : np.ndarray
-            The values to set.
-        boundary_dofs : np.ndarray
-            The dof indices of the vector.
-
-        Returns
-        -------
-        u : dolfinx.fem.Function
+        Args:
+            values: The values to be set.
+            dofs: The DOFs for which to set values.
         """
         u = fem.Function(self.V)
         u.vector.zeroEntries()
-        u.vector.setValues(boundary_dofs, values, addv=InsertMode.INSERT)
+        u.vector.setValues(dofs, values, addv=InsertMode.INSERT)
         u.vector.assemblyBegin()
         u.vector.assemblyEnd()
         return u
 
-    def create_function_bc(self, bc):
-        """create a function and set given bc
+    def create_function_bc(self, bcs: list[fem.DirichletBC]) -> fem.Function:
+        """Creates a function and sets given BCs.
 
-        Parameters
-        ----------
-        bc : dict
-            A suitable definition of a Dirichlet bc.
-            See multi.bcs.BoundaryConditions.add_dirichlet_bc.
-
-        Returns
-        -------
-        u : dolfinx.fem.Function
+        Args:
+            bcs: Dirichlet boundary conditions.
         """
         self.bch.clear()
-        self.bch.add_dirichlet_bc(**bc)
+        for bc in bcs:
+            if isinstance(bc, dict):
+                self.bch.add_dirichlet_bc(**bc)
+            else:
+                self.bch.add_dirichlet_bc(bc)
         bcs = self.bch.bcs
         u = fem.Function(self.V)
         set_bc(u.vector, bcs)
@@ -106,17 +88,12 @@ class BoundaryDataFactory(object):
         )
         return u
 
-    def create_bc(self, function):
-        """create a bc with value function for the entire boundary
+    def create_bc(self, function: fem.Function) -> fem.DirichletBC:
+        """Creates a bc with value `function` for the entire boundary.
 
-        Parameters
-        ----------
-        function : dolfinx.fem.Function
-            The function to prescribe.
+        Args:
+            function: The boundary data.
 
-        Returns
-        -------
-        bc : dolfinx.fem.dirichletbc
         """
         dofs = self.boundary_dofs
         bc = fem.dirichletbc(function, dofs)
