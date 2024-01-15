@@ -137,11 +137,11 @@ class RectangularSubdomain(RectangularDomain):
         for key, (start, end) in points.items():
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line(start, end, num_cells=num_fine_cells, out_file=tf.name)
-                fine_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
+                fine_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
             fine_grid[key] = fine_edge_grid
             with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
                 create_line(start, end, num_cells=num_coarse_cells, out_file=tf.name)
-                coarse_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=1)
+                coarse_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
             coarse_grid[key] = coarse_edge_grid
 
         self.fine_edge_grid = fine_grid
