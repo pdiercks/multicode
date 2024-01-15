@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Optional, Callable
 from mpi4py import MPI
 import pathlib
 import gmsh
@@ -7,6 +7,7 @@ import meshio
 import numpy as np
 from dolfinx import mesh, geometry
 from dolfinx.io import gmshio
+from multi.boundary import plane_at
 from multi.preprocessing import create_mesh, create_line, create_rectangle
 
 
@@ -64,6 +65,30 @@ class RectangularDomain(Domain):
             
         """
         super().__init__(grid, cell_tags, facet_tags)
+
+    def str_to_marker(self, boundary: str) -> Callable:
+        """Returns a marker function for `boundary`.
+
+        Args:
+            boundary: The boundary of the rectangular domain.
+        """
+        xmin, ymin, _ = self.xmin
+        xmax, ymax, _ = self.xmax
+        left = plane_at(xmin, "x")
+        right = plane_at(xmax, "x")
+        bottom = plane_at(ymin, "y")
+        top = plane_at(ymax, "y")
+        supported = set(["left", "right", "bottom", "top"])
+        if boundary == "left":
+            return left
+        elif boundary == "right":
+            return right
+        elif boundary == "bottom":
+            return bottom
+        elif boundary == "top":
+            return top
+        else:
+            raise ValueError(f"{boundary=} does not match. Supported values are {supported}.")
 
 
 class RectangularSubdomain(RectangularDomain):
