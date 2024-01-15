@@ -27,8 +27,8 @@ def test():
     bottom = Ω.fine_edge_grid["bottom"]
     top = Ω.fine_edge_grid["top"]
 
-    be = element("Lagrange", bottom.basix_cell(), 2, shape=(2,))
-    te = element("Lagrange", top.basix_cell(), 2, shape=(2,))
+    be = element("Lagrange", bottom.basix_cell(), 2, shape=(2,), gdim=bottom.geometry.dim)
+    te = element("Lagrange", top.basix_cell(), 2, shape=(2,), gdim=top.geometry.dim)
 
     Vb = dolfinx.fem.functionspace(bottom, be)
     Vt = dolfinx.fem.functionspace(top, te)
