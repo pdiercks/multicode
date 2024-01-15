@@ -84,8 +84,21 @@ def test_2d():
     num_cells = cgrid.topology.index_map(cgrid.topology.dim).size_local
     assert num_cells == 4
 
+    bottom = rectangle.str_to_marker("bottom")
+    top = rectangle.str_to_marker("top")
+    left = rectangle.str_to_marker("left")
+    right = rectangle.str_to_marker("right")
+    origin = np.array([[0.], [0.], [0.]])
+    assert bottom(origin)
+    assert left(origin)
+    assert not top(origin)
+    assert not right(origin)
+
     with pytest.raises(AttributeError):
         rectangle.create_coarse_grid(1)
+
+    with pytest.raises(ValueError):
+        rectangle.str_to_marker("valueerror")
 
 
 
