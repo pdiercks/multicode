@@ -290,10 +290,8 @@ class StructuredQuadGrid(object):
         else:
             raise NotImplementedError
 
-        tdim = self.tdim
-        # num_cells = kwargs.get("num_cells")
-
         # initialize
+        tdim = self.tdim
         subdomains = []
 
         # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
@@ -320,12 +318,14 @@ class StructuredQuadGrid(object):
                 subdomains.append(tf.name)
 
                 if isinstance(fine_grid_method, str):
+                    # duplicate given mesh for current coarse grid cell
                     # read msh file and translate, then save to msh again
                     subdomain_mesh = meshio.read(fine_grid_method)
                     subdomain_mesh.points += xmin
                     meshio.write(tf.name, subdomain_mesh, file_format="gmsh")
                 else:
-                    # create msh via method
+                    # create grid via method for current coarse grid cell
+                    # FIXME: hardcoded interface of `fine_grid_method`
                     fine_grid_method(
                         xmin[0],
                         xmax[0],
