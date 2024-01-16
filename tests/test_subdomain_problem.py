@@ -35,6 +35,9 @@ def test():
     problem = LinElaSubProblem(Ω, V, phases)
 
     with pytest.raises(AttributeError):
+        Ω.create_boundary_grids()
+
+    with pytest.raises(AttributeError):
         # edge meshes are not yet setup for Ω
         problem.setup_edge_spaces()
 
@@ -42,8 +45,8 @@ def test():
         # coarse grid not yet setup
         problem.setup_coarse_space()
 
-    Ω.create_edge_grids(fine=10)
     Ω.create_coarse_grid(1)
+    Ω.create_boundary_grids()
     problem.create_map_from_V_to_L()
     problem.setup_coarse_space()
 

@@ -65,7 +65,8 @@ def test_2d():
 
     # ### RectangularSubdomain
     rectangle = RectangularSubdomain(17, get_unit_square_mesh(10, 10))
-    rectangle.create_edge_grids(coarse=1, fine=10)
+    rectangle.create_coarse_grid(1)
+    rectangle.create_boundary_grids()
     assert len(rectangle.fine_edge_grid.keys()) == 4
     assert len(rectangle.coarse_edge_grid.keys()) == 4
     assert isinstance(rectangle.fine_edge_grid["bottom"], mesh.Mesh)
@@ -77,6 +78,7 @@ def test_2d():
     assert isinstance(rectangle.coarse_edge_grid["right"], mesh.Mesh)
     assert isinstance(rectangle.coarse_edge_grid["left"], mesh.Mesh)
 
+    rectangle = RectangularSubdomain(18, get_unit_square_mesh(10, 10))
     rectangle.create_coarse_grid(2)
     cgrid = rectangle.coarse_grid
     assert isinstance(cgrid, mesh.Mesh)
