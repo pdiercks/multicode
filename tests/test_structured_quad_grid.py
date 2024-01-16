@@ -80,6 +80,9 @@ def test_fine_grid_creation(order, cell_type):
     options = {"Mesh.ElementOrder": order}
 
     with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
+        with pytest.raises(NotImplementedError):
+            grid.create_fine_grid(np.array([0, 1]), tf.name, "triangle9")
+
         grid.create_fine_grid(
             np.array([0, 1]), tf.name, cell_type, num_cells=num_cells_subdomain, options=options
         )
