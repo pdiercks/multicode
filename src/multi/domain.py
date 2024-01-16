@@ -5,6 +5,7 @@ import gmsh
 import tempfile
 import meshio
 import numpy as np
+import numpy.typing as npt
 from dolfinx import mesh, geometry
 from dolfinx.io import gmshio
 from multi.boundary import plane_at
@@ -271,34 +272,29 @@ class StructuredQuadGrid(object):
             methods *= self.num_cells
         self._fine_grid_method = methods
 
-    def create_fine_grid(self, cells, output, cell_type="triangle", **kwargs):
-        """creates a fine scale grid for given cells
+    def create_fine_grid(self, cells: npt.NDArray, output: str, cell_type: str, **kwargs) -> None:
+        """Creates a fine scale grid for given cells.
 
-        Parameters
-        ----------
-        cells : np.ndarray
-            The cell indices for which to create a fine scale grid.
-            Requires `self.fine_grid_method` to be defined.
-        output : str
-            The path to write the result (suffix .xdmf).
-        cell_type : optional
-            The `meshio` cell type of the fine grid.
-            Currently, only meshes with one cell type are supported.
-        kwargs : optional
-            Keyword arguments to be passed to `self.fine_grid_method`.
+        Args:
+            cells: Active coarse grid cells for which to create fine scale grid.
+            output: The filepath to write the result to.
+            cell_type: The meshio cell type of the cells.
+            kwargs: Optional keyword arguments to be passed to `self.fine_grid_method`.
         """
-        # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
 
         # meshio cell types for mesh creation
-        assert cell_type in ("triangle", "quad")
-        facet_cell_type = "line"
-
-        tdim = self.tdim
-        num_cells = kwargs.get("num_cells")
+        if cell_type in ("triangle", "quad"):
+            facet_cell_type = "line"
+        elif cell_type in ("triangle6", "quad9"):
+            facet_cell_type = "line3"
+        else:
+            raise NotImplementedError
 
         # initialize
+        tdim = self.tdim
         subdomains = []
 
+        # cases: (a) single cell, (b) patch of cells, (c) entire coarse grid
         cells = np.array(cells)
         assert cells.size > 0
         active_cells = self.cells[cells]
@@ -322,20 +318,22 @@ class StructuredQuadGrid(object):
                 subdomains.append(tf.name)
 
                 if isinstance(fine_grid_method, str):
+                    # duplicate given mesh for current coarse grid cell
                     # read msh file and translate, then save to msh again
                     subdomain_mesh = meshio.read(fine_grid_method)
                     subdomain_mesh.points += xmin
                     meshio.write(tf.name, subdomain_mesh, file_format="gmsh")
                 else:
-                    # create msh via method
+                    # create grid via method for current coarse grid cell
+                    # FIXME: hardcoded interface of `fine_grid_method`
                     fine_grid_method(
                         xmin[0],
                         xmax[0],
                         xmin[1],
                         xmax[1],
-                        num_cells=num_cells,
                         facets=create_facets,
                         out_file=tf.name,
+                        **kwargs,
                     )
 
         # merge subdomains

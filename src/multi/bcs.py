@@ -68,7 +68,7 @@ class BoundaryDataFactory(object):
         u.vector.assemblyEnd()
         return u
 
-    def create_function_bc(self, bcs: list[fem.DirichletBC]) -> fem.Function:
+    def create_function_bc(self, bcs: list[Union[fem.DirichletBC, dict]]) -> fem.Function:
         """Creates a function and sets given BCs.
 
         Args:
@@ -80,9 +80,9 @@ class BoundaryDataFactory(object):
                 self.bch.add_dirichlet_bc(**bc)
             else:
                 self.bch.add_dirichlet_bc(bc)
-        bcs = self.bch.bcs
+        dirichlet_bcs = self.bch.bcs
         u = fem.Function(self.V)
-        set_bc(u.vector, bcs)
+        set_bc(u.vector, dirichlet_bcs)
         u.vector.ghostUpdate(
             addv=InsertMode.INSERT_VALUES, mode=ScatterMode.FORWARD
         )

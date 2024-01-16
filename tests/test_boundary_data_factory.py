@@ -57,7 +57,7 @@ def test():
     assert np.allclose(uvec[bottom_dofs], np.ones(bottom_dofs.size))
 
     my_bc = {"value": PETSc.ScalarType(1.), "boundary": bottom, "method": "geometrical"}
-    f = data_factory.create_function_bc(my_bc)
+    f = data_factory.create_function_bc([my_bc])
     bc_f = data_factory.create_bc(f)
     assert np.isclose(np.sum(bc_f.g.x.array), 9)
 

@@ -63,10 +63,8 @@ def test_errors():
         _ = StructuredQuadGrid(domain) # wrong tdim
 
 
-@pytest.mark.parametrize("fine_grid_method",[
-    create_unit_cell_01,
-    tempfile.NamedTemporaryFile(suffix=".msh")])
-def test_fine_grid_creation(fine_grid_method):
+@pytest.mark.parametrize("order,cell_type",[(1,"triangle"),(2,"triangle6")])
+def test_fine_grid_creation(order, cell_type):
     # ### create coarse grid
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle(
@@ -78,17 +76,15 @@ def test_fine_grid_creation(fine_grid_method):
 
     # ### subdomain grid creation
     num_cells_subdomain = 10
-    if isinstance(fine_grid_method, tempfile._TemporaryFileWrapper):
-        # create the grid and pass filepath as string
-        create_unit_cell_01(xmin=0., xmax=1., ymin=0., ymax=1.,
-                           num_cells=num_cells_subdomain, out_file=fine_grid_method.name)
-        grid.fine_grid_method = [fine_grid_method.name]
-    else:
-        grid.fine_grid_method = [fine_grid_method]
+    grid.fine_grid_method = [create_unit_cell_01]
+    options = {"Mesh.ElementOrder": order}
 
     with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
+        with pytest.raises(NotImplementedError):
+            grid.create_fine_grid(np.array([0, 1]), tf.name, "triangle9")
+
         grid.create_fine_grid(
-            np.array([0, 1]), tf.name, cell_type="triangle", num_cells=num_cells_subdomain
+            np.array([0, 1]), tf.name, cell_type, num_cells=num_cells_subdomain, options=options
         )
         with XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
             mesh = xdmf.read_mesh(name="Grid")
@@ -103,7 +99,7 @@ def test_fine_grid_creation(fine_grid_method):
 
     with tempfile.NamedTemporaryFile(suffix=".xdmf") as tf:
         grid.create_fine_grid(
-            np.array([0, ]), tf.name, cell_type="triangle", num_cells=num_cells_subdomain
+            np.array([0, ]), tf.name, cell_type, num_cells=num_cells_subdomain, options=options
         )
         with XDMFFile(MPI.COMM_WORLD, tf.name, "r") as xdmf:
             mesh = xdmf.read_mesh(name="Grid")
@@ -131,6 +127,3 @@ def test_fine_grid_creation(fine_grid_method):
     assert ft.find(2).size == num_cells_subdomain
     assert ft.find(3).size == num_cells_subdomain
     assert ft.find(4).size == num_cells_subdomain
-
-    if isinstance(fine_grid_method, tempfile._TemporaryFileWrapper):
-        fine_grid_method.close()
