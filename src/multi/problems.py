@@ -21,7 +21,7 @@ from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.operators.numpy import NumpyMatrixOperator
 
 from multi.bcs import BoundaryConditions
-from multi.domain import StructuredQuadGrid, Domain, RectangularSubdomain
+from multi.domain import Domain, StructuredQuadGrid, RectangularSubdomain
 from multi.dofmap import QuadrilateralDofLayout
 from multi.interpolation import make_mapping
 from multi.materials import LinearElasticMaterial
@@ -265,7 +265,9 @@ class SubdomainProblem(object):
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
-        self.W = fem.VectorFunctionSpace(coarse_grid, (family_name, 1))
+        shape = ufl_element.value_shape()
+        fe = element(family_name, coarse_grid.basix_cell(), 1, shape=shape, gdim=coarse_grid.ufl_cell().geometric_dimension())
+        self.W = fem.functionspace(coarse_grid, fe)
 
     def create_map_from_V_to_L(self) -> None:
         try:

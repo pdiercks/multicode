@@ -55,6 +55,8 @@ class Domain(object):
 
 class RectangularDomain(Domain):
     """Discretization of a rectangular domain Ω=[xs, xe]x[ys, ye]."""
+    gdim = 2
+    boundaries = ["bottom", "left", "right", "top"]
 
     def __init__(self, grid: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, facet_tags: Optional[mesh.MeshTags] =  None):
         """Initializes a domain object.
@@ -79,7 +81,7 @@ class RectangularDomain(Domain):
         right = plane_at(xmax, "x")
         bottom = plane_at(ymin, "y")
         top = plane_at(ymax, "y")
-        supported = set(["left", "right", "bottom", "top"])
+        supported = set(self.boundaries)
         if boundary == "left":
             return left
         elif boundary == "right":
@@ -108,11 +110,12 @@ class RectangularSubdomain(RectangularDomain):
         super().__init__(grid, cell_tags, facet_tags)
         self.id = id
 
-    def create_coarse_grid(self, num_cells: int=1) -> None:
+    def create_coarse_grid(self, num_cells: int, recombine: bool = True) -> None:
         """Creates a coarse grid partition of the subdomain.
 
         Args:
-            num_cells: Number of quadrilateral cells in each spatial direction.
+            num_cells: Number of cells in each spatial direction.
+            recombine: If True, recombine triangles into quadrilaterals.
 
         """
 
@@ -121,57 +124,41 @@ class RectangularSubdomain(RectangularDomain):
 
         xmin, ymin, _ = self.xmin
         xmax, ymax, _ = self.xmax
+        cmap = self.grid.geometry.cmaps[0]
+        geom_deg = cmap.degree
 
         with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
             create_rectangle(
                     xmin, xmax, ymin, ymax, 0.,
-                    recombine=True, num_cells=num_cells, out_file=tf.name)
-            coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
+                    recombine=recombine, num_cells=num_cells, out_file=tf.name,
+                    options={"Mesh.ElementOrder": geom_deg})
+            coarse, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=self.gdim)
         self.coarse_grid = coarse
 
-    def create_edge_grids(self, coarse: Optional[int] = None, fine: Optional[int] = None) -> None:
-        """Creates coarse and fine grid partitions of the boundary of the rectangular subdomain.
+    def create_boundary_grids(self) -> None:
+        """Creates coarse and fine grid partitions of the boundary of the rectangular subdomain."""
 
-        Args:
-            coarse: Number of cells for the coarse grid partition.
-            fine: Number of cells for the fine grid partition.
+        if not hasattr(self, "coarse_grid"):
+            raise AttributeError("Coarse grid discretization does not exist.")
 
-        """
+        def create_boundary_grid(parent, boundary):
+            tdim = parent.topology.dim
+            fdim = tdim - 1
+            parent.topology.create_connectivity(fdim, tdim)
+            boundary_marker = self.str_to_marker(boundary)
+            facets = mesh.locate_entities_boundary(parent, fdim, boundary_marker)
+            submesh, _, _, _ = mesh.create_submesh(parent, fdim, facets)
+            return submesh
 
-        parent = self.grid
-        tdim = parent.topology.dim
-        fdim = tdim - 1
-        parent.topology.create_connectivity(fdim, tdim)
-        facets = mesh.locate_entities_boundary(parent, fdim, lambda x: np.full(x[0].shape, True, dtype=bool))
-        # assumes a quadrilateral domain and equal number of facets
-        # per boundary/edge
-        num_coarse_cells = coarse or 1
-        num_fine_cells = fine or int(facets.size / 4)
+        fine_edge_grids = {}
+        coarse_edge_grids = {}
 
-        xmin, ymin, _ = self.xmin
-        xmax, ymax, _ = self.xmax
+        for edge in self.boundaries:
+            fine_edge_grids[edge] = create_boundary_grid(self.grid, edge)
+            coarse_edge_grids[edge] = create_boundary_grid(self.coarse_grid, edge)
 
-        fine_grid = {}
-        coarse_grid = {}
-
-        points = {
-                "bottom": ([xmin, ymin, 0.], [xmax, ymin, 0.]),
-                "left": ([xmin, ymin, 0.], [xmin, ymax, 0.]),
-                "right": ([xmax, ymin, 0.], [xmax, ymax, 0.]),
-                "top": ([xmin, ymax, 0.], [xmax, ymax, 0.])
-                }
-        for key, (start, end) in points.items():
-            with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line(start, end, num_cells=num_fine_cells, out_file=tf.name)
-                fine_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
-            fine_grid[key] = fine_edge_grid
-            with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-                create_line(start, end, num_cells=num_coarse_cells, out_file=tf.name)
-                coarse_edge_grid, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
-            coarse_grid[key] = coarse_edge_grid
-
-        self.fine_edge_grid = fine_grid
-        self.coarse_edge_grid = coarse_grid
+        self.fine_edge_grid = fine_edge_grids
+        self.coarse_edge_grid = coarse_edge_grids
 
 
 class StructuredQuadGrid(object):
