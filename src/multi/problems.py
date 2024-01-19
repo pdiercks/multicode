@@ -573,7 +573,6 @@ class TransferProblem(LogMixin):
             return FenicsxMatrixOperator(matrix, self.range.V, self.range.V)
 
 
-# FIXME should be an ABC class
 class MultiscaleProblemDefinition(ABC):
     """Base class to define a multiscale problem."""
 
@@ -653,19 +652,19 @@ class MultiscaleProblemDefinition(ABC):
         pass
 
     @abstractmethod
-    def get_dirichlet(self, cell_index=None):
+    def get_dirichlet(self, cell_index: Optional[int] = None) -> Union[dict, None]:
         pass
 
     @abstractmethod
-    def get_neumann(self, cell_index=None):
+    def get_neumann(self, cell_index: Optional[int] = None):
         pass
 
     @abstractmethod
-    def get_gamma_out(self, cell_index):
+    def get_gamma_out(self, cell_index: Optional[int] = None) -> Callable:
         pass
 
     @abstractmethod
-    def get_remove_kernel(self, cell_index):
+    def get_remove_kernel(self, cell_index: Optional[int] = None) -> bool:
         pass
 
     def build_edge_basis_config(self, cell_sets):
