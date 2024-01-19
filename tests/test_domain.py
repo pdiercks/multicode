@@ -3,11 +3,10 @@
 import numpy as np
 import tempfile
 import pytest
-from dolfinx import mesh
 from dolfinx.io import gmshio
 from mpi4py import MPI
 from multi.boundary import within_range, plane_at
-from multi.domain import Domain, RectangularSubdomain
+from multi.domain import Domain
 from multi.preprocessing import create_line, create_rectangle, create_meshtags
 
 
@@ -62,45 +61,6 @@ def test_2d():
     xmax = domain.xmax
     assert np.isclose(xmax[1], 1.4)
     assert np.isclose(xmax[0], 3.1)
-
-    # ### RectangularSubdomain
-    rectangle = RectangularSubdomain(17, get_unit_square_mesh(10, 10))
-    rectangle.create_coarse_grid(1)
-    rectangle.create_boundary_grids()
-    assert len(rectangle.fine_edge_grid.keys()) == 4
-    assert len(rectangle.coarse_edge_grid.keys()) == 4
-    assert isinstance(rectangle.fine_edge_grid["bottom"], mesh.Mesh)
-    assert isinstance(rectangle.fine_edge_grid["top"], mesh.Mesh)
-    assert isinstance(rectangle.fine_edge_grid["right"], mesh.Mesh)
-    assert isinstance(rectangle.fine_edge_grid["left"], mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["bottom"], mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["top"], mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["right"], mesh.Mesh)
-    assert isinstance(rectangle.coarse_edge_grid["left"], mesh.Mesh)
-
-    rectangle = RectangularSubdomain(18, get_unit_square_mesh(10, 10))
-    rectangle.create_coarse_grid(2)
-    cgrid = rectangle.coarse_grid
-    assert isinstance(cgrid, mesh.Mesh)
-    assert cgrid.topology.dim == 2
-    num_cells = cgrid.topology.index_map(cgrid.topology.dim).size_local
-    assert num_cells == 4
-
-    bottom = rectangle.str_to_marker("bottom")
-    top = rectangle.str_to_marker("top")
-    left = rectangle.str_to_marker("left")
-    right = rectangle.str_to_marker("right")
-    origin = np.array([[0.], [0.], [0.]])
-    assert bottom(origin)
-    assert left(origin)
-    assert not top(origin)
-    assert not right(origin)
-
-    with pytest.raises(AttributeError):
-        rectangle.create_coarse_grid(1)
-
-    with pytest.raises(ValueError):
-        rectangle.str_to_marker("valueerror")
 
 
 

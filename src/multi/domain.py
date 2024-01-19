@@ -1,3 +1,4 @@
+import warnings
 from typing import Optional, Callable
 from mpi4py import MPI
 import pathlib
@@ -9,7 +10,7 @@ import numpy.typing as npt
 from dolfinx import mesh, geometry
 from dolfinx.io import gmshio
 from multi.boundary import plane_at
-from multi.preprocessing import create_mesh, create_line, create_rectangle
+from multi.preprocessing import create_mesh, create_rectangle, create_meshtags
 
 
 class Domain(object):
@@ -39,6 +40,8 @@ class Domain(object):
         self.cell_tags = cell_tags
         self.facet_tags = facet_tags
         self._x = grid.geometry.x
+        self.tdim = grid.topology.dim
+        self.gdim = grid.geometry.dim
 
     def translate(self, dx):
         dx = np.array(dx)
@@ -55,7 +58,6 @@ class Domain(object):
 
 class RectangularDomain(Domain):
     """Discretization of a rectangular domain Ω=[xs, xe]x[ys, ye]."""
-    gdim = 2
     boundaries = ["bottom", "left", "right", "top"]
 
     def __init__(self, grid: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, facet_tags: Optional[mesh.MeshTags] =  None):
@@ -68,6 +70,14 @@ class RectangularDomain(Domain):
             
         """
         super().__init__(grid, cell_tags, facet_tags)
+        xmin, ymin, _ = self.xmin
+        xmax, ymax, _ = self.xmax
+        self._markers = {
+            "left" : plane_at(xmin, "x"),
+            "right" : plane_at(xmax, "x"),
+            "bottom" : plane_at(ymin, "y"),
+            "top" : plane_at(ymax, "y"),
+            }
 
     def str_to_marker(self, boundary: str) -> Callable:
         """Returns a marker function for `boundary`.
@@ -75,23 +85,34 @@ class RectangularDomain(Domain):
         Args:
             boundary: The boundary of the rectangular domain.
         """
-        xmin, ymin, _ = self.xmin
-        xmax, ymax, _ = self.xmax
-        left = plane_at(xmin, "x")
-        right = plane_at(xmax, "x")
-        bottom = plane_at(ymin, "y")
-        top = plane_at(ymax, "y")
         supported = set(self.boundaries)
-        if boundary == "left":
-            return left
-        elif boundary == "right":
-            return right
-        elif boundary == "bottom":
-            return bottom
-        elif boundary == "top":
-            return top
-        else:
+        if not boundary in supported:
             raise ValueError(f"{boundary=} does not match. Supported values are {supported}.")
+        return self._markers[boundary]
+
+    def create_facet_tags(self, boundaries: dict[str, int]) -> None:
+        """Creates facet tags for given boundaries.
+
+        Args:
+            boundaries: A dict mapping boundary to meshtag.
+
+        Note:
+            See `self.boundaries` for appropriate values for dict keys.
+
+        """
+        if self.facet_tags is not None:
+            warnings.warn("Facet tags already exist for this domain and will be overridden!")
+
+        fmarkers = {}
+        supported = set(self.boundaries)
+        for boundary, tag in boundaries.items():
+            if not boundary in supported:
+                raise ValueError(f"{boundary=} does not match. Supported values are {supported}.")
+            marker = self._markers[boundary]
+            fmarkers[boundary] = (tag, marker)
+
+        facet_tags, _ = create_meshtags(self.grid, self.tdim-1, fmarkers)
+        self.facet_tags = facet_tags
 
 
 class RectangularSubdomain(RectangularDomain):
