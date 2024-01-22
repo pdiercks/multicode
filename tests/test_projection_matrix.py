@@ -1,6 +1,7 @@
 from mpi4py import MPI
 from dolfinx import mesh, fem
 from basix.ufl import element
+from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from multi.product import InnerProduct
@@ -26,7 +27,9 @@ def test(product_name):
         product_mat = product.assemble_matrix()
         product = FenicsxMatrixOperator(product_mat, V, V)
         W = product.matrix[:, :]
-    basis = build_nullspace(source, product=product)
+    basis_vectors = build_nullspace(source.V, gdim=domain.ufl_cell().geometric_dimension())
+    basis = source.make_array(basis_vectors)
+    gram_schmidt(basis, product=product, copy=False)
 
     # projection onto nullspace
     # A holds rigid body modes as columns

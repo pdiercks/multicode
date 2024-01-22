@@ -17,7 +17,9 @@ from dolfinx.io.utils import XDMFFile
 from petsc4py import PETSc
 
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
+from pymor.vectorarrays.interface import VectorArray
 from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.operators.interface import Operator
 from pymor.operators.numpy import NumpyMatrixOperator
 
 from multi.bcs import BoundaryConditions
@@ -28,7 +30,6 @@ from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
 from multi.sampling import create_random_values
-from multi.solver import build_nullspace
 from multi.utils import LogMixin
 
 
@@ -320,9 +321,15 @@ class TransferProblem(LogMixin):
         gamma_out: Marker function that defines the boundary Γ_out geometrically.
         Note that `dolfinx.mesh.locate_entities_boundary` is used to determine the facets.
         dirichlet: Optional homogeneous Dirichlet BCs. See `multi.bcs.BoundaryConditions.add_dirichlet_bc` for suitable values.
-        source_product: The inner product to use for the source space. See `multi.product.InnerProduct`.
-        range_product: The inner product to use for the range space. See `multi.product.InnerProduct`.
-        remove_kernel: If True, remove kernel (rigid body modes) from solution.
+        source_product: The inner product `Operator` to use for the source space
+        or a `dict` that defines the inner product, see `multi.product.InnerProduct`.
+        range_product: The inner product `Operator` to use for the range space
+        or a `dict` that defines the inner product, see `multi.product.InnerProduct`.
+        kernel: The kernel (rigid body modes) of A. If not None, the part of the
+        solution orthogonal to this kernel is returned by `solve`.
+
+    Note:
+        The kernel needs to be orthonormal wrt chosen range product.
 
     """
 
@@ -332,16 +339,16 @@ class TransferProblem(LogMixin):
         subproblem: LinElaSubProblem,
         gamma_out: Callable,
         dirichlet: Optional[Union[dict, list[dict]]] = None,
-        source_product: Optional[dict] = None,
-        range_product: Optional[dict] = None,
-        remove_kernel: Optional[bool] = False,
+        source_product: Optional[Union[Operator, dict]] = None,
+        range_product: Optional[Union[Operator, dict]] = None,
+        kernel: Optional[VectorArray] = None,
     ):
         self.problem = problem
         self.subproblem = subproblem
         self.source = FenicsxVectorSpace(problem.V)
         self.range = FenicsxVectorSpace(subproblem.V)
         self.gamma_out = gamma_out
-        self.remove_kernel = remove_kernel
+        self.kernel = kernel
 
         # initialize commonly used quantities
         self._init_bc_gamma_out()
@@ -358,19 +365,11 @@ class TransferProblem(LogMixin):
             self._bc_hom = problem.get_dirichlet_bcs()
 
         # ### inner products
-        default_product = {"product": "euclidean", "bcs": ()}
-        source_prod = source_product or default_product
-        range_prod = range_product or default_product
-        self.source_product = self._get_source_product(**source_prod)
-        self.range_product = self._get_range_product(**range_prod)
-
-        # initialize kernel
-        if remove_kernel:
-            # FIXME using self.range_product instead of "l2" as default would be more consistent?
-            # build null space
-            l2_product = self._get_range_product(product="l2")
-            self.range_l2_product = l2_product
-            self.kernel = build_nullspace(self.range, product=l2_product, gdim=2)
+        default = {'product': 'euclidean', 'bcs': ()}
+        source_prod = source_product or default
+        range_prod = range_product or default
+        self.source_product = self._init_source_product(source_prod)
+        self.range_product = self._init_range_product(range_prod)
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -535,42 +534,43 @@ class TransferProblem(LogMixin):
                 u.function_space.mesh._cpp_object))
             U.append(self.range.make_array([u_in.vector.copy()]))
 
-        if self.remove_kernel:
-            return orthogonal_part(U, self.kernel, product=self.range_l2_product, orthonormal=True)
+        if self.kernel is not None:
+            assert len(self.kernel) > 0
+            return orthogonal_part(U, self.kernel, product=self.range_product, orthonormal=True)
         else:
             return U
 
-    def _get_source_product(self, product: Union[str, ufl.Form], bcs=()):
-        """Create the source product.
-
-        Args:
-            see multi.product.InnerProduct.
-
-        """
-        inner_product = InnerProduct(self.problem.V, product, bcs=bcs)
-        matrix = inner_product.assemble_matrix()
-        if matrix is None:
-            return None
+    def _init_source_product(self, product: Union[Operator, dict]) -> Union[Operator, None]:
+        """Initializes the source product."""
+        if isinstance(product, Operator):
+            return product
         else:
-            full_matrix = csr_array(matrix.getValuesCSR()[::-1])
-            dofs = self.bc_dofs_gamma_out
-            source_matrix = full_matrix[dofs, :][:, dofs]
-            source_product = NumpyMatrixOperator(source_matrix)
-            return source_product
+            product_name = product['product']
+            bcs = product['bcs']
+            inner_product = InnerProduct(self.problem.V, product_name, bcs=bcs)
+            matrix = inner_product.assemble_matrix()
+            if matrix is None:
+                return None
+            else:
+                full_matrix = csr_array(matrix.getValuesCSR()[::-1])
+                dofs = self.bc_dofs_gamma_out
+                source_matrix = full_matrix[dofs, :][:, dofs]
+                source_product = NumpyMatrixOperator(source_matrix)
+                return source_product
 
-    def _get_range_product(self, product: Union[str, ufl.Form], bcs=()):
-        """Create the range product.
-
-        Args:
-            see multi.product.InnerProduct.
-
-        """
-        range_product = InnerProduct(self.range.V, product, bcs=bcs)
-        matrix = range_product.assemble_matrix()
-        if matrix is None:
-            return None
+    def _init_range_product(self, product: Union[Operator, dict]) -> Union[Operator, None]:
+        """Initializes the range product."""
+        if isinstance(product, Operator):
+            return product
         else:
-            return FenicsxMatrixOperator(matrix, self.range.V, self.range.V)
+            product_name = product['product']
+            bcs = product['bcs']
+            range_product = InnerProduct(self.subproblem.V, product_name, bcs=bcs)
+            matrix = range_product.assemble_matrix()
+            if matrix is None:
+                return None
+            else:
+                return FenicsxMatrixOperator(matrix, self.subproblem.V, self.subproblem.V)
 
 
 class MultiscaleProblemDefinition(ABC):
