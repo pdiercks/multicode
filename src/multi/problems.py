@@ -576,37 +576,45 @@ class TransferProblem(LogMixin):
 class MultiscaleProblemDefinition(ABC):
     """Base class to define a multiscale problem."""
 
-    def __init__(self, coarse_grid_path, fine_grid_path):
-        self.coarse_grid_path = pathlib.Path(coarse_grid_path)
-        self.fine_grid_path = pathlib.Path(fine_grid_path)
+    def __init__(self, coarse_grid: str, fine_grid: str) -> None:
+        """Initializes a multiscale problem.
+
+        Args:
+            coarse_grid: The coarse scale discretization of the global domain.
+            fine_grid: The fine scale discretization of the global domain.
+        """
+        self.coarse_grid_path = pathlib.Path(coarse_grid)
+        self.fine_grid_path = pathlib.Path(fine_grid)
 
     @property
     def material(self):
         return self._material
 
     @material.setter
-    def material(self, yaml_file):
+    def material(self, yaml_file: str):
         with open(yaml_file, "r") as instream:
             mat = yaml.safe_load(instream)
         self._material = mat
 
-    @property
-    def degree(self):
-        return self._degree
+    def setup_coarse_grid(self, gdim: int):
+        """Reads the coarse scale grid from file.
 
-    @degree.setter
-    def degree(self, degree):
-        self._degree = int(degree)
+        Args:
+            gdim: Geometric dimension.
 
-    def setup_coarse_grid(self):
-        """create coarse grid"""
+        """
         domain, ct, ft = gmshio.read_from_msh(
-            self.coarse_grid_path.as_posix(), MPI.COMM_SELF, gdim=2
+            self.coarse_grid_path.as_posix(), MPI.COMM_SELF, gdim=gdim
         )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
     def setup_fine_grid(self):
-        """create fine grid"""
+        """Reads the fine scale grid from file.
+
+        Note:
+            If `self.boundaries` is not None, facet tags are
+            created accordingly.
+        """
         with XDMFFile(
             MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r"
         ) as xdmf:
@@ -625,56 +633,101 @@ class MultiscaleProblemDefinition(ABC):
             fine_domain, cell_tags=fine_ct, facet_tags=fine_ft
         )
 
-    def setup_coarse_space(self, family="P", degree=1, shape=(2,)):
-        """create FE space on coarse grid"""
+    def setup_coarse_space(self, family: str = "P", degree: int = 1, shape: tuple[int, ...] = (2,)) -> None:
+        """Creates FE space on coarse grid.
+
+        Args:
+            family: The FE family.
+            degree: The interpolation order.
+            shape: The value shape.
+
+        """
         grid = self.coarse_grid.grid
         fe = element(family, grid.basix_cell(), degree, shape=shape)
         self.W = fem.functionspace(grid, fe)
 
-    def setup_fine_space(self, family="P", shape=(2,)):
-        """create FE space on fine grid"""
-        try:
-            degree = self.degree
-        except AttributeError:
-            raise RuntimeError("You need to set the degree of the problem first")
+    def setup_fine_space(self, family: str = "P", degree: int = 2, shape: tuple[int, ...] = (2,)) -> None:
+        """Creates FE space on fine grid.
+
+        Args:
+            family: The FE family.
+            degree: The interpolation order.
+            shape: The value shape.
+
+        """
         grid = self.fine_grid.grid
         fe = element(family, grid.basix_cell(), degree, shape=shape)
         self.V = fem.functionspace(grid, fe)
 
     @property
     @abstractmethod
-    def cell_sets(self):
+    def cell_sets(self) -> dict[str, set[int]]:
+        """Cell sets for the particular problem."""
         pass
 
     @property
     @abstractmethod
-    def boundaries(self):
+    def boundaries(self) -> dict[str, tuple[int, Callable]]:
+        """Boundaries of the global domain.
+
+        Returns:
+            boundaries: The boundary names are given as keys and each value
+            defines the boundary id and a geometrical marker function.
+        """
         pass
 
     @abstractmethod
     def get_dirichlet(self, cell_index: Optional[int] = None) -> Union[dict, None]:
+        """Returns Dirichlet BCs.
+
+        Args:
+            cell_index: Optional cell index.
+
+        Note:
+            If cell_index is None, returns Dirichlet BCs for global problem.
+            Otherwise Dirichlet BCs only relevant to given cell are returned.
+            This can be used to define BCs of oversampling problems.
+        """
         pass
 
     @abstractmethod
-    def get_neumann(self, cell_index: Optional[int] = None):
+    def get_neumann(self, cell_index: Optional[int] = None) -> Union[dict, None]:
+        """Returns Neumann BCs.
+
+        Args:
+            cell_index: Optional cell index.
+
+        Note:
+            If cell_index is None, returns Neumann BCs for global problem.
+            Otherwise Neumann BCs only relevant to given cell are returned.
+            This can be used to define BCs of oversampling problems.
+        """
         pass
 
     @abstractmethod
-    def get_gamma_out(self, cell_index: Optional[int] = None) -> Callable:
+    def get_gamma_out(self, cell_index: int) -> Callable:
+        """Returns boundary Γ_out of oversampling problem.
+
+        Args:
+            cell_index: The global cell index of the target subdomain.
+        """
         pass
 
     @abstractmethod
-    def get_remove_kernel(self, cell_index: Optional[int] = None) -> bool:
+    def get_kernel_set(self, cell_index: int) -> tuple[int, ...]:
+        """Returns set of vectors spanning nullspace of oversampling problem.
+
+        Args:
+            cell_index: The global cell index of the target subdomain.
+        """
         pass
 
-    def build_edge_basis_config(self, cell_sets):
-        """defines which oversampling problem is used to
-        compute the POD basis for a certain edge
+    def build_edge_basis_config(self, cell_sets: dict) -> None:
+        """Defines which oversampling problem is used to
+        compute the POD basis for a certain edge.
 
-        Parameters
-        ----------
-        cell_sets : dict
-            Cell sets according to which 'active_edges' for
+        Args:
+            cell_sets: Cell sets according to which 'active_edges' for
             a cell are defined. The order is important.
 
         """
@@ -704,16 +757,19 @@ class MultiscaleProblemDefinition(ABC):
         self.active_edges = active_edges
         self.edge_map = edge_map
 
-    def get_active_edges(self, cell_index):
-        """returns the set of edges to consider for
-        construction of POD basis in the TransferProblem for given cell.
-        This depends on the `self.edge_basis_config`.
+    def get_active_edges(self, cell_index) -> set[str]:
+        """Returns the set of edges to consider for construction of the POD edge
+        basis in the TransferProblem for given cell.
+        This depends on the `self.active_edges`.
+
+        Args:
+            cell_index: The global cell index of the target subdomain.
 
         """
         if not hasattr(self, "active_edges"):
             raise AttributeError(
                 "You have to define an edge basis configuration "
-                "by calling `self.edge_basis_config`"
+                "by calling `self.build_edge_basis_config`"
             )
         config = self.active_edges
         return config[cell_index]

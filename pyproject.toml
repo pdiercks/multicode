@@ -29,3 +29,10 @@ omit = [
     "src/multi/postprocessing.py",
     "src/multi/pymor_defaults.py",
     ]
+
+[tool.coverage.report]
+exclude_also = [
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    ]
