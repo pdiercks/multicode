@@ -608,27 +608,31 @@ class MultiscaleProblemDefinition(ABC):
         )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
-    def setup_fine_grid(self):
+    def setup_fine_grid(self, cell_tags: bool = False) -> None:
         """Reads the fine scale grid from file.
+
+        Args:
+            cell_tags: If True, read meshtags from XDMFFile.
 
         Note:
             If `self.boundaries` is not None, facet tags are
             created accordingly.
         """
+        fine_ct = None
         with XDMFFile(
             MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r"
         ) as xdmf:
             fine_domain = xdmf.read_mesh(name="Grid")
-            fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")
+            if cell_tags:
+                fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")
 
+        fine_ft = None
         boundaries = self.boundaries
         if boundaries is not None:
             from multi.preprocessing import create_meshtags
             tdim = fine_domain.topology.dim
             fdim = tdim - 1
             fine_ft, _ = create_meshtags(fine_domain, fdim, boundaries)
-        else:
-            fine_ft = None
         self.fine_grid = Domain(
             fine_domain, cell_tags=fine_ct, facet_tags=fine_ft
         )
