@@ -2,31 +2,22 @@ from contextlib import ExitStack
 from typing import Optional
 import numpy as np
 
-from dolfinx import la
-from pymor.algorithms.gram_schmidt import gram_schmidt
-from pymor.vectorarrays.interface import VectorArray
-from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
+from dolfinx import fem, la
+from petsc4py import PETSc
 
 
-def build_nullspace(source: FenicsxVectorSpace, product: Optional[FenicsxMatrixOperator] = None, gdim: Optional[int] = 2) -> VectorArray:
+def build_nullspace(V: fem.FunctionSpaceBase, gdim: Optional[int] = 2) -> list[PETSc.Vec]: # type: ignore
     """Builds PETSc nullspace for elasticity problem.
 
-    Note:
-        `gdim=1` is not supported.
-
     Args:
-        source: The FE space.
-        product: The inner product wrt which to orthonormalize.
+        V: The FE space.
         gdim: The geometric dimension.
 
     Returns:
-        B: The null space orthonormalized wrt to inner product.
+        ns: The null space of a linear elastic problem.
 
-    Example:
-        How to retrieve PETSc vectors::
-
-            ns = build_nullspace(source)
-            vecs = [v.real_part.impl for v in ns.vectors]
+    Note:
+        `gdim=1` is not supported.
 
     """
 
@@ -42,7 +33,6 @@ def build_nullspace(source: FenicsxVectorSpace, product: Optional[FenicsxMatrixO
     ns_dim = n_trans + n_rot
 
     # Create list of vectors for building nullspace
-    V = source.V
     index_map = V.dofmap.index_map
     bs = V.dofmap.index_map_bs
     ns = [la.create_petsc_vector(index_map, bs) for _ in range(ns_dim)]
@@ -61,7 +51,6 @@ def build_nullspace(source: FenicsxVectorSpace, product: Optional[FenicsxMatrixO
         x = V.tabulate_dof_coordinates()
         dofs_block = V.dofmap.list
         x0, x1, x2 = x[dofs_block, 0], x[dofs_block, 1], x[dofs_block, 2]
-        # TODO this could be improved
         if gdim == 3:
             basis[3][dofs[0]] = -x1
             basis[3][dofs[1]] = x0
@@ -73,9 +62,4 @@ def build_nullspace(source: FenicsxVectorSpace, product: Optional[FenicsxMatrixO
             basis[2][dofs[0]] = -x1
             basis[2][dofs[1]] = x0
 
-    # Orthonormalise the basis using pymor
-    B = source.make_array(ns)
-
-    gram_schmidt(B, product, atol=0.0, rtol=0.0, copy=False)
-
-    return B
+    return ns

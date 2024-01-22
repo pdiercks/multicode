@@ -4,6 +4,7 @@ from scipy.sparse import csr_array
 from mpi4py import MPI
 from dolfinx import mesh, fem, default_scalar_type
 from basix.ufl import element
+from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
 from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.operators.constructions import LincombOperator
@@ -76,7 +77,9 @@ def test(product_name):
                 csr_array(product.matrix.getValuesCSR()[::-1])
                 )
 
-    nullspace = build_nullspace(rangespace, product=product)
+    ns_vecs = build_nullspace(rangespace.V, gdim=2)
+    nullspace = rangespace.make_array(ns_vecs)
+    gram_schmidt(nullspace, product=product, copy=False)
 
     # build transfer operator
     boundary_dofs_full = bc_boundary._cpp_object.dof_indices()[0]
@@ -179,7 +182,9 @@ def test_bc_hom(product_name):
         product_mat = product.assemble_matrix()
         product = FenicsxMatrixOperator(product_mat, W, W)
 
-    basis = build_nullspace(rangespace, product=product)
+    ns_vecs = build_nullspace(rangespace.V, gdim=2) 
+    basis = rangespace.make_array(ns_vecs)
+    gram_schmidt(basis, product=product, copy=False)
 
     _dofs_sigma_d = get_boundary_dofs(V, marker=sigma_D)
     bc_hom = fem.dirichletbc(zero, _dofs_sigma_d, V)
