@@ -12,7 +12,7 @@ from multi.materials import LinearElasticMaterial
 from multi.problems import LinearElasticityProblem, TransferProblem, LinElaSubProblem
 from multi.boundary import plane_at, within_range, point_at
 from multi.preprocessing import create_rectangle
-from multi.projection import orthogonal_part
+from multi.projection import orthogonal_part, project_array
 from multi.solver import build_nullspace
 from multi.product import InnerProduct
 from pymor.algorithms.gram_schmidt import gram_schmidt
@@ -165,18 +165,18 @@ def test_remove_rot():
 def test_remove_trans_x_rot():
     """Topology
 
-    Ω = (0, 1) x (0, 1)
-    Ω_in = (0.0, 0.0) x (0.5, 0.5)
-    Γ_out = right plane
-    Σ_D_hom = origin
+    Ω = (0, 2) x (0, 1)
+    Ω_in = (1.0, 2.0) x (0.0, 0.1)
+    Γ_out = left plane at x=0.0
+    Σ_D_hom = bottom right corner x=2., y=0.
 
-    Translation in y-direction is constrained, but translation in x and rotation is free.
+    Translation in y-direction at bottom right corner is constrained, but translation in x and rotation is free.
     """
 
     def target_subdomain(x):
         tol = 1e-4
-        a = x[0] <= 0.5 + tol
-        b = x[1] <= 0.5 + tol
+        a = x[0] >= 1.0 - tol
+        b = x[1] <= 1.0 + tol
         return np.logical_and(a, b)
 
     n = 20
@@ -184,18 +184,19 @@ def test_remove_trans_x_rot():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle(
             0.0,
-            1.0,
+            2.0,
             0.0,
             1.0,
-            num_cells=(n, n),
+            num_cells=(2*n, n),
             facets=True,
             recombine=True,
             out_file=tf.name,
+            options={'Mesh.ElementOrder': 2},
         )
         square, _, facet_markers = gmshio.read_from_msh(
             tf.name, MPI.COMM_WORLD, gdim=gdim
         )
-    degree = 1
+    degree = 2
     ve = element("P", square.basix_cell(), degree, shape=(2,))
     V = fem.functionspace(square, ve)
 
@@ -204,6 +205,7 @@ def test_remove_trans_x_rot():
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
+    assert np.isclose(cells_submesh.size, 20 ** 2)
     submesh = mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
 
     # submesh has same cell type, reuse ve
@@ -212,21 +214,27 @@ def test_remove_trans_x_rot():
     subdomain = RectangularSubdomain(99, submesh)
     subproblem = LinElaSubProblem(subdomain, Vsub, phases)
 
-    zero = fem.Constant(square, default_scalar_type(0.0))
-    gamma_out = plane_at(1.0, "x")  # right
-    x_origin = np.array([[0., 0., 0.]])
-    origin = point_at(x_origin[0])
-    dirichlet_bc = {"boundary": origin, "value": zero, "sub": 1, "entity_dim": 0, "method": "geometrical"}
+    uy_zero = default_scalar_type(0.0)
+    x_bottom_right = np.array([[2., 0., 0.]])
+    bottom_right = point_at(x_bottom_right[0])
+    dirichlet_bc = {"boundary": bottom_right, "value": uy_zero, "sub": 1, "entity_dim": 0, "method": "geometrical"}
 
-    inner_range_product = InnerProduct(Vsub, "h1")
+    subproblem.add_dirichlet_bc(**dirichlet_bc)
+    bc_hom = subproblem.get_dirichlet_bcs()
+
+    inner_range_product = InnerProduct(Vsub, "h1", bcs=bc_hom)
     range_product_mat = inner_range_product.assemble_matrix()
     range_product = FenicsxMatrixOperator(range_product_mat, Vsub, Vsub)
 
     ns_vecs = build_nullspace(Vsub, gdim=submesh.ufl_cell().geometric_dimension())
+    from dolfinx.fem.petsc import set_bc
+    for vec in ns_vecs:
+        set_bc(vec, bc_hom)
     range_space = FenicsxVectorSpace(Vsub)
-    nullspace = range_space.make_array([ns_vecs[0], ns_vecs[-1]])
+    nullspace = range_space.make_array([ns_vecs[0], ns_vecs[2]])
     gram_schmidt(nullspace, product=range_product, copy=False)
 
+    gamma_out = plane_at(0.0, "x")  # left plane
     tp = TransferProblem(
         problem,
         subproblem,
@@ -237,18 +245,24 @@ def test_remove_trans_x_rot():
         kernel=nullspace,
     )
 
+    # For now pass kernel=None
+    # U should satisfy Dirichlet BCs
+    # Remove kernel
+    # U should satisfy Dirichlet BCs
+
     # generate boundary data
     D = tp.generate_random_boundary_data(2, distribution="normal")
     assert np.isclose(tp.source_gamma_out.dim, D.shape[-1])
     U = tp.solve(D)
     assert np.isclose(U.dim, tp.S_to_R.size)
-    u_arr = U.to_numpy()
 
-    dofs_origin = locate_dofs(x_dofs_vectorspace(Vsub), x_origin, s_=np.s_[1::2])
-    zero_dofs = U.dofs(dofs_origin)
+    # check dirichlet dofs origin
+    dofs = locate_dofs(x_dofs_vectorspace(Vsub), x_bottom_right, s_=np.s_[1::2])
+    zero_dofs = U.dofs(dofs)
     assert np.allclose(zero_dofs, np.zeros_like(zero_dofs))
 
     # compute reference solutions
+    u_arr = U.to_numpy()
     u_ex = np.zeros_like(u_arr)
     dof_indices = tp.bc_dofs_gamma_out
     for i, vector in enumerate(D):
@@ -269,6 +283,12 @@ def test_remove_trans_x_rot():
     U_proj = orthogonal_part(
         UEX, tp.kernel, product=tp.range_product, orthonormal=True
     )
+    zero_dofs = U_proj.dofs(dofs)
+    assert np.allclose(zero_dofs, np.zeros_like(zero_dofs))
+
+    # projection of orthogonal part onto basis should be zero
+    Zero = project_array(U_proj, tp.kernel, product=tp.range_product, orthonormal=True)
+    assert np.allclose(Zero.to_numpy(), np.zeros_like(Zero.to_numpy()))
 
     u_ex = U_proj.to_numpy()
     error = u_ex - u_arr
