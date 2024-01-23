@@ -1,33 +1,27 @@
 """projection module"""
 
-# NOTE regarding functions compute_proj_errors and compute_proj_errors_orth_basis
-# Authorship: the pyMOR developers
-# the original code is part of the pymor tutorial https://docs.pymor.org/2020.2.0/tutorial_basis_generation.html
 from typing import Union, Optional
 import numpy as np
 from dolfinx import fem
 from pymor.operators.interface import Operator
 from pymor.vectorarrays.interface import VectorArray
-from pymor.algorithms.basic import project_array
+from pymor.algorithms.basic import project_array, relative_error
 
 
-def compute_proj_errors(basis: VectorArray, V: VectorArray, product: Operator, relative: bool = True):
-    """Computes projection error for non-orthogonal basis"""
-    G = basis.gramian(product=product)
-    R = basis.inner(V, product=product)
+def compute_relative_proj_errors(U: VectorArray, basis: VectorArray, product: Optional[Operator] = None, orthonormal: bool = True) -> list[float]:
+    """Compute relative projection errors.
+
+    Args:
+        U: The test data.
+        basis: Basis to project onto.
+        product: Inner product to use.
+        orthonormal: If True, assume basis is orthonormal wrt product.
+    """
     errors = []
     for N in range(len(basis) + 1):
-        if N > 0:
-            v = np.linalg.solve(G[:N, :N], R[:N, :])
-        else:
-            # N = 0, such that err is the norm of V
-            v = np.zeros((0, len(V)))
-        V_proj = basis[:N].lincomb(v.T)
-        err = (V - V_proj).norm(product=product)
-        if relative:
-            alpha = V.norm(product=product)
-            err /= alpha
-        errors.append(np.max(err))
+        U_proj = project_array(U, basis[:N], product=product, orthonormal=orthonormal)
+        relerr = relative_error(U, U_proj, product=product)
+        errors.append(np.max(relerr))
     return errors
 
 
@@ -43,20 +37,6 @@ def orthogonal_part(U: VectorArray, basis: VectorArray, product: Optional[Operat
     """
     U_proj = project_array(U, basis, product=product, orthonormal=orthonormal)
     return U - U_proj
-
-
-def compute_proj_errors_orth_basis(basis: VectorArray, V: VectorArray, product: Operator, relative: bool = True):
-    """Computes projection error for orthonormal basis"""
-    errors = []
-    for N in range(len(basis) + 1):
-        v = V.inner(basis[:N], product=product)
-        V_proj = basis[:N].lincomb(v)
-        err = (V - V_proj).norm(product=product)
-        if relative:
-            alpha = V.norm(product=product)
-            err /= alpha
-        errors.append(np.max(err))
-    return errors
 
 
 def fine_scale_part(u: fem.Function, coarse_space: fem.FunctionSpaceBase, in_place: bool = False) -> Union[fem.Function, None]:
