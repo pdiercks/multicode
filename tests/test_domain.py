@@ -17,15 +17,15 @@ def get_unit_square_mesh(nx=8, ny=8):
     return domain
 
 
-def get_unit_interval_mesh():
+def get_unit_interval_mesh(n):
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_line([0., 0., 0.], [1., 0., 0.], num_cells=10, out_file=tf.name)
+        create_line([0., 0., 0.], [1., 0., 0.], num_cells=n, out_file=tf.name)
         domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     return domain
 
 
 def test_1d():
-    domain = Domain(get_unit_interval_mesh())
+    domain = Domain(get_unit_interval_mesh(10))
     xmin = domain.xmin
     xmax = domain.xmax
 
@@ -43,9 +43,12 @@ def test_1d():
     assert xmin[0] == 2.3
     assert np.sum(xmin) == 2.3 + 4.7 + 0.6
 
+    assert np.isclose(domain.num_cells, 10)
+
 
 def test_2d():
-    unit_square = get_unit_square_mesh()
+    nx = ny = 8
+    unit_square = get_unit_square_mesh(nx=nx, ny=ny)
 
     # ### invalid MeshTags
     ct, _ = create_meshtags(unit_square, 2, {"my_subdomain": (0, within_range([0.0, 0.0], [0.5, 0.5]))})
@@ -61,6 +64,7 @@ def test_2d():
     xmax = domain.xmax
     assert np.isclose(xmax[1], 1.4)
     assert np.isclose(xmax[0], 3.1)
+    assert np.isclose(domain.num_cells, nx*ny)
 
 
 

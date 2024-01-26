@@ -43,7 +43,15 @@ class Domain(object):
         self.tdim = grid.topology.dim
         self.gdim = grid.geometry.dim
 
+    @property
+    def num_cells(self):
+        """Returns number of cells owned by this process"""
+        cmap = self.grid.topology.index_map(self.tdim)
+        num_cells = cmap.size_local
+        return num_cells
+
     def translate(self, dx):
+        """Translates the domain by `dx`."""
         dx = np.array(dx)
         self._x += dx
 
