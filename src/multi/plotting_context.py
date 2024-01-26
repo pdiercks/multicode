@@ -33,11 +33,15 @@ class PlottingContext:
             if style in plt.style.available:
                 _styles.append(style)
             else:
-                stylefile = Path(style)
-                if stylefile.exists():
-                    _styles.append(str(stylefile))
+                path = Path(style)
+                if path.exists():
+                    _styles.append(str(path))
                 else:
-                    raise FileNotFoundError(f"The file {str(stylefile)} could not be found.")
+                    stylefile = Path(__file__).parent / (path.stem + ".mplstyle")
+                    if stylefile.exists():
+                        _styles.append(str(stylefile))
+                    else:
+                        raise FileNotFoundError(f"The file {str(stylefile)} could not be found.")
         plt.style.use(_styles)
         self.fig = plt.figure(constrained_layout=True)
 
