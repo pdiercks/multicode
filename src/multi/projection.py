@@ -8,6 +8,29 @@ from pymor.vectorarrays.interface import VectorArray
 from pymor.algorithms.basic import project_array, relative_error
 
 
+def absolute_error(U: VectorArray, V: VectorArray, product: Optional[Operator] = None):
+    """Compute absolute error between U and V."""
+    err = (U - V).norm(product)
+    return err
+
+
+def compute_absolute_proj_errors(U: VectorArray, basis: VectorArray, product: Optional[Operator] = None, orthonormal: bool = True) -> list[float]:
+    """Compute absolute projection errors.
+
+    Args:
+        U: The test data.
+        basis: Basis to project onto.
+        product: Inner product to use.
+        orthonormal: If True, assume basis is orthonormal wrt product.
+    """
+    errors = []
+    for N in range(len(basis) + 1):
+        U_proj = project_array(U, basis[:N], product=product, orthonormal=orthonormal)
+        relerr = absolute_error(U, U_proj, product=product)
+        errors.append(np.max(relerr))
+    return errors
+
+
 def compute_relative_proj_errors(U: VectorArray, basis: VectorArray, product: Optional[Operator] = None, orthonormal: bool = True) -> list[float]:
     """Compute relative projection errors.
 
