@@ -726,13 +726,24 @@ class MultiscaleProblemDefinition(ABC):
         """
         pass
 
-    def build_edge_basis_config(self, cell_sets: dict) -> None:
-        """Defines which oversampling problem is used to
-        compute the POD basis for a certain edge.
+    def build_edge_basis_config(self, cell_sets: dict[str, set[int]]) -> None:
+        """Builds mappings from cell index to _active edges_ and from edge
+        index to cell containing that edge. _Active_ refers to whether the cell
+        owns this edge or if it is owned by the neighbouring coarse grid cell.
+        This information is used to compute the extension of fine scale edge
+        basis functions to achieve a conforming global approximation.
+        See also ``self.active_edges`` and ``self.edge_to_cell``.
 
         Args:
-            cell_sets: Cell sets according to which 'active_edges' for
-            a cell are defined. The order is important.
+            cell_sets: Cell sets used to define _active edges_. The order
+            is important.
+
+        Example:
+            The edge e is shared by cells A (right) and B (left). Providing the cell sets
+            {"A": set([A]), "B": set([B])} in this order will result in A
+            owning the edge e. Thus, the fine scale edge modes generated for the right
+            edge of A will also be extended into coarse grid cell B with the modes
+            prescribed on B's left edge.
 
         """
 
@@ -758,22 +769,34 @@ class MultiscaleProblemDefinition(ABC):
                         edge_map[ent] = (cell_index, edge)
                         marked_edges.add(ent)
         assert len(active_edges.keys()) == self.coarse_grid.num_cells
-        self.active_edges = active_edges
-        self.edge_map = edge_map
+        self._active_edges = active_edges
+        self._edge_map = edge_map
 
-    def get_active_edges(self, cell_index) -> set[str]:
-        """Returns the set of edges to consider for construction of the POD edge
-        basis in the TransferProblem for given cell.
-        This depends on the `self.active_edges`.
+    def active_edges(self, cell: int) -> set[str]:
+        """Returns the set of local edges owned by given cell.
 
         Args:
             cell_index: The global cell index of the target subdomain.
 
         """
-        if not hasattr(self, "active_edges"):
+        if not hasattr(self, "_active_edges"):
             raise AttributeError(
                 "You have to define an edge basis configuration "
                 "by calling `self.build_edge_basis_config`"
             )
-        config = self.active_edges
-        return config[cell_index]
+        return self._active_edges[cell]
+
+    def edge_to_cell(self, edge: int) -> tuple[int, str]:
+        """Returns cell owning the edge and str representation of local edge
+        entity.
+
+        Args:
+            edge: The global edge index.
+
+        """
+        if not hasattr(self, "_edge_map"):
+            raise AttributeError(
+                "You have to define an edge basis configuration "
+                "by calling `self.build_edge_basis_config`"
+            )
+        return self._edge_map[edge]

@@ -49,7 +49,17 @@ def test():
     coarse = tempfile.NamedTemporaryFile(suffix='.msh')
     fine = tempfile.NamedTemporaryFile(suffix='.msh')
     create_rectangle(0., 1., 0., 1., num_cells=2, recombine=True, out_file=coarse.name)
-    # create_rectangle(0., 1., 0., 1., num_cells=4, recombine=True, out_file=fine.name)
+    """
+
+    coarse grid cells
+    |----|----|
+    | 2  | 3  |
+    |----|----|
+    | 0  | 1  |
+    |----|----|
+
+    """
+
     problem = MyProblem(coarse.name, fine.name)
     problem.setup_coarse_grid(2)
     # problem.setup_fine_grid() # FIXME: would need XDMF
@@ -60,5 +70,32 @@ def test():
     problem.setup_coarse_space()
     # problem.setup_fine_space()
 
-    # TODO: problem.build_edge_basis_config
-    # TODO: problem.get_active_edges
+    cell_sets = {"A": set([0, 1]), "B": set([2, 3])}
+    problem.build_edge_basis_config(cell_sets)
+    # due to order, cells 0 and 1 should own its top edges 4 and 6 respectively
+    # cell 0, also owns edge that is shared with cell 1
+    edges_0 = problem.active_edges(0)
+    edges_1 = problem.active_edges(1)
+    edges_2 = problem.active_edges(2)
+    edges_3 = problem.active_edges(3)
+
+    assert len(edges_0) == 4
+    assert len(edges_1) == 3
+    assert len(edges_2) == 3
+    assert len(edges_3) == 2
+
+    assert "bottom" not in edges_2
+    assert "bottom" not in edges_3
+    assert "left" not in edges_3
+    assert "left" not in edges_1
+
+    (cell_0, top) = problem.edge_to_cell(4)
+    assert cell_0 == 0
+    assert top == "top"
+    (cell_2, right) = problem.edge_to_cell(7)
+    assert cell_2 == 2
+    assert right == "right"
+
+
+if __name__ == "__main__":
+    test()
