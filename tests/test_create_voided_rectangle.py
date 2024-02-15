@@ -10,7 +10,7 @@ from multi.preprocessing import create_voided_rectangle
 def test():
     num_cells = 10
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_voided_rectangle(0., 1., 0., 1., num_cells=num_cells, out_file=tf.name)
+        create_voided_rectangle(0., 1., 0., 1., num_cells=num_cells, recombine=True, out_file=tf.name)
         mesh = meshio.read(tf.name)
         assert "gmsh:physical" in mesh.cell_data.keys()
         assert all([np.sum(data) > 0 for data in mesh.cell_data["gmsh:physical"]])
