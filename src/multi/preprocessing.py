@@ -205,6 +205,7 @@ def create_voided_rectangle(
     radius: float = 0.2,
     lc: float = 0.1,
     num_cells: Optional[int] = None,
+    recombine: bool = False,
     facets: bool = True,
     out_file: Optional[str] = None,
     options: Optional[dict[str, int]] = None,
@@ -221,6 +222,7 @@ def create_voided_rectangle(
         lc: Characteristic length of cells.
         num_cells: If not None, a structured mesh with `num_cells` per edge will
         be created. `num_cells` must be even.
+        recombine: If True, recombine triangles to quadrilaterals.
         facets: If True, create physical groups for facets.
         out_file: Write mesh to `out_file`. Default: './voided_rectangle.msh'
         options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
@@ -342,6 +344,10 @@ def create_voided_rectangle(
             geom.mesh.set_transfinite_surface(surface, arrangement="Right")
         for surface in matrix[1::2]:
             geom.mesh.set_transfinite_surface(surface, arrangement="Left")
+
+        if recombine:
+            for surface in matrix:
+                gmsh.model.geo.mesh.setRecombine(2, surface)
 
     geom.synchronize()
     geom.removeAllDuplicates()
