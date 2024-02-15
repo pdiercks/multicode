@@ -196,6 +196,174 @@ def create_rectangle(
     _generate_and_write_grid(2, filepath)
 
 
+def create_voided_rectangle(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    z: float = 0.0,
+    radius: float = 0.2,
+    lc: float = 0.1,
+    num_cells: Optional[int] = None,
+    facets: bool = True,
+    out_file: Optional[str] = None,
+    options: Optional[dict[str, int]] = None,
+):
+    """Create grid of rectangular unit cell with single circular void.
+
+    Args:
+        xmin: Coordinate.
+        xmax: Coordinate.
+        ymin: Coordinate.
+        ymax: Coordinate.
+        z: Coordinate.
+        radius: Radius of the void.
+        lc: Characteristic length of cells.
+        num_cells: If not None, a structured mesh with `num_cells` per edge will
+        be created. `num_cells` must be even.
+        facets: If True, create physical groups for facets.
+        out_file: Write mesh to `out_file`. Default: './voided_rectangle.msh'
+        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+
+    """
+
+    width = abs(xmax - xmin)
+    height = abs(ymax - ymin)
+
+    _initialize()
+    _set_gmsh_options(options)
+    gmsh.model.add("voided_rectangle")
+
+    # options
+    gmsh.option.setNumber("Mesh.Smoothing", 2)
+
+    geom = gmsh.model.geo
+
+    # add the void (circle) as 8 circle arcs
+    phi = np.linspace(0, 2 * np.pi, num=9, endpoint=True)[:-1]
+    x_center = np.array([xmin + width / 2, ymin + height / 2, z])
+    x_unit_circle = np.array(
+        [radius * np.cos(phi), radius * np.sin(phi), np.zeros_like(phi)]
+    ).T
+    x_circle = np.tile(x_center, (8, 1)) + x_unit_circle
+
+    center = geom.add_point(*x_center, lc)
+
+    circle_points = []
+    for xyz in x_circle:
+        p = geom.add_point(*xyz, lc)
+        circle_points.append(p)
+
+    circle_arcs = []
+    for i in range(len(circle_points) - 1):
+        arc = geom.add_circle_arc(circle_points[i], center, circle_points[i + 1])
+        circle_arcs.append(arc)
+    arc = geom.add_circle_arc(circle_points[-1], center, circle_points[0])
+    circle_arcs.append(arc)
+
+    # add the rectangle defined by 8 points
+    dx = np.array([width / 2, 0.0, 0.0])
+    dy = np.array([0.0, height / 2, 0.0])
+    x_rectangle = np.stack(
+        [
+            x_center + dx,
+            x_center + dx + dy,
+            x_center + dy,
+            x_center - dx + dy,
+            x_center - dx,
+            x_center - dx - dy,
+            x_center - dy,
+            x_center + dx - dy,
+        ]
+    )
+
+    rectangle_points = []
+    for xyz in x_rectangle:
+        p = geom.add_point(*xyz, lc)
+        rectangle_points.append(p)
+
+    # draw rectangle lines
+    rectangle_lines = []
+    for i in range(len(rectangle_points) - 1):
+        line = geom.add_line(rectangle_points[i], rectangle_points[i + 1])
+        rectangle_lines.append(line)
+    line = geom.add_line(rectangle_points[-1], rectangle_points[0])
+    rectangle_lines.append(line)
+
+    # connect rectangle points and circle points from outer to inner
+    conn = []
+    for i in range(len(circle_points)):
+        line = geom.add_line(rectangle_points[i], circle_points[i])
+        conn.append(line)
+
+    # add curve loops defining surfaces of the matrix
+    mat_loops = []
+    for i in range(len(circle_points) - 1):
+        cloop = geom.add_curve_loop(
+            [rectangle_lines[i], conn[i + 1], -circle_arcs[i], -conn[i]]
+        )
+        mat_loops.append(cloop)
+    cloop = geom.add_curve_loop(
+        [rectangle_lines[-1], conn[0], -circle_arcs[-1], -conn[-1]]
+    )
+    mat_loops.append(cloop)
+
+    matrix = []
+    for curve_loop in mat_loops:
+        mat_surface = geom.add_plane_surface([curve_loop])
+        matrix.append(mat_surface)
+
+    if num_cells is not None:
+        if not num_cells % 2 == 0:
+            raise ValueError(
+                "Number of cells per edge must be even for transfinite mesh. Sorry!"
+            )
+
+        N = int(num_cells) // 2  # num_cells_per_segment
+
+        for line in circle_arcs:
+            geom.mesh.set_transfinite_curve(line, N + 1)
+        for line in rectangle_lines:
+            geom.mesh.set_transfinite_curve(line, N + 1)
+        # diagonal connections
+        for line in conn[0::2]:
+            geom.mesh.set_transfinite_curve(
+                line, N + 3, meshType="Progression", coef=1.0
+            )
+        # horizontal or vertical connections
+        for line in conn[1::2]:
+            geom.mesh.set_transfinite_curve(
+                line, N + 3, meshType="Progression", coef=0.9
+            )
+
+        # transfinite surfaces (circle and matrix)
+        # geom.mesh.set_transfinite_surface(tag, arrangement='Left', cornerTags=[])
+        for surface in matrix[0::2]:
+            geom.mesh.set_transfinite_surface(surface, arrangement="Right")
+        for surface in matrix[1::2]:
+            geom.mesh.set_transfinite_surface(surface, arrangement="Left")
+
+    geom.synchronize()
+    geom.removeAllDuplicates()
+
+    # ### physical groups
+    gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
+
+    # markers for the facets following ordering of
+    # entities of multi.dofmap.QuadrilateralDofLayout
+    # bottom: 1, left: 2, right: 3, top: 4
+    if facets:
+        gmsh.model.add_physical_group(1, rectangle_lines[5:7], 1, name="bottom")
+        gmsh.model.add_physical_group(1, rectangle_lines[3:5], 2, name="left")
+        gmsh.model.add_physical_group(
+            1, [rectangle_lines[0], rectangle_lines[-1]], 3, name="right"
+        )
+        gmsh.model.add_physical_group(1, rectangle_lines[1:3], 4, name="top")
+
+    filepath = out_file or "./voided_rectangle.msh"
+    _generate_and_write_grid(2, filepath)
+
+
 def create_unit_cell_01(
     xmin: float,
     xmax: float,
