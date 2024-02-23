@@ -38,7 +38,7 @@ def interpolate(u: fem.Function, points: npt.NDArray[np.float64]):
 
 
 def make_mapping(subspace, superspace):
-    """compute dof mapping from subspace to superspace
+    """Computes dof mapping from superspace to subspace.
 
     Returns
     -------
