@@ -9,13 +9,15 @@ from multi.boundary import plane_at
 from multi.domain import RectangularSubdomain
 from multi.materials import LinearElasticMaterial
 from multi.misc import x_dofs_vectorspace
-from multi.preprocessing import create_rectangle
+from multi.preprocessing import create_rectangle, create_voided_rectangle
 from multi.problems import LinElaSubProblem
+from multi.interpolation import make_mapping
 
 
-def test():
+@pytest.mark.parametrize("create_grid",[create_rectangle,create_voided_rectangle])
+def test(create_grid):
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle(
+        create_grid(
             0.0,
             1.0,
             0.0,
@@ -47,15 +49,26 @@ def test():
 
     Ω.create_coarse_grid(1)
     Ω.create_boundary_grids()
-    problem.create_map_from_V_to_L()
+    problem.create_map_from_V_to_L() # sets up edge spaces if required
     problem.setup_coarse_space()
 
+    # check mappings between spaces
     x_dofs = x_dofs_vectorspace(problem.V)
     bottom = x_dofs[problem.V_to_L["bottom"]]
+    top = x_dofs[problem.V_to_L["top"]]
+    top_to_bottom = make_mapping(problem.edge_spaces["fine"]["bottom"], problem.edge_spaces["fine"]["top"])
     assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
-    left = x_dofs[problem.V_to_L["left"]]
-    assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
+    assert np.allclose(top[:, 1], np.ones_like(top[:, 1]))
+    assert np.allclose(bottom[:, 0], top[top_to_bottom, 0])
 
+    left = x_dofs[problem.V_to_L["left"]]
+    right = x_dofs[problem.V_to_L["right"]]
+    right_to_left = make_mapping(problem.edge_spaces["fine"]["left"], problem.edge_spaces["fine"]["right"])
+    assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
+    assert np.allclose(right[:, 0], np.ones_like(right[:, 0]))
+    assert np.allclose(left[:, 1], right[right_to_left, 1])
+
+    # arbitrary solution of the problem
     left = plane_at(0.0, "x")
     gdim = domain.geometry.dim
     zero = np.array((0,) * gdim, dtype=default_scalar_type)
