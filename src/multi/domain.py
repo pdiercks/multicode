@@ -78,9 +78,11 @@ class RectangularDomain(Domain):
             
         """
         super().__init__(grid, cell_tags, facet_tags)
+
+    def _init_markers(self) -> dict[str, Callable]:
         xmin, ymin, _ = self.xmin
         xmax, ymax, _ = self.xmax
-        self._markers = {
+        return {
             "left" : plane_at(xmin, "x"),
             "right" : plane_at(xmax, "x"),
             "bottom" : plane_at(ymin, "y"),
@@ -94,9 +96,10 @@ class RectangularDomain(Domain):
             boundary: The boundary of the rectangular domain.
         """
         supported = set(self.boundaries)
+        markers = self._init_markers()
         if not boundary in supported:
             raise ValueError(f"{boundary=} does not match. Supported values are {supported}.")
-        return self._markers[boundary]
+        return markers[boundary]
 
     def create_facet_tags(self, boundaries: dict[str, int]) -> None:
         """Creates facet tags for given boundaries.
@@ -113,10 +116,11 @@ class RectangularDomain(Domain):
 
         fmarkers = {}
         supported = set(self.boundaries)
+        _markers = self._init_markers()
         for boundary, tag in boundaries.items():
             if not boundary in supported:
                 raise ValueError(f"{boundary=} does not match. Supported values are {supported}.")
-            marker = self._markers[boundary]
+            marker = _markers[boundary]
             fmarkers[boundary] = (tag, marker)
 
         facet_tags, _ = create_meshtags(self.grid, self.tdim-1, fmarkers)
@@ -166,6 +170,7 @@ class RectangularSubdomain(RectangularDomain):
 
     def create_boundary_grids(self) -> None:
         """Creates coarse and fine grid partitions of the boundary of the rectangular subdomain."""
+        _markers = self._init_markers()
 
         if not hasattr(self, "coarse_grid"):
             raise AttributeError("Coarse grid discretization does not exist.")
@@ -174,7 +179,7 @@ class RectangularSubdomain(RectangularDomain):
             tdim = parent.topology.dim
             fdim = tdim - 1
             parent.topology.create_connectivity(fdim, tdim)
-            boundary_marker = self.str_to_marker(boundary)
+            boundary_marker = _markers[boundary]
             facets = mesh.locate_entities_boundary(parent, fdim, boundary_marker)
             submesh, _, _, _ = mesh.create_submesh(parent, fdim, facets)
             return submesh
