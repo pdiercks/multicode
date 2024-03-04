@@ -32,7 +32,7 @@ def test(create_grid):
     ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
     V = fem.functionspace(domain, ve)
     gdim = domain.ufl_cell().geometric_dimension()
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
     Ω = RectangularSubdomain(1, domain, facet_tags=ft)
     problem = LinElaSubProblem(Ω, V, phases)
 

@@ -41,7 +41,7 @@ def test(product_name):
     gdim = domain.ufl_cell().geometric_dimension()
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
     omega = Domain(domain)
-    problem = LinearElasticityProblem(omega, V, (mat,))
+    problem = LinearElasticityProblem(omega, V, mat)
     problem.setup_solver()
     problem.assemble_matrix()
     ai, aj, av = problem._A.getValuesCSR()
@@ -147,7 +147,7 @@ def test_bc_hom(product_name):
 
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
     omega = Domain(domain)
-    problem = LinearElasticityProblem(omega, V, (mat,))
+    problem = LinearElasticityProblem(omega, V, mat)
     problem.add_dirichlet_bc(zero, facets, entity_dim=fdim)
     problem.setup_solver()
     problem.assemble_matrix(bcs=problem.bcs)

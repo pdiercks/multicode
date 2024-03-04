@@ -22,7 +22,7 @@ def test():
 
     num_cells = 10
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_unit_cell_01(0., 1., 0., 1., num_cells=num_cells, out_file=tf.name)
+        create_unit_cell_01(0., 1., 0., 1., num_cells=num_cells, cell_tags={"matrix": 1, "inclusion": 2}, facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4}, out_file=tf.name)
 
         rce, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     Ω = RectangularSubdomain(1, rce, ct, ft)
