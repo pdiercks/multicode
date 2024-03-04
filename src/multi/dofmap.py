@@ -1,5 +1,6 @@
 import numpy as np
 import basix
+from multi.domain import StructuredQuadGrid
 
 
 class QuadrilateralDofLayout(object):
@@ -92,7 +93,7 @@ class DofMap:
         The quadrilateral mesh of the computational domain.
     """
 
-    def __init__(self, grid):
+    def __init__(self, grid: StructuredQuadGrid):
         self.grid = grid
         self.dof_layout = QuadrilateralDofLayout()
 
