@@ -1,19 +1,36 @@
-from mpi4py import MPI
-from dolfinx import fem, mesh, default_scalar_type
-from basix.ufl import element
+import tempfile
+
+import pytest
 import numpy as np
+
+from mpi4py import MPI
+from dolfinx import mesh, fem, default_scalar_type
+from dolfinx.io import gmshio
+from basix.ufl import element
 import ufl
+
 from multi.boundary import plane_at
-from multi.domain import Domain
+from multi.domain import RectangularDomain
 from multi.problems import LinearProblem
 from multi.extension import extend
 
 
-def test():
-    num_cells = int(100 / 1.41)
-    domain = mesh.create_unit_square(
-        MPI.COMM_WORLD, num_cells, num_cells, mesh.CellType.quadrilateral
-    )
+def get_domain(name):
+    if name == "rectangle":
+        from multi.preprocessing import create_rectangle as create_mesh
+    elif name == "voided_rectangle":
+        from multi.preprocessing import create_voided_rectangle as create_mesh
+    else:
+        raise NotImplementedError
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_mesh(0., 1., 0., 1., num_cells=10, out_file=tf.name)
+        domain, _, _ = gmshio.read_from_msh(tf.name, MPI.COMM_SELF, gdim=2)
+    return domain
+
+
+@pytest.mark.parametrize("name",["rectangle", "voided_rectangle"])
+def test(name):
+    domain = get_domain(name)
     quad = element("Lagrange", domain.basix_cell(), 2, shape=())
     V = fem.functionspace(domain, quad)
     Vdim = V.dofmap.index_map.size_global * V.dofmap.bs
@@ -41,9 +58,16 @@ def test():
 
         return expr
 
-    Ω = Domain(domain)
+    Ω = RectangularDomain(domain)
+    tdim = domain.topology.dim
+    fdim = tdim - 1
+    boundary_facets = np.array([], dtype=np.intc)
+    for edge in Ω.boundaries:
+        marker = Ω.str_to_marker(edge)
+        entities = mesh.locate_entities_boundary(domain, fdim, marker)
+        boundary_facets = np.append(boundary_facets, entities)
+
     problem = DummyProblem(Ω, V)
-    boundary_facets = mesh.exterior_facet_indices(domain.topology)
 
     boundary_data = []
     num_test = 20
@@ -81,7 +105,7 @@ def test():
         "pc_type": "lu",
         "pc_factor_mat_solver_type": "mumps",
     }
-    extensions = extend(problem, boundary_data, petsc_options=petsc_options)
+    extensions = extend(problem, boundary_facets, boundary_data, petsc_options=petsc_options)
     assert len(extensions) == num_test + 1
     assert all([not np.allclose(extensions[0].array, vec.array) for vec in extensions[1:]])
 
