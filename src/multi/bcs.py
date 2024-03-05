@@ -22,10 +22,11 @@ def get_boundary_dofs(V: fem.FunctionSpaceBase, marker: Optional[Callable] = Non
 
 
 class BoundaryDataFactory(object):
-    """Handles creation of Functions for extension into a domain Ω.
+    """Handles creation of Functions for definition of Dirichlet BCs in extension problems.
 
     Args:
         domain: The computational domain.
+        boundary_entities: The entities belonging to the Dirichlet boundary.
         V: The FE space.
 
     Notes:
@@ -38,7 +39,7 @@ class BoundaryDataFactory(object):
         object that applies to the entire boundary ∂Ω.
     """
 
-    def __init__(self, domain: mesh.Mesh, V: fem.FunctionSpaceBase):
+    def __init__(self, domain: mesh.Mesh, boundary_entities: np.ndarray, V: fem.FunctionSpaceBase):
         self.domain = domain
         self.V = V
 
@@ -49,9 +50,9 @@ class BoundaryDataFactory(object):
         tdim = domain.topology.dim
         fdim = tdim - 1
         domain.topology.create_connectivity(fdim, tdim)
-        boundary_facets = mesh.exterior_facet_indices(domain.topology)
+        self.boundary_entities = boundary_entities
         self.boundary_dofs = fem.locate_dofs_topological(
-            V, fdim, boundary_facets
+            V, fdim, boundary_entities
         )
 
     def create_function_values(self, values: npt.NDArray, dofs: npt.NDArray) -> fem.Function:

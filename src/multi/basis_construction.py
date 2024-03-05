@@ -16,7 +16,13 @@ def compute_phi(problem, nodes):
     quadrilateral = NumpyQuad(nodes)
     shape_functions = quadrilateral.interpolate(V)
 
-    data_factory = BoundaryDataFactory(problem.domain.grid, V)
+    boundary_entities = np.array([], dtype=np.intc)
+    for edge in problem.domain.boundaries:
+        marker = problem.domain.str_to_marker(edge)
+        entities = locate_entities_boundary(problem.domain.grid, problem.domain.tdim-1, marker)
+        boundary_entities = np.append(boundary_entities, entities)
+
+    data_factory = BoundaryDataFactory(problem.domain.grid, boundary_entities, V)
 
     boundary_data = []
     g = Function(V)
@@ -24,11 +30,6 @@ def compute_phi(problem, nodes):
         g.x.array[:] = shape
         boundary_data.append([data_factory.create_bc(g.copy())])
 
-    boundary_entities = np.array([], dtype=np.intc)
-    for edge in problem.domain.boundaries:
-        marker = problem.domain.str_to_marker(edge)
-        entities = locate_entities_boundary(problem.domain.grid, problem.domain.tdim-1, marker)
-        boundary_entities = np.append(boundary_entities, entities)
 
     petsc_options = {
         "ksp_type": "preonly",
