@@ -34,7 +34,3 @@ def test(domain):
     domain.topology.create_connectivity(fdim, tdim)
     boundary_facets = exterior_facet_indices(domain.topology)
     assert len(boundary_facets) > 0
-
-
-if __name__ == "__main__":
-    test()

@@ -1,11 +1,13 @@
 from typing import Union, Optional
-from multi.problems import LinearProblem
+import numpy as np
 from dolfinx import fem, mesh
 from petsc4py.PETSc import Vec as PETScVec
+from multi.problems import LinearProblem
 
 
 def extend(
     problem: LinearProblem,
+    boundary_entities: np.ndarray,
     boundary_data: list[list[Union[fem.DirichletBC, dict]]],
     petsc_options: Optional[dict] = None,
 ) -> list[PETScVec]:
@@ -13,6 +15,7 @@ def extend(
 
     Args:
         problem: The linear problem, i.e. extension problem.
+        boundary_entities: The entities associated with the Dirichlet boundary.
         boundary_data: The functions to be extended into the domain.
         See `multi.bcs.BoundaryConditions.add_dirichlet_bc` for `dict` values.
         petsc_options: PETSc options.
@@ -28,9 +31,8 @@ def extend(
     # ### Assemble operator A
     zero_fun = fem.Function(V)
     zero_fun.vector.zeroEntries()
-    boundary_facets = mesh.exterior_facet_indices(domain.topology)
     problem.add_dirichlet_bc(
-        zero_fun, boundary_facets, method="topological", entity_dim=fdim
+        zero_fun, boundary_entities, method="topological", entity_dim=fdim
     )
     problem.setup_solver(petsc_options=petsc_options)
     problem.assemble_matrix(bcs=problem.get_dirichlet_bcs())
