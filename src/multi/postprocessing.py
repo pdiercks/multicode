@@ -24,6 +24,16 @@ def read_bam_colormap():
 
 
 def plot_domain(domain: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, colormap: str = "viridis", transparent: bool = False, output: Optional[str] = None):
+    """Visualize the ``domain`` using pyvista.
+
+    Args:
+        domain: The ``dolfinx.mesh.Mesh`` to visualize.
+        cell_tags: If not None, show cell tags.
+        colormap: The colormap to be used. Can be one of 'viridis', 'RdYlBu', 'bam-RdBu'.
+        transparent: If True, use a transparent background.
+        output: If not None, save screenshot to this filepath.
+
+    """
 
     if colormap == "bam-RdBu":
         from multi.postprocessing import read_bam_colormap
@@ -52,21 +62,9 @@ def plot_domain(domain: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, co
 
     plotter = pyvista.Plotter(off_screen=off_screen)
     plotter.add_mesh(grid, show_edges=True, show_scalar_bar=False, cmap=cmap)
-    pyvista.global_theme.font.size = 12
-    plotter.show_bounds(
-        color="black",
-        font_family="times",
-        location="outer",
-        xtitle="X",
-        ytitle="Y",
-        use_2d=False,
-        bold=True,
-        ticks="outside",
-    )
     plotter.view_xy()
 
     if off_screen:
         plotter.screenshot(output, transparent_background=transparent)
     else:
         plotter.show()
-
