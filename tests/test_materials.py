@@ -1,6 +1,6 @@
 from mpi4py import MPI
 import pytest
-from dolfinx import fem, mesh
+from dolfinx import fem, mesh, default_scalar_type
 import basix
 from basix.ufl import element
 import numpy as np
@@ -9,21 +9,20 @@ from multi.materials import LinearElasticMaterial
 
 @pytest.mark.parametrize("gdim", [1, 2, 3])
 def test(gdim):
-    E = 210e3 # 210 GPa
-    NU = 0.3
 
-    mat = LinearElasticMaterial(gdim, E=E, NU=NU)
     if gdim == 1:
         cell_type = basix.CellType.interval
         domain = mesh.create_unit_interval(MPI.COMM_WORLD, 1)
     elif gdim == 2:
         cell_type = basix.CellType.quadrilateral
         domain = mesh.create_unit_square(MPI.COMM_WORLD, 1, 1, mesh.CellType.quadrilateral)
-        mat = LinearElasticMaterial(gdim, E=E, NU=NU, plane_stress=False)
     else:
         cell_type = basix.CellType.hexahedron
         domain = mesh.create_unit_cube(MPI.COMM_WORLD, 1, 1, 1, mesh.CellType.hexahedron)
 
+    E = fem.Constant(domain, default_scalar_type(210e3)) # 210 GPa
+    NU = fem.Constant(domain, default_scalar_type(0.3))
+    mat = LinearElasticMaterial(gdim, E=E, NU=NU)
     fe = element("P", domain.basix_cell(), 1, shape=(gdim,))
     V = fem.functionspace(domain, fe)
 
