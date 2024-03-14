@@ -7,7 +7,31 @@ import numpy as np
 from multi.preprocessing import create_unit_cell_01
 
 
-def test():
+def test_no_tags():
+    num_cells = 10
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_unit_cell_01(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=num_cells,
+            recombine=True,
+            out_file=tf.name,
+        )
+        mesh = meshio.read(tf.name)
+        assert "gmsh:physical" in mesh.cell_data.keys()
+        assert all([np.sum(data) > 0 for data in mesh.cell_data["gmsh:physical"]])
+
+        domain, ct, ft = gmshio.read_from_msh(
+            tf.name, MPI.COMM_WORLD, gdim=2
+        )
+        assert domain.topology.dim == 2
+        assert ct.values.size > 0
+        assert ft.values.size == 0
+
+
+def test_physical_groups():
     num_cells = 10
     cell_tags = {"matrix": 11, "inclusion": 23}
     facet_tags = {"bottom": 1, "left": 2, "right": 3, "top": 4}

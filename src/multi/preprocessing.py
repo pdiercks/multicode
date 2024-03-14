@@ -397,14 +397,19 @@ def create_unit_cell_01(
         radius: Radius of the inclusion.
         lc: Characteristic length of cells.
         num_cells: If not None, a structured mesh with `num_cells` per edge will
-        be created. `num_cells` must be even.
+          be created. `num_cells` must be even.
         recombine: If True, recombine triangles to quadrilaterals.
-        cell_tags: If not None, specify cell tags as values for keys `matrix` and `inclusion`.
-        facet_tags: If not None, specify facet tags as values for keys `bottom`, `left`, `right` and `top`.
+        cell_tags: Specify cell tags as values for keys `matrix` and `inclusion`.
+          If None, by default cell tags with value 1 for `matrix` and 2 for
+          `inclusion` are created.
+        facet_tags: Specify facet tags as values for keys `bottom`, `left`,
+          `right` and `top`.
         out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
-        tag_counter: Can be used to keep track of entity `tags`. The key is the topological dimension
-        of the entities to keep track of and the value is the counter.
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        tag_counter: Can be used to keep track of entity `tags`. The key is the
+          topological dimension of the entities to keep track of and the value
+          is the counter.
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
 
     """
 
@@ -413,7 +418,7 @@ def create_unit_cell_01(
 
     _initialize()
     _set_gmsh_options(options)
-    gmsh.model.add("rce_01")
+    gmsh.model.add("unit_cell_01")
 
     # options
     gmsh.option.setNumber("Mesh.Smoothing", 2)
@@ -548,6 +553,8 @@ def create_unit_cell_01(
     geom.removeAllDuplicates()
 
     # ### physical groups
+    # at least for the entities of dimension tdim
+    # these need to be defined
     if cell_tags is not None:
         for name, tag in cell_tags.items():
             if name.startswith("matrix"):
@@ -556,10 +563,10 @@ def create_unit_cell_01(
                 gmsh.model.add_physical_group(2, [circle_surface], tag, name=name)
             else:
                 raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
+        gmsh.model.add_physical_group(2, [circle_surface], 2, name="inclusion")
 
-    # markers for the facets following ordering of
-    # entities of multi.dofmap.QuadrilateralDofLayout
-    # bottom: 1, left: 2, right: 3, top: 4
     if facet_tags is not None:
         gmsh.model.add_physical_group(1, rectangle_lines[5:7], facet_tags["bottom"], name="bottom")
         gmsh.model.add_physical_group(1, rectangle_lines[3:5], facet_tags["left"], name="left")
