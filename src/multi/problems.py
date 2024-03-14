@@ -202,7 +202,7 @@ class LinearElasticityProblem(LinearProblem):
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
         self.phases = phases
 
-    def update_material(self, values: tuple[dict[str, float]]):
+    def update_material(self, values: tuple[dict[str, float], ...]):
         """Updates the material parameters for each material phase.
 
         Args:
@@ -461,7 +461,7 @@ class TransferProblem(LogMixin):
         # now p.solver is setup with matrix p.A
         # and p.a should be used to modify rhs (apply lifting)
 
-    def update_material(self, values: tuple[dict[str, float]]) -> None:
+    def update_material(self, values: tuple[dict[str, float], ...]) -> None:
         """Updates the material and re-assembles the system matrix of the
         oversampling problem.
 
