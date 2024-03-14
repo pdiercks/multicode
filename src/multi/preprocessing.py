@@ -102,8 +102,8 @@ def create_line(start: Iterable[float], end: Iterable[float], lc: float = 0.1, n
     _set_gmsh_options(options)
     gmsh.model.add("line")
 
-    p0 = gmsh.model.geo.addPoint(*start, lc)
-    p1 = gmsh.model.geo.addPoint(*end, lc)
+    p0 = gmsh.model.geo.addPoint(*start, meshSize=lc, tag=-1)
+    p1 = gmsh.model.geo.addPoint(*end, meshSize=lc, tag=-1)
     line = gmsh.model.geo.addLine(p0, p1)
 
     if num_cells is not None:
@@ -249,11 +249,11 @@ def create_voided_rectangle(
     ).T
     x_circle = np.tile(x_center, (8, 1)) + x_unit_circle
 
-    center = geom.add_point(*x_center, lc)
+    center = geom.add_point(*x_center, meshSize=lc, tag=-1)
 
     circle_points = []
     for xyz in x_circle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         circle_points.append(p)
 
     circle_arcs = []
@@ -281,7 +281,7 @@ def create_voided_rectangle(
 
     rectangle_points = []
     for xyz in x_rectangle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         rectangle_points.append(p)
 
     # draw rectangle lines
@@ -407,7 +407,7 @@ def create_unit_cell_01(
         out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
         tag_counter: Can be used to keep track of entity `tags`. The key is the
           topological dimension of the entities to keep track of and the value
-          is the counter.
+          is the counter. Useful if several mshfiles should be merged.
         options: Options to pass to GMSH.
           See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
 
@@ -433,11 +433,11 @@ def create_unit_cell_01(
     ).T
     x_circle = np.tile(x_center, (8, 1)) + x_unit_circle
 
-    center = geom.add_point(*x_center, lc)
+    center = geom.add_point(*x_center, meshSize=lc, tag=-1)
 
     circle_points = []
     for xyz in x_circle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         circle_points.append(p)
 
     circle_arcs = []
@@ -473,7 +473,7 @@ def create_unit_cell_01(
 
     rectangle_points = []
     for xyz in x_rectangle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         rectangle_points.append(p)
 
     # draw rectangle lines
@@ -581,17 +581,27 @@ def create_unit_cell_01(
 
 def create_unit_cell_02(
     num_cells: Optional[int] = None,
-    facets: bool = True,
+    cell_tags: Optional[dict[str, int]] = None,
+    facet_tags: Optional[dict[str, int]] = None,
     out_file: Optional[str] = None,
+    tag_counter: Optional[dict[int, int]] = None,
     options: Optional[dict[str, int]] = None,
 ):
     """Creates a unit cell with several inclusions.
 
     Args:
         num_cells: If not None, `num_cells` cells per edge will be created.
-        facets: If True, create physical groups for facets.
-        out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        cell_tags: Specify cell tags as values for keys `matrix` and `aggregates`.
+          If None, by default cell tags with value 1 for `matrix` and 2 for
+          `aggregates` are created.
+        facet_tags: Specify facet tags as values for keys `bottom`, `left`,
+          `right` and `top`.
+        out_file: Write mesh to `out_file`. Default: './unit_cell_02.msh'
+        tag_counter: Can be used to keep track of entity `tags`. The key is the
+          topological dimension of the entities to keep track of and the value
+          is the counter. Useful if several mshfiles should be merged.
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
     """
 
     _initialize()
@@ -619,8 +629,14 @@ def create_unit_cell_02(
     curve_loops_aggregates = []
     curve_loop_matrix = []
 
+    entity_dim = 2
+    plane_surface_counter = 1
+    if tag_counter is not None:
+        plane_surface_counter += tag_counter[entity_dim]
+
     def add_aggregate(x, y, z, R):
         """add circle at (x, y, z) with radius R"""
+
         p1 = gmsh.model.geo.add_point(x, y, z, lc_aggregates)
         p2 = gmsh.model.geo.add_point(x + R, y, z, lc_aggregates)
         p3 = gmsh.model.geo.add_point(x - R, y, z, lc_aggregates)
@@ -629,7 +645,7 @@ def create_unit_cell_02(
         c2 = gmsh.model.geo.add_circle_arc(p3, p1, p2)
 
         loop = gmsh.model.geo.add_curve_loop([c1, c2])
-        surface = gmsh.model.geo.add_plane_surface([loop])
+        surface = gmsh.model.geo.add_plane_surface([loop], tag=plane_surface_counter)
 
         curve_loops_aggregates.append(loop)
         surfaces_aggregates.append(surface)
@@ -659,7 +675,6 @@ def create_unit_cell_02(
             gmsh.model.geo.mesh.set_transfinite_curve(line, num_cells + 1)
         curve_loop_matrix.append(loop)
 
-    # add aggregates
     aggregates = [  # (x, y, z, R)
         (8.124435628293494, 16.250990871336494, z, 2.2),
         (3.104265948507514, 3.072789217500327, z, 1.9),
@@ -672,25 +687,39 @@ def create_unit_cell_02(
     ]
     for xc, yc, zc, radius in aggregates:
         add_aggregate(xmin + xc, ymin + yc, zc, radius)
+        plane_surface_counter += 1
 
-    # add the matrix
     add_matrix(xmin, xmax, ymin, ymax, z)
     # add_plane_surface expects list of int (tags of curve loops)
     # if len(arg) > 1 --> subtract curve loops from first
     surface_matrix = gmsh.model.geo.add_plane_surface(
-        curve_loop_matrix + curve_loops_aggregates
+        curve_loop_matrix + curve_loops_aggregates, tag=plane_surface_counter
     )
+    plane_surface_counter += 1
 
-    # add physical groups
+    if tag_counter is not None:
+        tag_counter[entity_dim] = plane_surface_counter - 1
+
+    # ### Add physical groups
     gmsh.model.geo.synchronize()
-    gmsh.model.add_physical_group(2, [surface_matrix], 1, name="matrix")
-    gmsh.model.add_physical_group(2, surfaces_aggregates, 2, name="aggregates")
 
-    if facets:
-        gmsh.model.add_physical_group(1, bottom, 1, name="bottom")
-        gmsh.model.add_physical_group(1, left, 2, name="left")
-        gmsh.model.add_physical_group(1, right, 3, name="right")
-        gmsh.model.add_physical_group(1, top, 4, name="top")
+    if cell_tags is not None:
+        for name, tag in cell_tags.items():
+            if name.startswith("matrix"):
+                gmsh.model.add_physical_group(2, [surface_matrix], tag, name=name)
+            elif name.startswith("aggregates"):
+                gmsh.model.add_physical_group(2, surfaces_aggregates, tag, name=name)
+            else:
+                raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(2, [surface_matrix], 1, name="matrix")
+        gmsh.model.add_physical_group(2, surfaces_aggregates, 2, name="aggregates")
+
+    if facet_tags is not None:
+        gmsh.model.add_physical_group(1, bottom, facet_tags["bottom"], name="bottom")
+        gmsh.model.add_physical_group(1, left, facet_tags["left"], name="left")
+        gmsh.model.add_physical_group(1, right, facet_tags["right"], name="right")
+        gmsh.model.add_physical_group(1, top, facet_tags["top"], name="top")
 
     filepath = out_file or "./unit_cell_02.msh"
     _generate_and_write_grid(2, filepath)
