@@ -1,9 +1,7 @@
 from mpi4py import MPI
-from dolfinx.io.utils import XDMFFile
+from dolfinx.io import gmshio
 import gmsh
 import tempfile
-import meshio
-from multi.preprocessing import create_mesh, create_unit_cell_01
 
 
 def merge(mshfiles, output):
@@ -15,7 +13,10 @@ def merge(mshfiles, output):
     for msh_file in mshfiles:
         gmsh.merge(msh_file)
 
-    # gmsh.model.geo.remove_all_duplicates()
+    # gmsh.merge simply loads all data in mshfile
+    # we have to remove duplicates ourselves
+    # also, no renumbering (of any entity tags) is done
+
     gmsh.model.geo.synchronize()
     gmsh.model.mesh.remove_duplicate_nodes()
     gmsh.model.mesh.remove_duplicate_elements()
@@ -26,7 +27,9 @@ def merge(mshfiles, output):
     gmsh.finalize()
 
 
-if __name__ == "__main__":
+def test_merge_unit_cell_01():
+    from multi.preprocessing import create_unit_cell_01
+
     coord = [[0.0, 1.0, 0.0, 1.0], [1.0, 2.0, 0.0, 1.0]]
     num_cells = 2
     to_be_merged = []
@@ -35,7 +38,6 @@ if __name__ == "__main__":
     tfiles.append(tempfile.NamedTemporaryFile(suffix=".msh"))
 
     cell_tags = [{"matrix": 1, "inclusion": 3}, {"matrix": 2, "inclusion": 8}]
-    # offsets = [{2: 0}, {2: 9}]
     offset = {2: 0}
     for i in range(num_cells):
         tmp = tfiles[i]
@@ -53,21 +55,17 @@ if __name__ == "__main__":
         )
         to_be_merged.append(tmp.name)
     merge(to_be_merged, "final_mesh.msh")
-    # cannot be read with dolfin because of same tags for different surfaces etc.
+
+    # by providing tag_counter=offset we ensure that the `tag` is
+    # different for each surface etc. in the two meshes that are created.
+    # If the tags are not unique `gmshio` will not be able to input
+    # the merged mesh correctly.
 
     for tf in tfiles:
         tf.close()
 
-    # write to xdmf using meshio, then dolfinx.io.XDMFFile ...
-    in_mesh = meshio.read("final_mesh.msh")
-
-    triangle_mesh = create_mesh(in_mesh, "triangle", prune_z=True)
-    meshio.write("final_mesh.xdmf", triangle_mesh)
-
-    with XDMFFile(MPI.COMM_WORLD, "final_mesh.xdmf", "r") as xdmf:
-        mesh = xdmf.read_mesh(name="Grid")
-        ct = xdmf.read_meshtags(mesh, name="Grid")
-
+    mesh, ct, _ = gmshio.read_from_msh("final_mesh.msh", MPI.COMM_WORLD, gdim=2)
+    assert mesh.topology.dim == 2
     assert ct.find(0).size == 0
     assert ct.find(cell_tags[0]["matrix"]).size > 0
     assert ct.find(cell_tags[1]["matrix"]).size > 0
