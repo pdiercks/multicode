@@ -314,10 +314,10 @@ class StructuredQuadGrid(object):
         cells = np.array(cells)
         assert cells.size > 0
         active_cells = self.cells[cells]
-        if active_cells.size > 1:
-            create_facets = False
-        else:
-            create_facets = True
+        # if active_cells.size > 1:
+        #     create_facets = False
+        # else:
+        #     create_facets = True
 
         for cell in active_cells:
             vertices = self.get_entities(0, cell)
@@ -347,7 +347,6 @@ class StructuredQuadGrid(object):
                         xmax[0],
                         xmin[1],
                         xmax[1],
-                        facets=create_facets,
                         out_file=tf.name,
                         **kwargs,
                     )
@@ -378,11 +377,11 @@ class StructuredQuadGrid(object):
         prune_z = True
         cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
         meshio.write(output, cell_mesh)
-        if create_facets:
-            outfile = pathlib.Path(output)
-            facet_output = outfile.parent / (outfile.stem + "_facets.xdmf")
-            facet_mesh = create_mesh(in_mesh, facet_cell_type, prune_z=prune_z)
-            meshio.write(facet_output.as_posix(), facet_mesh)
+        # if create_facets:
+        #     outfile = pathlib.Path(output)
+        #     facet_output = outfile.parent / (outfile.stem + "_facets.xdmf")
+        #     facet_mesh = create_mesh(in_mesh, facet_cell_type, prune_z=prune_z)
+        #     meshio.write(facet_output.as_posix(), facet_mesh)
 
         # clean up
         tf_msh.close()
