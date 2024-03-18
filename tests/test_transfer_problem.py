@@ -75,7 +75,7 @@ def test_remove_rot():
             0.0,
             1.0,
             num_cells=(n, n),
-            facets=True,
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
         )
@@ -87,7 +87,7 @@ def test_remove_rot():
     V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, facet_tags=facet_markers)
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
@@ -188,7 +188,7 @@ def test_remove_trans_x_rot():
             0.0,
             1.0,
             num_cells=(2*n, n),
-            facets=True,
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
             options={'Mesh.ElementOrder': 2},
@@ -201,7 +201,7 @@ def test_remove_trans_x_rot():
     V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, facet_tags=facet_markers)
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),)
+    phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
@@ -315,7 +315,7 @@ def test_remove_full_kernel():
             0.0,
             3.0,
             num_cells=(n, n),
-            facets=True,
+            facet_tags = {"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
         )

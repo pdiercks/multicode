@@ -51,7 +51,6 @@ def test():
     )
     problem.add_neumann_bc(marker_value, f_ext)
 
-
     # setup the solver
     petsc_options = {
         "ksp_type": "preonly",
@@ -93,7 +92,7 @@ def test_dirichlet():
             0.0,
             1.0,
             num_cells=8,
-            facets=False,
+            cell_tags={"matrix": 1, "inclusion": 2},
             out_file=tf.name,
         )
         domain, ct, _ = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -111,7 +110,10 @@ def test_dirichlet():
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = fem.functionspace(domain, fe)
     gdim = domain.ufl_cell().geometric_dimension()
-    phases = (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True),) * 2
+    phases = [
+        (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True), 1),
+        (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True), 2),
+    ]
     problem = LinearElasticityProblem(Ω, V, phases)
 
     # add two dirichlet bc
@@ -128,10 +130,10 @@ def test_dirichlet():
     problem.add_dirichlet_bc(u_bottom, bottom, method="geometrical")
 
     petsc_options = {
-            "ksp_type": "preonly",
-            "pc_type": "lu",
-            "pc_factor_mat_solver_type": "mumps",
-            }
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+        "pc_factor_mat_solver_type": "mumps",
+    }
     problem.setup_solver(petsc_options=petsc_options)
     solver = problem.solver
 
@@ -151,7 +153,9 @@ def test_dirichlet():
     xdofs = V.tabulate_dof_coordinates()
     x_bottom = xdofs[bdofs]
     u_values = interpolate(u, x_bottom)
-    assert np.isclose(np.sum(f_x * np.linspace(0, 1, num=9, endpoint=True)), np.sum(u_values))
+    assert np.isclose(
+        np.sum(f_x * np.linspace(0, 1, num=9, endpoint=True)), np.sum(u_values)
+    )
 
     # extract value at the right
     bdofs = fem.locate_dofs_geometrical(V, right)

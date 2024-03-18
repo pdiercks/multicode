@@ -179,28 +179,29 @@ class LinearElasticityProblem(LinearProblem):
     """Represents a linear elastic problem."""
 
     def __init__(
-            self, domain: Domain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial, ...]
+            self, domain: Domain, space: fem.FunctionSpaceBase, phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]]
     ):
         """Initializes a linear elastic problem.
 
         Args:
             domain: The computational domain.
             space: The FE space.
-            phases: Tuple of linear elastic materials for each phase.
-            The order should match `domain.cell_tags` if there are
-            several phases.
+            phases: List of Tuple of linear elastic materials and cell tag for each phase.
 
         """
 
         super().__init__(domain, space)
-        if domain.cell_tags is None:
-            assert len(phases) == 1
+        if isinstance(phases, LinearElasticMaterial):
             self.dx = ufl.dx
-        else:
+            self.phases = [phases]
+        elif isinstance(phases, list):
+            assert domain.cell_tags is not None
             self.dx = ufl.Measure("dx", domain=domain.grid,
                                   subdomain_data=domain.cell_tags)
+            for (_, tag) in phases:
+                assert tag in domain.cell_tags.values
+            self.phases = phases
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
-        self.phases = phases
 
     def update_material(self, values: tuple[dict[str, float], ...]):
         """Updates the material parameters for each material phase.
@@ -225,8 +226,8 @@ class LinearElasticityProblem(LinearProblem):
         v = self.test
         if len(self.phases) > 1:
             form = 0
-            for (i, mat) in enumerate(self.phases):
-                form += ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i + 1)
+            for (mat, i) in self.phases:
+                form += ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i)
             return form
         else:
             mat = self.phases[0]
@@ -303,7 +304,7 @@ class SubdomainProblem(object):
 class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     """Linear elasticity problem defined on a subdomain."""
 
-    def __init__(self, domain: RectangularSubdomain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]):
+    def __init__(self, domain: RectangularSubdomain, space: fem.FunctionSpaceBase, phases:Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]]):
         super().__init__(domain, space, phases)
 
 

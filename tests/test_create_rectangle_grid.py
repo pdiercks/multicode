@@ -7,8 +7,11 @@ from multi.preprocessing import create_rectangle
 @pytest.mark.parametrize("degree,cell_type,num_cells", [(1, "triangle", 8), (2, "triangle6", 8)])
 def test_triangle(degree, cell_type, num_cells):
     options = {'Mesh.ElementOrder': degree}
+    cell_tags = {"matrix": 3}
+    offset = {2: 0}
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=True) as tf:
-        create_rectangle(0.0, 1.0, 0.0, 1.0, num_cells=(2, 2), out_file=tf.name, options=options)
+        create_rectangle(0.0, 1.0, 0.0, 1.0, num_cells=(2, 2), cell_tags=cell_tags, out_file=tf.name, tag_counter=offset, options=options)
+        assert offset[2] == 1
         mesh = meshio.read(tf.name)
         assert mesh.get_cells_type(cell_type).shape[0] == num_cells
 

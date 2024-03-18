@@ -21,7 +21,7 @@ def test():
     rce.create_boundary_grids()
     gdim = domain.ufl_cell().geometric_dimension()
 
-    phases = (LinearElasticMaterial(gdim, 60e3, 0.2, plane_stress=True),)
+    phases = LinearElasticMaterial(gdim, 60e3, 0.2, plane_stress=True)
     problem = LinearElasticityProblem(rce, V, phases)
 
     vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])

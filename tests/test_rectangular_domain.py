@@ -8,8 +8,9 @@ from multi.preprocessing import create_rectangle
 
 def test():
     n = 4
+    ftags = {"bottom": 1, "left": 2, "right": 3, "top": 4}
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_rectangle(0., 1., 0., 1., num_cells=(n, n), facets=True, recombine=True, out_file=tf.name)
+        create_rectangle(0., 1., 0., 1., num_cells=(n, n), facet_tags=ftags, recombine=True, out_file=tf.name)
         domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
     omega = RectangularDomain(domain, cell_tags=None, facet_tags=ft)
     for i in range(1, 5):

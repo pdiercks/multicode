@@ -83,7 +83,7 @@ def _generate_and_write_grid(dim, filepath):
     gmsh.finalize()
 
 
-def create_line(start: Iterable[float], end: Iterable[float], lc: float = 0.1, num_cells: Optional[int] = None, out_file: Optional[str] = None, options: Optional[dict[str, int]] = None):
+def create_line(start: Iterable[float], end: Iterable[float], lc: float = 0.1, num_cells: Optional[int] = None, cell_tags: Optional[dict[str, int]] = None, out_file: Optional[str] = None, options: Optional[dict[str, int]] = None):
     """Creates a grid of a line.
 
     Args:
@@ -91,8 +91,10 @@ def create_line(start: Iterable[float], end: Iterable[float], lc: float = 0.1, n
         end: Coordinate.
         lc: Characteristic length of cells.
         num_cells: If not None, a structured mesh with `num_cells` will be created.
-        out_file: Write mesh to `out_file`. Default: './rectangle.msh'
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        cell_tags: Specify cell tags as values for key `line`.
+        out_file: Write mesh to `out_file`. Default: './line.msh'
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
 
     """
     start = np.array(to_floats(start))
@@ -102,15 +104,22 @@ def create_line(start: Iterable[float], end: Iterable[float], lc: float = 0.1, n
     _set_gmsh_options(options)
     gmsh.model.add("line")
 
-    p0 = gmsh.model.geo.addPoint(*start, lc)
-    p1 = gmsh.model.geo.addPoint(*end, lc)
+    p0 = gmsh.model.geo.addPoint(*start, meshSize=lc, tag=-1)
+    p1 = gmsh.model.geo.addPoint(*end, meshSize=lc, tag=-1)
     line = gmsh.model.geo.addLine(p0, p1)
 
     if num_cells is not None:
         gmsh.model.geo.mesh.setTransfiniteCurve(line, num_cells + 1)
 
     gmsh.model.geo.synchronize()
-    gmsh.model.addPhysicalGroup(1, [line])
+    if cell_tags is not None:
+        for k, v in cell_tags.items():
+            if k.startswith('line'):
+                gmsh.model.add_physical_group(1, [line], v, name=k)
+            else:
+                raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(1, [line], 1, name="line")
 
     filepath = out_file or "./line.msh"
     _generate_and_write_grid(1, filepath)
@@ -125,8 +134,10 @@ def create_rectangle(
     lc: float = 0.1,
     num_cells: Optional[Union[int, Sequence[int]]] = None,
     recombine: bool = False,
-    facets: bool = False,
+    cell_tags: Optional[dict[str, int]] = None,
+    facet_tags: Optional[dict[str, int]] = None,
     out_file: Optional[str] = None,
+    tag_counter: Optional[dict[int, int]] = None,
     options: Optional[dict[str, int]] = None,
 ):
     """Creates a grid of a rectangle.
@@ -141,9 +152,16 @@ def create_rectangle(
         num_cells: If not None, a structured mesh with `num_cells` per edge will
         be created.
         recombine: If True, recombine triangles to quadrilaterals.
-        facets: If True, create physical groups for facets.
+        cell_tags: Specify cell tags as values for key `matrix`.
+          If None, by default cell tags with value 1 for `matrix` are created.
+        facet_tags: Specify facet tags as values for keys `bottom`, `left`,
+          `right` and `top`.
         out_file: Write mesh to `out_file`. Default: './rectangle.msh'
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        tag_counter: Can be used to keep track of entity `tags`. The key is the
+          topological dimension of the entities to keep track of and the value
+          is the counter. Useful if several mshfiles should be merged.
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
 
     """
     _initialize()
@@ -161,7 +179,17 @@ def create_rectangle(
     l3 = gmsh.model.geo.addLine(p3, p0)  # left
 
     curve_loop = gmsh.model.geo.addCurveLoop([l0, l1, l2, l3])
-    surface = gmsh.model.geo.addPlaneSurface([curve_loop])
+
+    entity_dim = 2
+    plane_surface_counter = 1
+    if tag_counter is not None:
+        plane_surface_counter += tag_counter[entity_dim]
+
+    surface = gmsh.model.geo.addPlaneSurface([curve_loop], tag=plane_surface_counter)
+    plane_surface_counter += 1
+
+    if tag_counter is not None:
+        tag_counter[entity_dim] = plane_surface_counter - 1
 
     if num_cells is not None:
         if isinstance(num_cells, int):
@@ -181,16 +209,22 @@ def create_rectangle(
             gmsh.model.geo.mesh.setRecombine(2, surface)
 
     gmsh.model.geo.synchronize()
-    gmsh.model.addPhysicalGroup(2, [surface])
 
-    # markers for the facets following ordering of
-    # entities of multi.dofmap.QuadrilateralDofLayout
-    # bottom: 1, left: 2, right: 3, top: 4
-    if facets:
-        gmsh.model.add_physical_group(1, [l0], 1, name="bottom")
-        gmsh.model.add_physical_group(1, [l3], 2, name="left")
-        gmsh.model.add_physical_group(1, [l1], 3, name="right")
-        gmsh.model.add_physical_group(1, [l2], 4, name="top")
+    # ### Physical Groups
+    if cell_tags is not None:
+        for name, tag in cell_tags.items():
+            if name.startswith("matrix"):
+                gmsh.model.add_physical_group(2, [surface], tag, name=name)
+            else:
+                raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(2, [surface], 1, name="matrix")
+
+    if facet_tags is not None:
+        gmsh.model.add_physical_group(1, [l0], facet_tags["bottom"], name="bottom")
+        gmsh.model.add_physical_group(1, [l3], facet_tags["left"], name="left")
+        gmsh.model.add_physical_group(1, [l1], facet_tags["right"], name="right")
+        gmsh.model.add_physical_group(1, [l2], facet_tags["top"], name="top")
 
     filepath = out_file or "./rectangle.msh"
     _generate_and_write_grid(2, filepath)
@@ -206,8 +240,10 @@ def create_voided_rectangle(
     lc: float = 0.1,
     num_cells: Optional[int] = None,
     recombine: bool = False,
-    facets: bool = True,
+    cell_tags: Optional[dict[str, int]] = None,
+    facet_tags: Optional[dict[str, int]] = None,
     out_file: Optional[str] = None,
+    tag_counter: Optional[dict[int, int]] = None,
     options: Optional[dict[str, int]] = None,
 ):
     """Create grid of rectangular unit cell with single circular void.
@@ -223,9 +259,16 @@ def create_voided_rectangle(
         num_cells: If not None, a structured mesh with `num_cells` per edge will
         be created. `num_cells` must be even.
         recombine: If True, recombine triangles to quadrilaterals.
-        facets: If True, create physical groups for facets.
+        cell_tags: Specify cell tags as values for key `matrix`.
+          If None, by default cell tags with value 1 for `matrix` are created.
+        facet_tags: Specify facet tags as values for keys `bottom`, `left`,
+          `right` and `top`.
         out_file: Write mesh to `out_file`. Default: './voided_rectangle.msh'
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        tag_counter: Can be used to keep track of entity `tags`. The key is the
+          topological dimension of the entities to keep track of and the value
+          is the counter. Useful if several mshfiles should be merged.
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
 
     """
 
@@ -249,11 +292,11 @@ def create_voided_rectangle(
     ).T
     x_circle = np.tile(x_center, (8, 1)) + x_unit_circle
 
-    center = geom.add_point(*x_center, lc)
+    center = geom.add_point(*x_center, meshSize=lc, tag=-1)
 
     circle_points = []
     for xyz in x_circle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         circle_points.append(p)
 
     circle_arcs = []
@@ -281,7 +324,7 @@ def create_voided_rectangle(
 
     rectangle_points = []
     for xyz in x_rectangle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         rectangle_points.append(p)
 
     # draw rectangle lines
@@ -310,10 +353,19 @@ def create_voided_rectangle(
     )
     mat_loops.append(cloop)
 
+    entity_dim = 2
+    plane_surface_counter = 1
+    if tag_counter is not None:
+        plane_surface_counter += tag_counter[entity_dim]
+
     matrix = []
     for curve_loop in mat_loops:
-        mat_surface = geom.add_plane_surface([curve_loop])
+        mat_surface = geom.add_plane_surface([curve_loop], tag=plane_surface_counter)
+        plane_surface_counter += 1
         matrix.append(mat_surface)
+
+    if tag_counter is not None:
+        tag_counter[entity_dim] = plane_surface_counter - 1
 
     if num_cells is not None:
         if not num_cells % 2 == 0:
@@ -352,19 +404,23 @@ def create_voided_rectangle(
     geom.synchronize()
     geom.removeAllDuplicates()
 
-    # ### physical groups
-    gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
+    # ### Physical Groups
+    if cell_tags is not None:
+        for name, tag in cell_tags.items():
+            if name.startswith("matrix"):
+                gmsh.model.add_physical_group(2, matrix, tag, name=name)
+            else:
+                raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
 
-    # markers for the facets following ordering of
-    # entities of multi.dofmap.QuadrilateralDofLayout
-    # bottom: 1, left: 2, right: 3, top: 4
-    if facets:
-        gmsh.model.add_physical_group(1, rectangle_lines[5:7], 1, name="bottom")
-        gmsh.model.add_physical_group(1, rectangle_lines[3:5], 2, name="left")
+    if facet_tags is not None:
+        gmsh.model.add_physical_group(1, rectangle_lines[5:7], facet_tags["bottom"], name="bottom")
+        gmsh.model.add_physical_group(1, rectangle_lines[3:5], facet_tags["left"], name="left")
         gmsh.model.add_physical_group(
-            1, [rectangle_lines[0], rectangle_lines[-1]], 3, name="right"
+            1, [rectangle_lines[0], rectangle_lines[-1]], facet_tags["right"], name="right"
         )
-        gmsh.model.add_physical_group(1, rectangle_lines[1:3], 4, name="top")
+        gmsh.model.add_physical_group(1, rectangle_lines[1:3], facet_tags["top"], name="top")
 
     filepath = out_file or "./voided_rectangle.msh"
     _generate_and_write_grid(2, filepath)
@@ -379,8 +435,11 @@ def create_unit_cell_01(
     radius: float = 0.2,
     lc: float = 0.1,
     num_cells: Optional[int] = None,
-    facets: bool = True,
+    recombine: bool = False,
+    cell_tags: Optional[dict[str, int]] = None,
+    facet_tags: Optional[dict[str, int]] = None,
     out_file: Optional[str] = None,
+    tag_counter: Optional[dict[int, int]] = None,
     options: Optional[dict[str, int]] = None,
 ):
     """Create grid of unit cell with single circular inclusion.
@@ -394,10 +453,19 @@ def create_unit_cell_01(
         radius: Radius of the inclusion.
         lc: Characteristic length of cells.
         num_cells: If not None, a structured mesh with `num_cells` per edge will
-        be created. `num_cells` must be even.
-        facets: If True, create physical groups for facets.
+          be created. `num_cells` must be even.
+        recombine: If True, recombine triangles to quadrilaterals.
+        cell_tags: Specify cell tags as values for keys `matrix` and `inclusion`.
+          If None, by default cell tags with value 1 for `matrix` and 2 for
+          `inclusion` are created.
+        facet_tags: Specify facet tags as values for keys `bottom`, `left`,
+          `right` and `top`.
         out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        tag_counter: Can be used to keep track of entity `tags`. The key is the
+          topological dimension of the entities to keep track of and the value
+          is the counter. Useful if several mshfiles should be merged.
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
 
     """
 
@@ -406,7 +474,7 @@ def create_unit_cell_01(
 
     _initialize()
     _set_gmsh_options(options)
-    gmsh.model.add("rce_01")
+    gmsh.model.add("unit_cell_01")
 
     # options
     gmsh.option.setNumber("Mesh.Smoothing", 2)
@@ -421,11 +489,11 @@ def create_unit_cell_01(
     ).T
     x_circle = np.tile(x_center, (8, 1)) + x_unit_circle
 
-    center = geom.add_point(*x_center, lc)
+    center = geom.add_point(*x_center, meshSize=lc, tag=-1)
 
     circle_points = []
     for xyz in x_circle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         circle_points.append(p)
 
     circle_arcs = []
@@ -436,7 +504,12 @@ def create_unit_cell_01(
     circle_arcs.append(arc)
     circle_loop = geom.add_curve_loop(circle_arcs)
 
-    circle_surface = geom.add_plane_surface([circle_loop])
+    entity_dim = 2
+    plane_surface_counter = 1
+    if tag_counter is not None:
+        plane_surface_counter += tag_counter[entity_dim]
+    circle_surface = geom.add_plane_surface([circle_loop], tag=plane_surface_counter)
+    plane_surface_counter += 1
 
     # add the rectangle defined by 8 points
     dx = np.array([width / 2, 0.0, 0.0])
@@ -456,7 +529,7 @@ def create_unit_cell_01(
 
     rectangle_points = []
     for xyz in x_rectangle:
-        p = geom.add_point(*xyz, lc)
+        p = geom.add_point(*xyz, meshSize=lc, tag=-1)
         rectangle_points.append(p)
 
     # draw rectangle lines
@@ -487,8 +560,12 @@ def create_unit_cell_01(
 
     matrix = []
     for curve_loop in mat_loops:
-        mat_surface = geom.add_plane_surface([curve_loop])
+        mat_surface = geom.add_plane_surface([curve_loop], tag=plane_surface_counter)
         matrix.append(mat_surface)
+        plane_surface_counter += 1
+
+    if tag_counter is not None:
+        tag_counter[entity_dim] = plane_surface_counter - 1
 
     if num_cells is not None:
         if not num_cells % 2 == 0:
@@ -523,52 +600,82 @@ def create_unit_cell_01(
         for surface in matrix[1::2]:
             geom.mesh.set_transfinite_surface(surface, arrangement="Left")
 
+        if recombine:
+            gmsh.model.geo.mesh.setRecombine(2, circle_surface)
+            for surface in matrix:
+                gmsh.model.geo.mesh.setRecombine(2, surface)
+
     geom.synchronize()
     geom.removeAllDuplicates()
 
     # ### physical groups
-    gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
-    gmsh.model.add_physical_group(2, [circle_surface], 2, name="inclusion")
+    # at least for the entities of dimension tdim
+    # these need to be defined
+    if cell_tags is not None:
+        for name, tag in cell_tags.items():
+            if name.startswith("matrix"):
+                gmsh.model.add_physical_group(2, matrix, tag, name=name)
+            elif name.startswith("inclusion"):
+                gmsh.model.add_physical_group(2, [circle_surface], tag, name=name)
+            else:
+                raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
+        gmsh.model.add_physical_group(2, [circle_surface], 2, name="inclusion")
 
-    # markers for the facets following ordering of
-    # entities of multi.dofmap.QuadrilateralDofLayout
-    # bottom: 1, left: 2, right: 3, top: 4
-    if facets:
-        gmsh.model.add_physical_group(1, rectangle_lines[5:7], 1, name="bottom")
-        gmsh.model.add_physical_group(1, rectangle_lines[3:5], 2, name="left")
+    if facet_tags is not None:
+        gmsh.model.add_physical_group(1, rectangle_lines[5:7], facet_tags["bottom"], name="bottom")
+        gmsh.model.add_physical_group(1, rectangle_lines[3:5], facet_tags["left"], name="left")
         gmsh.model.add_physical_group(
-            1, [rectangle_lines[0], rectangle_lines[-1]], 3, name="right"
+            1, [rectangle_lines[0], rectangle_lines[-1]], facet_tags["right"], name="right"
         )
-        gmsh.model.add_physical_group(1, rectangle_lines[1:3], 4, name="top")
+        gmsh.model.add_physical_group(1, rectangle_lines[1:3], facet_tags["top"], name="top")
 
     filepath = out_file or "./unit_cell_01.msh"
     _generate_and_write_grid(2, filepath)
 
 
 def create_unit_cell_02(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    z: float = 0.0,
     num_cells: Optional[int] = None,
-    facets: bool = True,
+    cell_tags: Optional[dict[str, int]] = None,
+    facet_tags: Optional[dict[str, int]] = None,
     out_file: Optional[str] = None,
+    tag_counter: Optional[dict[int, int]] = None,
     options: Optional[dict[str, int]] = None,
 ):
     """Creates a unit cell with several inclusions.
 
     Args:
+        xmin: Coordinate.
+        xmax: Coordinate.
+        ymin: Coordinate.
+        ymax: Coordinate.
+        z: Coordinate.
         num_cells: If not None, `num_cells` cells per edge will be created.
-        facets: If True, create physical groups for facets.
-        out_file: Write mesh to `out_file`. Default: './unit_cell_01.msh'
-        options: Options to pass to GMSH. See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
+        cell_tags: Specify cell tags as values for keys `matrix` and `aggregates`.
+          If None, by default cell tags with value 1 for `matrix` and 2 for
+          `aggregates` are created.
+        facet_tags: Specify facet tags as values for keys `bottom`, `left`,
+          `right` and `top`.
+        out_file: Write mesh to `out_file`. Default: './unit_cell_02.msh'
+        tag_counter: Can be used to keep track of entity `tags`. The key is the
+          topological dimension of the entities to keep track of and the value
+          is the counter. Useful if several mshfiles should be merged.
+        options: Options to pass to GMSH.
+          See https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-options
     """
 
     _initialize()
     _set_gmsh_options(options)
     gmsh.model.add("unit_cell_02")
 
-    xmin = 0.
-    xmax = 20.
-    ymin = 0.
-    ymax = 20.
-    z = 0.
+    assert np.isclose(xmax - xmin, 20.)
+    assert np.isclose(ymax - ymin, 20.)
 
     # options
     gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 0)
@@ -585,8 +692,14 @@ def create_unit_cell_02(
     curve_loops_aggregates = []
     curve_loop_matrix = []
 
+    entity_dim = 2
+    plane_surface_counter = 1
+    if tag_counter is not None:
+        plane_surface_counter += tag_counter[entity_dim]
+
     def add_aggregate(x, y, z, R):
         """add circle at (x, y, z) with radius R"""
+
         p1 = gmsh.model.geo.add_point(x, y, z, lc_aggregates)
         p2 = gmsh.model.geo.add_point(x + R, y, z, lc_aggregates)
         p3 = gmsh.model.geo.add_point(x - R, y, z, lc_aggregates)
@@ -595,7 +708,7 @@ def create_unit_cell_02(
         c2 = gmsh.model.geo.add_circle_arc(p3, p1, p2)
 
         loop = gmsh.model.geo.add_curve_loop([c1, c2])
-        surface = gmsh.model.geo.add_plane_surface([loop])
+        surface = gmsh.model.geo.add_plane_surface([loop], tag=plane_surface_counter)
 
         curve_loops_aggregates.append(loop)
         surfaces_aggregates.append(surface)
@@ -625,7 +738,6 @@ def create_unit_cell_02(
             gmsh.model.geo.mesh.set_transfinite_curve(line, num_cells + 1)
         curve_loop_matrix.append(loop)
 
-    # add aggregates
     aggregates = [  # (x, y, z, R)
         (8.124435628293494, 16.250990871336494, z, 2.2),
         (3.104265948507514, 3.072789217500327, z, 1.9),
@@ -638,25 +750,39 @@ def create_unit_cell_02(
     ]
     for xc, yc, zc, radius in aggregates:
         add_aggregate(xmin + xc, ymin + yc, zc, radius)
+        plane_surface_counter += 1
 
-    # add the matrix
     add_matrix(xmin, xmax, ymin, ymax, z)
     # add_plane_surface expects list of int (tags of curve loops)
     # if len(arg) > 1 --> subtract curve loops from first
     surface_matrix = gmsh.model.geo.add_plane_surface(
-        curve_loop_matrix + curve_loops_aggregates
+        curve_loop_matrix + curve_loops_aggregates, tag=plane_surface_counter
     )
+    plane_surface_counter += 1
 
-    # add physical groups
+    if tag_counter is not None:
+        tag_counter[entity_dim] = plane_surface_counter - 1
+
+    # ### Add physical groups
     gmsh.model.geo.synchronize()
-    gmsh.model.add_physical_group(2, [surface_matrix], 1, name="matrix")
-    gmsh.model.add_physical_group(2, surfaces_aggregates, 2, name="aggregates")
 
-    if facets:
-        gmsh.model.add_physical_group(1, bottom, 1, name="bottom")
-        gmsh.model.add_physical_group(1, left, 2, name="left")
-        gmsh.model.add_physical_group(1, right, 3, name="right")
-        gmsh.model.add_physical_group(1, top, 4, name="top")
+    if cell_tags is not None:
+        for name, tag in cell_tags.items():
+            if name.startswith("matrix"):
+                gmsh.model.add_physical_group(2, [surface_matrix], tag, name=name)
+            elif name.startswith("aggregates"):
+                gmsh.model.add_physical_group(2, surfaces_aggregates, tag, name=name)
+            else:
+                raise NotImplementedError
+    else:
+        gmsh.model.add_physical_group(2, [surface_matrix], 1, name="matrix")
+        gmsh.model.add_physical_group(2, surfaces_aggregates, 2, name="aggregates")
+
+    if facet_tags is not None:
+        gmsh.model.add_physical_group(1, bottom, facet_tags["bottom"], name="bottom")
+        gmsh.model.add_physical_group(1, left, facet_tags["left"], name="left")
+        gmsh.model.add_physical_group(1, right, facet_tags["right"], name="right")
+        gmsh.model.add_physical_group(1, top, facet_tags["top"], name="top")
 
     filepath = out_file or "./unit_cell_02.msh"
     _generate_and_write_grid(2, filepath)
