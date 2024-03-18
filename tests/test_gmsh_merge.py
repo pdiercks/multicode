@@ -54,7 +54,8 @@ def test_merge_unit_cell_01():
             tag_counter=offset
         )
         to_be_merged.append(tmp.name)
-    merge(to_be_merged, "final_mesh.msh")
+    final = tempfile.NamedTemporaryFile(suffix=".msh")
+    merge(to_be_merged, final.name)
 
     # by providing tag_counter=offset we ensure that the `tag` is
     # different for each surface etc. in the two meshes that are created.
@@ -64,7 +65,9 @@ def test_merge_unit_cell_01():
     for tf in tfiles:
         tf.close()
 
-    mesh, ct, _ = gmshio.read_from_msh("final_mesh.msh", MPI.COMM_WORLD, gdim=2)
+    mesh, ct, _ = gmshio.read_from_msh(final.name, MPI.COMM_WORLD, gdim=2)
+    final.close()
+
     assert mesh.topology.dim == 2
     assert ct.find(0).size == 0
     assert ct.find(cell_tags[0]["matrix"]).size > 0

@@ -16,9 +16,10 @@ def test(degree, cell_type, num_points):
             ([1.2, 0.1, 0], [0.2, 1, 0])
             ]
     options = {"Mesh.ElementOrder": degree}
+    ct = {"line": 4}
     for start, end in points:
         with tempfile.NamedTemporaryFile(suffix=".msh", delete=True) as tf:
-            create_line(start, end, num_cells=num_cells, out_file=tf.name, options=options)
+            create_line(start, end, num_cells=num_cells, cell_tags=ct, out_file=tf.name, options=options)
             mesh = meshio.read(tf.name)
             assert mesh.points.shape == (num_points, 3)
             assert mesh.get_cells_type(cell_type).shape[0] == num_cells

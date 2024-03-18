@@ -75,7 +75,7 @@ def test_remove_rot():
             0.0,
             1.0,
             num_cells=(n, n),
-            facets=True,
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
         )
@@ -188,7 +188,7 @@ def test_remove_trans_x_rot():
             0.0,
             1.0,
             num_cells=(2*n, n),
-            facets=True,
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
             options={'Mesh.ElementOrder': 2},
@@ -315,7 +315,7 @@ def test_remove_full_kernel():
             0.0,
             3.0,
             num_cells=(n, n),
-            facets=True,
+            facet_tags = {"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
         )

@@ -56,7 +56,7 @@ def test_bases_loader_read_bases():
             0.0,
             3.0,
             num_cells=(2, 2),
-            facets=True,
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,
             out_file=tf.name,
         )

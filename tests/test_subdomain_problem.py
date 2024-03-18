@@ -23,8 +23,8 @@ def test(create_grid):
             0.0,
             1.0,
             num_cells=10,
-            facets=True,
             recombine=True,
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
             out_file=tf.name,
         )
         domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
@@ -96,7 +96,3 @@ def test(create_grid):
     assert np.sum(problem.b[:]) > 0.0
     assert problem.A[:, :].shape == (Vdim, Vdim)
     assert np.sum(np.abs(u.vector.array[:])) > 0.0
-
-
-if __name__ == "__main__":
-    test()

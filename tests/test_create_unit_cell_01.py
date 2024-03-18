@@ -35,6 +35,7 @@ def test_physical_groups():
     num_cells = 10
     cell_tags = {"matrix": 11, "inclusion": 23}
     facet_tags = {"bottom": 1, "left": 2, "right": 3, "top": 4}
+    offset = {2: 0}
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_unit_cell_01(
             0.0,
@@ -46,7 +47,11 @@ def test_physical_groups():
             cell_tags=cell_tags,
             facet_tags=facet_tags,
             out_file=tf.name,
+            tag_counter=offset,
         )
+        # 9 surfaces are created
+        assert np.isclose(offset[2], 9)
+
         mesh = meshio.read(tf.name)
         assert "gmsh:physical" in mesh.cell_data.keys()
         assert all([np.sum(data) > 0 for data in mesh.cell_data["gmsh:physical"]])
@@ -67,7 +72,3 @@ def test_physical_groups():
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         with pytest.raises(ValueError):
             create_unit_cell_01(0.0, 1.0, 0.0, 1.0, num_cells=11, out_file=tf.name)
-
-
-if __name__ == "__main__":
-    test()
