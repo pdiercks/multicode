@@ -40,7 +40,7 @@ def test():
 
     youngs_mod = fem.Constant(domain, default_scalar_type(210e3))
     poisson_ratio = fem.Constant(domain, default_scalar_type(0.3))
-    phases = (LinearElasticMaterial(gdim, E=youngs_mod, NU=poisson_ratio, plane_stress=True),)
+    phases = LinearElasticMaterial(gdim, E=youngs_mod, NU=poisson_ratio, plane_stress=True)
     problem = LinearElasticityProblem(Ω, V, phases)
 
     # add dirichlet and neumann bc

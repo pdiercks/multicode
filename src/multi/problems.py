@@ -10,7 +10,14 @@ import ufl
 from mpi4py import MPI
 from basix.ufl import element
 from dolfinx import fem, la, mesh, default_scalar_type
-from dolfinx.fem.petsc import create_vector, create_matrix, set_bc, apply_lifting, assemble_vector, assemble_matrix
+from dolfinx.fem.petsc import (
+    create_vector,
+    create_matrix,
+    set_bc,
+    apply_lifting,
+    assemble_vector,
+    assemble_matrix,
+)
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.io import gmshio
 from dolfinx.io.utils import XDMFFile
@@ -81,9 +88,12 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
     def form_rhs(self) -> ufl.Form:
         """The ufl form of the right hand side"""
 
-    def setup_solver(self, petsc_options: Optional[dict] = None,
-                     form_compiler_options: Optional[dict] = None,
-                     jit_options: Optional[dict] = None):
+    def setup_solver(
+        self,
+        petsc_options: Optional[dict] = None,
+        form_compiler_options: Optional[dict] = None,
+        jit_options: Optional[dict] = None,
+    ):
         """setup the solver for a linear variational problem
 
         This code is part of dolfinx.fem.petsc.py:
@@ -121,10 +131,14 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
 
         # Get tpye aliases for "Form" and possibly other dolfinx types
         # simplified version of super().__init__ as workaround
-        self._a = fem.form(a, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._a = fem.form(
+            a, form_compiler_options=form_compiler_options, jit_options=jit_options
+        )
         self._A = create_matrix(self._a)
 
-        self._L = fem.form(L, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._L = fem.form(
+            L, form_compiler_options=form_compiler_options, jit_options=jit_options
+        )
         self._b = create_vector(self._L)
 
         # solution function
@@ -140,7 +154,9 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
         petsc_options = petsc_options or {}
         ksp_type = petsc_options.get("ksp_type", "preonly")
         pc_type = petsc_options.get("pc_type", "lu")
-        pc_factor_mat_solver_type = petsc_options.get("pc_factor_mat_solver_type", "mumps")
+        pc_factor_mat_solver_type = petsc_options.get(
+            "pc_factor_mat_solver_type", "mumps"
+        )
 
         self._solver.setType(ksp_type)
         self._solver.getPC().setType(pc_type)
@@ -160,8 +176,8 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
         assemble_vector(self._b, self._L)
 
         # Apply boundary conditions to the rhs
-        apply_lifting(self._b, [self._a], bcs=[bcs])
-        self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+        apply_lifting(self._b, [self._a], bcs=[bcs])  # type: ignore
+        self._b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
         set_bc(self._b, bcs)
 
     def __del__(self):
@@ -179,7 +195,10 @@ class LinearElasticityProblem(LinearProblem):
     """Represents a linear elastic problem."""
 
     def __init__(
-            self, domain: Domain, space: fem.FunctionSpaceBase, phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]]
+        self,
+        domain: Domain,
+        space: fem.FunctionSpaceBase,
+        phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]],
     ):
         """Initializes a linear elastic problem.
 
@@ -187,20 +206,26 @@ class LinearElasticityProblem(LinearProblem):
             domain: The computational domain.
             space: The FE space.
             phases: List of Tuple of linear elastic materials and cell tag for each phase.
+              For homogeneous materials pass a single linear elastic material.
 
         """
 
         super().__init__(domain, space)
         if isinstance(phases, LinearElasticMaterial):
             self.dx = ufl.dx
-            self.phases = [phases]
+            self.phases = [(phases, None)]
         elif isinstance(phases, list):
             assert domain.cell_tags is not None
-            self.dx = ufl.Measure("dx", domain=domain.grid,
-                                  subdomain_data=domain.cell_tags)
-            for (_, tag) in phases:
+            self.dx = ufl.Measure(
+                "dx", domain=domain.grid, subdomain_data=domain.cell_tags
+            )
+            for _, tag in phases:
                 assert tag in domain.cell_tags.values
             self.phases = phases
+        else:
+            raise ValueError(
+                "The type for the material phase(s) is not correctly defined."
+            )
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
 
     def update_material(self, values: tuple[dict[str, float], ...]):
@@ -215,7 +240,7 @@ class LinearElasticityProblem(LinearProblem):
 
         for mat, param in enumerate(values):
             for k, v in param.items():
-                material = self.phases[mat]
+                material = self.phases[mat][0]
                 constant = getattr(material, k)
                 constant.value = v
 
@@ -226,12 +251,12 @@ class LinearElasticityProblem(LinearProblem):
         v = self.test
         if len(self.phases) > 1:
             form = 0
-            for (mat, i) in self.phases:
-                form += ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i)
-            return form
+            for mat, i in self.phases:
+                form += ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx(i)  # type: ignore
+            return form  # type: ignore
         else:
-            mat = self.phases[0]
-            return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx
+            mat = self.phases[0][0]
+            return ufl.inner(mat.sigma(u), mat.eps(v)) * self.dx  # type: ignore
 
     # FIXME allow for body forces
     @property
@@ -247,18 +272,27 @@ class LinearElasticityProblem(LinearProblem):
 
         return rhs
 
+
 # FIXME should be an abstract base class; no direct use
 class SubdomainProblem(object):
     """Represents a subproblem in a multiscale context"""
 
-
     def setup_edge_spaces(self) -> None:
-
-        if not all([hasattr(self.domain, "fine_edge_grid"), hasattr(self.domain, "coarse_edge_grid")]):
-            raise AttributeError("Fine and coarse grid partition of the edges does not exist.")
+        if not all(
+            [
+                hasattr(self.domain, "fine_edge_grid"),
+                hasattr(self.domain, "coarse_edge_grid"),
+            ]
+        ):
+            raise AttributeError(
+                "Fine and coarse grid partition of the edges does not exist."
+            )
 
         # FIXME pyright complains: cannot access member "domain" etc
-        edge_meshes = {"fine": self.domain.fine_edge_grid, "coarse": self.domain.coarse_edge_grid}
+        edge_meshes = {
+            "fine": self.domain.fine_edge_grid,
+            "coarse": self.domain.coarse_edge_grid,
+        }
         V = self.V
         ufl_element = V.ufl_element()
         family = ufl_element.family_name
@@ -269,7 +303,13 @@ class SubdomainProblem(object):
         for scale, data in edge_meshes.items():
             edge_spaces[scale] = {}
             for edge, grid in data.items():
-                fe = element(family, grid.basix_cell(), degree[scale], shape=shape, gdim=grid.ufl_cell().geometric_dimension())
+                fe = element(
+                    family,
+                    grid.basix_cell(),
+                    degree[scale],
+                    shape=shape,
+                    gdim=grid.ufl_cell().geometric_dimension(),
+                )
                 space = fem.functionspace(grid, fe)
                 edge_spaces[scale][edge] = space
 
@@ -284,7 +324,13 @@ class SubdomainProblem(object):
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
         shape = ufl_element.value_shape()
-        fe = element(family_name, coarse_grid.basix_cell(), 1, shape=shape, gdim=coarse_grid.ufl_cell().geometric_dimension())
+        fe = element(
+            family_name,
+            coarse_grid.basix_cell(),
+            1,
+            shape=shape,
+            gdim=coarse_grid.ufl_cell().geometric_dimension(),
+        )
         self.W = fem.functionspace(coarse_grid, fe)
 
     def create_map_from_V_to_L(self) -> None:
@@ -304,9 +350,13 @@ class SubdomainProblem(object):
 class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     """Linear elasticity problem defined on a subdomain."""
 
-    def __init__(self, domain: RectangularSubdomain, space: fem.FunctionSpaceBase, phases:Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]]):
+    def __init__(
+        self,
+        domain: RectangularSubdomain,
+        space: fem.FunctionSpaceBase,
+        phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]],
+    ):
         super().__init__(domain, space, phases)
-
 
 
 class TransferProblem(LogMixin):
@@ -382,7 +432,7 @@ class TransferProblem(LogMixin):
             self._bc_hom = problem.get_dirichlet_bcs()
 
         # ### inner products
-        default = {'product': 'euclidean', 'bcs': ()}
+        default = {"product": "euclidean", "bcs": ()}
         source_prod = source_product or default
         range_prod = range_product or default
         self.source_product = self._init_source_product(source_prod)
@@ -396,9 +446,7 @@ class TransferProblem(LogMixin):
         dummy = fem.Function(V)
 
         # determine boundary facets of Γ_out
-        facets_Γ_out = mesh.locate_entities_boundary(
-            V.mesh, fdim, self.gamma_out
-        )
+        facets_Γ_out = mesh.locate_entities_boundary(V.mesh, fdim, self.gamma_out)
         # determine dofs on Γ_out
         _dofs = fem.locate_dofs_topological(V, fdim, facets_Γ_out)
         bc = fem.dirichletbc(dummy, _dofs)
@@ -501,7 +549,7 @@ class TransferProblem(LogMixin):
         p.assemble_vector(bcs=[bc_inhom])
 
     def generate_random_boundary_data(
-            self, count: int, distribution: str, options: Optional[dict[str, Any]] = None
+        self, count: int, distribution: str, options: Optional[dict[str, Any]] = None
     ) -> npt.NDArray:
         """Generates random vectors of shape (count, num_dofs_Γ_out).
 
@@ -514,9 +562,7 @@ class TransferProblem(LogMixin):
 
         bc_dofs = self.bc_dofs_gamma_out  # actual size of the source space
         options = options or {}
-        values = create_random_values(
-            (count, bc_dofs.size), distribution, **options
-        )
+        values = create_random_values((count, bc_dofs.size), distribution, **options)
 
         return values
 
@@ -533,7 +579,6 @@ class TransferProblem(LogMixin):
         U_in : VectorArray
             The solutions in the range space.
         """
-
 
         self.logger.info(f"Solving TransferProblem for {len(boundary_values)} vectors.")
 
@@ -560,25 +605,33 @@ class TransferProblem(LogMixin):
             # ### restrict full solution to target subdomain
             # need to use nmm_interpolation_data even if subdomain discretization
             # matches the global mesh
-            u_in.interpolate(u, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-                u_in.function_space.mesh._cpp_object,
-                u_in.function_space.element,
-                u.function_space.mesh._cpp_object))
+            u_in.interpolate(
+                u,
+                nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
+                    u_in.function_space.mesh._cpp_object,
+                    u_in.function_space.element,
+                    u.function_space.mesh._cpp_object,
+                ),
+            )
             U.append(self.range.make_array([u_in.vector.copy()]))
 
         if self.kernel is not None:
             assert len(self.kernel) > 0
-            return orthogonal_part(U, self.kernel, product=self.range_product, orthonormal=True)
+            return orthogonal_part(
+                U, self.kernel, product=self.range_product, orthonormal=True
+            )
         else:
             return U
 
-    def _init_source_product(self, product: Union[Operator, dict]) -> Union[Operator, None]:
+    def _init_source_product(
+        self, product: Union[Operator, dict]
+    ) -> Union[Operator, None]:
         """Initializes the source product."""
         if isinstance(product, Operator):
             return product
         else:
-            product_name = product['product']
-            bcs = product['bcs']
+            product_name = product["product"]
+            bcs = product["bcs"]
             inner_product = InnerProduct(self.problem.V, product_name, bcs=bcs)
             matrix = inner_product.assemble_matrix()
             if matrix is None:
@@ -590,19 +643,23 @@ class TransferProblem(LogMixin):
                 source_product = NumpyMatrixOperator(source_matrix)
                 return source_product
 
-    def _init_range_product(self, product: Union[Operator, dict]) -> Union[Operator, None]:
+    def _init_range_product(
+        self, product: Union[Operator, dict]
+    ) -> Union[Operator, None]:
         """Initializes the range product."""
         if isinstance(product, Operator):
             return product
         else:
-            product_name = product['product']
-            bcs = product['bcs']
+            product_name = product["product"]
+            bcs = product["bcs"]
             range_product = InnerProduct(self.subproblem.V, product_name, bcs=bcs)
             matrix = range_product.assemble_matrix()
             if matrix is None:
                 return None
             else:
-                return FenicsxMatrixOperator(matrix, self.subproblem.V, self.subproblem.V)
+                return FenicsxMatrixOperator(
+                    matrix, self.subproblem.V, self.subproblem.V
+                )
 
 
 class MultiscaleProblemDefinition(ABC):
@@ -651,9 +708,7 @@ class MultiscaleProblemDefinition(ABC):
             created accordingly.
         """
         fine_ct = None
-        with XDMFFile(
-            MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r"
-        ) as xdmf:
+        with XDMFFile(MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r") as xdmf:
             fine_domain = xdmf.read_mesh(name="Grid")
             if cell_tags:
                 fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")
@@ -662,14 +717,15 @@ class MultiscaleProblemDefinition(ABC):
         boundaries = self.boundaries
         if boundaries is not None:
             from multi.preprocessing import create_meshtags
+
             tdim = fine_domain.topology.dim
             fdim = tdim - 1
             fine_ft, _ = create_meshtags(fine_domain, fdim, boundaries)
-        self.fine_grid = Domain(
-            fine_domain, cell_tags=fine_ct, facet_tags=fine_ft
-        )
+        self.fine_grid = Domain(fine_domain, cell_tags=fine_ct, facet_tags=fine_ft)
 
-    def setup_coarse_space(self, family: str = "P", degree: int = 1, shape: tuple[int, ...] = (2,)) -> None:
+    def setup_coarse_space(
+        self, family: str = "P", degree: int = 1, shape: tuple[int, ...] = (2,)
+    ) -> None:
         """Creates FE space on coarse grid.
 
         Args:
@@ -682,7 +738,9 @@ class MultiscaleProblemDefinition(ABC):
         fe = element(family, grid.basix_cell(), degree, shape=shape)
         self.W = fem.functionspace(grid, fe)
 
-    def setup_fine_space(self, family: str = "P", degree: int = 2, shape: tuple[int, ...] = (2,)) -> None:
+    def setup_fine_space(
+        self, family: str = "P", degree: int = 2, shape: tuple[int, ...] = (2,)
+    ) -> None:
         """Creates FE space on fine grid.
 
         Args:
@@ -791,7 +849,6 @@ class MultiscaleProblemDefinition(ABC):
 
         for cset in cs.values():
             for cell_index in cset:
-
                 active_edges[cell_index] = set()
                 edges = self.coarse_grid.get_entities(1, cell_index)
                 for local_ent, ent in enumerate(edges):
