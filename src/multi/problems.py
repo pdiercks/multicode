@@ -288,7 +288,7 @@ class SubdomainProblem(object):
 class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     """Linear elasticity problem defined on a subdomain."""
 
-    def __init__(self, domain: RectangularSubdomain, space: fem.FunctionSpaceBase, phases: tuple[LinearElasticMaterial]):
+    def __init__(self, domain: RectangularSubdomain, space: fem.FunctionSpaceBase, phases:Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]]):
         super().__init__(domain, space, phases)
 
 
