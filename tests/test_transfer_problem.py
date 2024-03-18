@@ -329,7 +329,7 @@ def test_remove_full_kernel():
     domain = RectangularDomain(square, facet_tags=facet_markers)
     emod = fem.Constant(square, default_scalar_type(1.0))
     nu = fem.Constant(square, default_scalar_type(0.2))
-    phases = (LinearElasticMaterial(gdim, E=emod, NU=nu, plane_stress=True),)
+    phases = LinearElasticMaterial(gdim, E=emod, NU=nu, plane_stress=True)
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
