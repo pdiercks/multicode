@@ -1,10 +1,13 @@
+from typing import Union
+
 import ufl
+from dolfinx.fem import Constant
 
 
 class LinearElasticMaterial:
     """Class representing linear elastic isotropic materials."""
 
-    def __init__(self, gdim: int, E: float, NU: float, plane_stress: bool = False):
+    def __init__(self, gdim: int, E: Union[float, Constant], NU: Union[float, Constant], plane_stress: bool = False):
         """Initializes the material.
 
         Args:

@@ -1,9 +1,12 @@
-from mpi4py import MPI
 import tempfile
-import dolfinx
+
+import numpy as np
+
+from mpi4py import MPI
+from dolfinx import mesh, fem, default_scalar_type
 from dolfinx.io import gmshio
 from basix.ufl import element
-import numpy as np
+
 from multi.boundary import plane_at
 from multi.domain import Domain, RectangularSubdomain
 from multi.materials import LinearElasticMaterial
@@ -13,7 +16,7 @@ from multi.interpolation import interpolate
 
 
 def test():
-    domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
+    domain = mesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
     tdim = domain.topology.dim
     fdim = tdim - 1
     domain.topology.create_connectivity(tdim, fdim)
@@ -24,24 +27,27 @@ def test():
 
     # create domain with facet markers for neumann bc
     marker_value = 17
-    right_boundary_facets = dolfinx.mesh.locate_entities_boundary(domain, fdim, right)
-    facet_tags = dolfinx.mesh.meshtags(
+    right_boundary_facets = mesh.locate_entities_boundary(domain, fdim, right)
+    facet_tags = mesh.meshtags(
         domain, fdim, right_boundary_facets, marker_value
     )
     Ω = Domain(domain, facet_tags=facet_tags)
 
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
-    V = dolfinx.fem.functionspace(domain, fe)
+    V = fem.functionspace(domain, fe)
     gdim = domain.ufl_cell().geometric_dimension()
-    phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
+
+    youngs_mod = fem.Constant(domain, default_scalar_type(210e3))
+    poisson_ratio = fem.Constant(domain, default_scalar_type(0.3))
+    phases = (LinearElasticMaterial(gdim, E=youngs_mod, NU=poisson_ratio, plane_stress=True),)
     problem = LinearElasticityProblem(Ω, V, phases)
 
     # add dirichlet and neumann bc
-    zero = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(0.0),) * 2)
+    zero = fem.Constant(domain, (default_scalar_type(0.0),) * 2)
     problem.add_dirichlet_bc(zero, left, method="geometrical")
-    f_ext = dolfinx.fem.Constant(
-        domain, (dolfinx.default_scalar_type(1000.0), dolfinx.default_scalar_type(0.0))
+    f_ext = fem.Constant(
+        domain, (default_scalar_type(1000.0), default_scalar_type(0.0))
     )
     problem.add_neumann_bc(marker_value, f_ext)
 
@@ -58,7 +64,7 @@ def test():
     problem.assemble_matrix(bcs)
     problem.assemble_vector(bcs)
 
-    u = dolfinx.fem.Function(V)
+    u = fem.Function(V)
     rhs = problem.b
     solver.solve(rhs, u.vector)
 
@@ -68,6 +74,14 @@ def test():
     # high level solve
     other = problem.solve()
     assert np.allclose(other.vector.array[:], u.vector.array[:])
+
+    # update material and solve problem again after re-assembly
+    new_material = ({"E": 105e3, "NU": 0.3},)
+    problem.update_material(new_material)
+    problem.assemble_matrix(bcs)
+    solver.solve(rhs, u.vector)
+    assert not np.allclose(other.vector.array[:], u.vector.array[:])
+    assert np.isclose(other.x.array.max() * 2, u.x.array.max())
 
 
 def test_dirichlet():
@@ -94,7 +108,7 @@ def test_dirichlet():
 
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
-    V = dolfinx.fem.functionspace(domain, fe)
+    V = fem.functionspace(domain, fe)
     gdim = domain.ufl_cell().geometric_dimension()
     phases = [
         (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True), 1),
@@ -103,12 +117,10 @@ def test_dirichlet():
     problem = LinearElasticityProblem(Ω, V, phases)
 
     # add two dirichlet bc
-    zero = dolfinx.fem.Constant(domain, (dolfinx.default_scalar_type(0.0),) * 2)
+    zero = fem.Constant(domain, (default_scalar_type(0.0),) * 2)
     f_x = 12.3
     f_y = 0.0
-    f = dolfinx.fem.Constant(
-        domain, (dolfinx.default_scalar_type(f_x), dolfinx.default_scalar_type(f_y))
-    )
+    f = fem.Constant(domain, (default_scalar_type(f_x), default_scalar_type(f_y)))
 
     def u_bottom(x):
         return (x[0] * f_x, x[1])
@@ -129,7 +141,7 @@ def test_dirichlet():
     problem.assemble_matrix(bcs)
     problem.assemble_vector(bcs)
 
-    u = dolfinx.fem.Function(V)
+    u = fem.Function(V)
     solver.solve(problem.b, u.vector)
     u.x.scatter_forward()
 
@@ -137,7 +149,7 @@ def test_dirichlet():
     assert np.sum(np.abs(u.x.array[:])) > 0.0
 
     # extract values at the bottom
-    bdofs = dolfinx.fem.locate_dofs_geometrical(V, bottom)
+    bdofs = fem.locate_dofs_geometrical(V, bottom)
     xdofs = V.tabulate_dof_coordinates()
     x_bottom = xdofs[bdofs]
     u_values = interpolate(u, x_bottom)
@@ -146,7 +158,7 @@ def test_dirichlet():
     )
 
     # extract value at the right
-    bdofs = dolfinx.fem.locate_dofs_geometrical(V, right)
+    bdofs = fem.locate_dofs_geometrical(V, right)
     xdofs = V.tabulate_dof_coordinates()
     x_right = xdofs[bdofs]
     u_values = interpolate(u, x_right)

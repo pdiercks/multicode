@@ -31,8 +31,10 @@ def test():
         return np.isclose(x[1], -1.0)
 
     bottom_dofs = dolfinx.fem.locate_dofs_geometrical(V, bottom)
+    everywhere = lambda x: np.full(x[0].shape, True, dtype=bool)
+    rectangle_boundary = dolfinx.mesh.locate_entities_boundary(rectangle, rectangle.topology.dim-1, everywhere)
 
-    data_factory = BoundaryDataFactory(rectangle, V)
+    data_factory = BoundaryDataFactory(rectangle, rectangle_boundary, V)
     f = data_factory.create_function_values(mode, bottom_dofs)
     bc_0 = data_factory.create_bc(f)
     assert np.allclose(bc_0._cpp_object.dof_indices()[0], data_factory.boundary_dofs)

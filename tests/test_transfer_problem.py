@@ -327,7 +327,9 @@ def test_remove_full_kernel():
     V = fem.functionspace(square, ve)
 
     domain = RectangularDomain(square, facet_tags=facet_markers)
-    phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
+    emod = fem.Constant(square, default_scalar_type(1.0))
+    nu = fem.Constant(square, default_scalar_type(0.2))
+    phases = (LinearElasticMaterial(gdim, E=emod, NU=nu, plane_stress=True),)
     problem = LinearElasticityProblem(domain, V, phases)
     # subdomain problem
     cells_submesh = mesh.locate_entities(domain.grid, 2, target_subdomain)
@@ -361,7 +363,16 @@ def test_remove_full_kernel():
     )
     # generate boundary data
     D = tp.generate_random_boundary_data(10, distribution="normal")
+
+    # solution with dummy material
+    U_ = tp.solve(D)
+
+    # solution after updating the material parameters
+    new_material = ({"E": 210e3, "NU": 0.3},)
+    tp.update_material(new_material)
+
     U = tp.solve(D)
+    assert not np.isclose(U_[0].to_numpy().max(), U[0].to_numpy().max())
     u_arr = U.to_numpy()
 
     # compute reference solutions

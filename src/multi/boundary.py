@@ -129,7 +129,8 @@ def point_at(coord: typing.Union[typing.Iterable[int], typing.Iterable[float]]) 
 
 def show_marked(
     domain: dolfinx.mesh.Mesh,
-    marker: typing.Callable,
+    marker: typing.Union[typing.Callable, np.ndarray],
+    entity_dim: typing.Optional[int] = None,
     filename: typing.Union[str, None] = None,
 ) -> None:  # pragma: no cover
     """Shows dof coordinates marked by `marker`.
@@ -144,7 +145,10 @@ def show_marked(
         marker: A function that takes an array of points ``x`` with shape
           ``(gdim, num_points)`` and returns an array of booleans of
           length ``num_points``, evaluating to ``True`` for entities whose
-          degree-of-freedom should be returned.
+          degree-of-freedom should be returned. Instead of a function the
+          entities whose degree-of-freedom should be returned can be passed
+          directly. In the latter case `entity_dim` needs to be provided.
+        entity_dim: The dimension of the entities associated with `marker`.
         filename: Save figure to this path.
           If None, the figure is shown (default).
     """
@@ -159,7 +163,11 @@ def show_marked(
 
     fe = element("Lagrange", domain.basix_cell(), 1, shape=())
     V = dolfinx.fem.functionspace(domain, fe)
-    dofs = dolfinx.fem.locate_dofs_geometrical(V, marker)
+    if isinstance(marker, np.ndarray):
+        assert entity_dim is not None
+        dofs = dolfinx.fem.locate_dofs_topological(V, entity_dim, marker)
+    else:
+        dofs = dolfinx.fem.locate_dofs_geometrical(V, marker)
     u = dolfinx.fem.Function(V)
     bc = dolfinx.fem.dirichletbc(u, dofs)
     x_dofs = V.tabulate_dof_coordinates()

@@ -203,6 +203,22 @@ class LinearElasticityProblem(LinearProblem):
             self.phases = phases
         self.gdim = domain.grid.ufl_cell().geometric_dimension()
 
+    def update_material(self, values: tuple[dict[str, float], ...]):
+        """Updates the material parameters for each material phase.
+
+        Args:
+            values: A mapping from material parameter key `E`, `NU` to new
+            value for each material phase.
+
+        """
+        assert len(values) == len(self.phases)
+
+        for mat, param in enumerate(values):
+            for k, v in param.items():
+                material = self.phases[mat]
+                constant = getattr(material, k)
+                constant.value = v
+
     @property
     def form_lhs(self) -> ufl.Form:
         """get bilinear form a(u, v) of the problem"""
@@ -446,6 +462,21 @@ class TransferProblem(LogMixin):
         # now p.solver is setup with matrix p.A
         # and p.a should be used to modify rhs (apply lifting)
 
+    def update_material(self, values: tuple[dict[str, float], ...]) -> None:
+        """Updates the material and re-assembles the system matrix of the
+        oversampling problem.
+
+        Args:
+            values: A mapping from material parameter key `E`, `NU` to new
+            value for each material phase.
+
+        """
+        self.problem.update_material(values)
+        bc_hom = self.bc_hom
+        bc_inhom = self._dummy_bc_gamma_out
+        bcs = [bc_inhom] + bc_hom
+        self.problem.assemble_matrix(bcs=bcs)
+
     def discretize_rhs(self, boundary_values):
         """discretize the right hand side
 
@@ -489,7 +520,7 @@ class TransferProblem(LogMixin):
 
         return values
 
-    def solve(self, boundary_values):
+    def solve(self, boundary_values) -> VectorArray:
         """solve the problem for boundary_data
 
         Parameters
