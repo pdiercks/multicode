@@ -262,7 +262,7 @@ def create_voided_rectangle(
         cell_tags: Specify cell tags as values for key `matrix`.
           If None, by default cell tags with value 1 for `matrix` are created.
         facet_tags: Specify facet tags as values for keys `bottom`, `left`,
-          `right` and `top`.
+          `right`, `top` and `void`.
         out_file: Write mesh to `out_file`. Default: './voided_rectangle.msh'
         tag_counter: Can be used to keep track of entity `tags`. The key is the
           topological dimension of the entities to keep track of and the value
@@ -415,12 +415,16 @@ def create_voided_rectangle(
         gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
 
     if facet_tags is not None:
-        gmsh.model.add_physical_group(1, rectangle_lines[5:7], facet_tags["bottom"], name="bottom")
-        gmsh.model.add_physical_group(1, rectangle_lines[3:5], facet_tags["left"], name="left")
-        gmsh.model.add_physical_group(
-            1, [rectangle_lines[0], rectangle_lines[-1]], facet_tags["right"], name="right"
-        )
-        gmsh.model.add_physical_group(1, rectangle_lines[1:3], facet_tags["top"], name="top")
+        facets = {
+        "bottom" : rectangle_lines[5:7],
+        "left" : rectangle_lines[3:5],
+        "right" : [rectangle_lines[0], rectangle_lines[-1]],
+        "top" : rectangle_lines[1:3],
+        "void" : circle_arcs
+        }
+        for name, tag in facet_tags.items():
+            if name in facets.keys():
+                gmsh.model.add_physical_group(1, facets[name], facet_tags[name], name=name)
 
     filepath = out_file or "./voided_rectangle.msh"
     _generate_and_write_grid(2, filepath)

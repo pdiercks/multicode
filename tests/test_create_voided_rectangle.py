@@ -32,7 +32,7 @@ def test_no_meshtags():
 def test_physical_groups():
     num_cells = 10
     cell_tags = {"matrix": 6}
-    facet_tags = {"bottom": 11, "left": 22, "right": 33, "top": 44}
+    facet_tags = {"bottom": 11, "left": 22, "right": 33, "top": 44, "void": 102}
     offset = {2: 0}
 
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
@@ -56,3 +56,4 @@ def test_physical_groups():
         assert ft.find(facet_tags["top"]).size > 0
         assert ft.find(facet_tags["right"]).size > 0
         assert ft.find(facet_tags["left"]).size > 0
+        assert ft.find(facet_tags["void"]).size > 0
