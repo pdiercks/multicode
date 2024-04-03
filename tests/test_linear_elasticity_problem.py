@@ -36,7 +36,7 @@ def test():
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = fem.functionspace(domain, fe)
-    gdim = domain.ufl_cell().geometric_dimension()
+    gdim = domain.geometry.dim
 
     youngs_mod = fem.Constant(domain, default_scalar_type(210e3))
     poisson_ratio = fem.Constant(domain, default_scalar_type(0.3))
@@ -109,7 +109,7 @@ def test_dirichlet():
     # initialize problem
     fe = element("P", domain.basix_cell(), 1, shape=(2,))
     V = fem.functionspace(domain, fe)
-    gdim = domain.ufl_cell().geometric_dimension()
+    gdim = domain.geometry.dim
     phases = [
         (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True), 1),
         (LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True), 2),

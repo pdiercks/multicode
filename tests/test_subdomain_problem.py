@@ -31,7 +31,7 @@ def test(create_grid):
 
     ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
     V = fem.functionspace(domain, ve)
-    gdim = domain.ufl_cell().geometric_dimension()
+    gdim = domain.geometry.dim
     phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
     Ω = RectangularSubdomain(1, domain, facet_tags=ft)
     problem = LinElaSubProblem(Ω, V, phases)
@@ -53,6 +53,10 @@ def test(create_grid):
     problem.setup_coarse_space()
 
     # check mappings between spaces
+
+    # FIXME correct the mappings
+    # TODO use new function of SubProblem for that
+
     x_dofs = x_dofs_vectorspace(problem.V)
     bottom = x_dofs[problem.V_to_L["bottom"]]
     top = x_dofs[problem.V_to_L["top"]]

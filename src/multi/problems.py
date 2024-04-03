@@ -43,7 +43,7 @@ from multi.utils import LogMixin
 class LinearProblem(ABC, LinearProblemBase, LogMixin):
     """Class for solving a linear variational problem"""
 
-    def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
+    def __init__(self, domain: Domain, space: fem.FunctionSpace):
         """Initialize domain and FE space
 
         Args:
@@ -197,7 +197,7 @@ class LinearElasticityProblem(LinearProblem):
     def __init__(
         self,
         domain: Domain,
-        space: fem.FunctionSpaceBase,
+        space: fem.FunctionSpace,
         phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]],
     ):
         """Initializes a linear elastic problem.
@@ -226,7 +226,7 @@ class LinearElasticityProblem(LinearProblem):
             raise ValueError(
                 "The type for the material phase(s) is not correctly defined."
             )
-        self.gdim = domain.grid.ufl_cell().geometric_dimension()
+        self.gdim = domain.grid.geometry.dim
 
     def update_material(self, values: tuple[dict[str, float], ...]):
         """Updates the material parameters for each material phase.
@@ -296,20 +296,14 @@ class SubdomainProblem(object):
         V = self.V
         ufl_element = V.ufl_element()
         family = ufl_element.family_name
-        shape = ufl_element.value_shape()
+        shape = ufl_element.reference_value_shape
 
         edge_spaces = {}
-        degree = {"coarse": 1, "fine": ufl_element.degree()}
+        degree = {"coarse": 1, "fine": ufl_element.degree}
         for scale, data in edge_meshes.items():
             edge_spaces[scale] = {}
             for edge, grid in data.items():
-                fe = element(
-                    family,
-                    grid.basix_cell(),
-                    degree[scale],
-                    shape=shape,
-                    gdim=grid.ufl_cell().geometric_dimension(),
-                )
+                fe = element(family, grid.basix_cell(), degree[scale], shape=shape)
                 space = fem.functionspace(grid, fe)
                 edge_spaces[scale][edge] = space
 
@@ -323,14 +317,8 @@ class SubdomainProblem(object):
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
-        shape = ufl_element.value_shape()
-        fe = element(
-            family_name,
-            coarse_grid.basix_cell(),
-            1,
-            shape=shape,
-            gdim=coarse_grid.ufl_cell().geometric_dimension(),
-        )
+        shape = ufl_element.reference_value_shape
+        fe = element(family_name, coarse_grid.basix_cell(), 1, shape=shape)
         self.W = fem.functionspace(coarse_grid, fe)
 
     def create_map_from_V_to_L(self) -> None:
@@ -353,7 +341,7 @@ class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     def __init__(
         self,
         domain: RectangularSubdomain,
-        space: fem.FunctionSpaceBase,
+        space: fem.FunctionSpace,
         phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]],
     ):
         super().__init__(domain, space, phases)
@@ -608,9 +596,9 @@ class TransferProblem(LogMixin):
             u_in.interpolate(
                 u,
                 nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-                    u_in.function_space.mesh._cpp_object,
+                    u_in.function_space.mesh,
                     u_in.function_space.element,
-                    u.function_space.mesh._cpp_object,
+                    u.function_space.mesh,
                 ),
             )
             U.append(self.range.make_array([u_in.vector.copy()]))

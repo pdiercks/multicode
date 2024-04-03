@@ -25,7 +25,7 @@ class NumpyLine:
         else:
             raise NotImplementedError
 
-    def interpolate(self, function_space: fem.FunctionSpaceBase, orientation: int) -> npt.NDArray:
+    def interpolate(self, function_space: fem.FunctionSpace, orientation: int) -> npt.NDArray:
         """interpolate line shape functions to given Lagrange space.
 
         Args:
@@ -33,7 +33,7 @@ class NumpyLine:
             orientation: Integer specifying if the line is horizontal (0) or vertical (1).
 
         """
-        assert function_space.ufl_element().family() in ("Lagrange", "P")
+        assert function_space.ufl_element().family_name in ("Lagrange", "P")
         assert isinstance(orientation, int)
         assert 0 <= orientation <= 1
         coordinates = function_space.tabulate_dof_coordinates()
@@ -52,7 +52,7 @@ class NumpyLine:
             shapes.append(X @ coeff)
         phi = np.vstack(shapes) # shape (num_nodes, Vdim)
 
-        value_shape = function_space.ufl_element().value_shape()
+        value_shape = function_space.ufl_element().reference_value_shape
         if len(value_shape) > 0:
             # vector valued function space
             ncomp = value_shape[0] # either 2 or 3
@@ -130,7 +130,7 @@ class NumpyQuad:
             The standard shape functions.
 
         """
-        assert function_space.ufl_element().family() in ("P", "Q", "Lagrange")
+        assert function_space.ufl_element().family_name in ("P", "Q", "Lagrange")
         coordinates = function_space.tabulate_dof_coordinates()
         coordinates = coordinates[:, : self.gdim]
         X = get_P_matrix(coordinates, self.nn)
@@ -141,7 +141,7 @@ class NumpyQuad:
             shapes.append(X @ coeff)
         phi = np.vstack(shapes)
 
-        value_shape = function_space.ufl_element().value_shape()
+        value_shape = function_space.ufl_element().reference_value_shape
         if len(value_shape) > 0:
             # vector valued function space
             ncomp = value_shape[0] # either 2 or 3

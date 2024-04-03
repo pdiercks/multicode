@@ -43,7 +43,7 @@ def transfer_operator_subdomains_2d(A: npt.NDArray[np.float64], dirichlet_dofs: 
     return NumpyMatrixOperator(transfer_operator)
 
 
-def discretize_source_product(V: fem.FunctionSpaceBase, product: str, dirichlet_dofs: npt.NDArray[np.int32], bcs: Optional[list[fem.DirichletBC]] = []):
+def discretize_source_product(V: fem.FunctionSpace, product: str, dirichlet_dofs: npt.NDArray[np.int32], bcs: Optional[list[fem.DirichletBC]] = []):
     """Discretizes source product for transfer operator.
 
     Args:

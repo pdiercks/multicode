@@ -25,7 +25,7 @@ def test(edim):
     # submesh, entity_map, vertex_map, geom_map = mesh.create_submesh(domain, edim, entities)
     submesh, _, _, _ = mesh.create_submesh(domain, edim, entities)
     assert isinstance(submesh, mesh.Mesh)
-    assert submesh.topology.cell_types[0] == cell_type
+    assert submesh.topology.cell_type == cell_type
     assert submesh.topology.index_map(edim).size_global == num_cells
 
 

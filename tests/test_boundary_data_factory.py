@@ -19,8 +19,8 @@ def test():
     degree = 1
     quad = element("Lagrange", rectangle.basix_cell(), degree, shape=())
     line = element("Lagrange", interval.basix_cell(), degree, shape=())
-    V = dolfinx.fem.FunctionSpace(rectangle, quad)
-    W = dolfinx.fem.FunctionSpace(interval, line)
+    V = dolfinx.fem.functionspace(rectangle, quad)
+    W = dolfinx.fem.functionspace(interval, line)
 
     # generate mode on interval (bottom edge)
     w = dolfinx.fem.Function(W)

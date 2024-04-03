@@ -7,7 +7,7 @@ import numpy.typing as npt
 from petsc4py.PETSc import InsertMode, ScatterMode
 
 
-def get_boundary_dofs(V: fem.FunctionSpaceBase, marker: Optional[Callable] = None) -> npt.ArrayLike:
+def get_boundary_dofs(V: fem.FunctionSpace, marker: Optional[Callable] = None) -> npt.ArrayLike:
     """Returns dofs on the boundary"""
     domain = V.mesh
     tdim = domain.topology.dim
@@ -39,7 +39,7 @@ class BoundaryDataFactory(object):
         object that applies to the entire boundary ∂Ω.
     """
 
-    def __init__(self, domain: mesh.Mesh, boundary_entities: np.ndarray, V: fem.FunctionSpaceBase):
+    def __init__(self, domain: mesh.Mesh, boundary_entities: np.ndarray, V: fem.FunctionSpace):
         self.domain = domain
         self.V = V
 
@@ -113,7 +113,7 @@ class BoundaryConditions(object):
     def __init__(
         self,
         domain: mesh.Mesh,
-        space: fem.FunctionSpaceBase,
+        space: fem.FunctionSpace,
         facet_tags: Union[mesh.MeshTags, None] = None,
     ) -> None:
         """Initializes the instance based on domain and FE space.

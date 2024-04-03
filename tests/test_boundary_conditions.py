@@ -118,7 +118,7 @@ def test_vector():
 
     ndofs = (nx +1) + nx
     n_boundaries = len(boundaries)
-    n_comp = ve.value_shape()[0]
+    n_comp = ve.reference_value_shape[0]
     count_dofs(domain, bc_handler.bcs, ndofs * n_boundaries * n_comp)
 
     with pytest.raises(ValueError):

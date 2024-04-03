@@ -10,7 +10,7 @@ def test():
         MPI.COMM_WORLD, n, n, dolfinx.mesh.CellType.quadrilateral
     )
     fe = element("Lagrange", domain.basix_cell(), 1, shape=())
-    V = dolfinx.fem.FunctionSpace(domain, fe)
+    V = dolfinx.fem.functionspace(domain, fe)
 
     Δx = Δy = 1 / (
         n + 1

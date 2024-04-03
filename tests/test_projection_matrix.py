@@ -27,7 +27,7 @@ def test(product_name):
         product_mat = product.assemble_matrix()
         product = FenicsxMatrixOperator(product_mat, V, V)
         W = product.matrix[:, :]
-    basis_vectors = build_nullspace(source.V, gdim=domain.ufl_cell().geometric_dimension())
+    basis_vectors = build_nullspace(source.V, gdim=domain.geometry.dim)
     basis = source.make_array(basis_vectors)
     gram_schmidt(basis, product=product, copy=False)
 
