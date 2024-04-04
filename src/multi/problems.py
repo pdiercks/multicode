@@ -365,11 +365,19 @@ class SubdomainProblem(object):
             return map
 
         t = fem.Function(T)
-        top_to_bottom = build_map(t, B, 0) # type: ignore
+        top_to_bottom = build_map(t, B, 0)  # type: ignore
+        b = fem.Function(B)
+        bottom_to_top = build_map(b, T, 0)  # type: ignore
         r = fem.Function(R)
-        right_to_left = build_map(r, L, 1) # type: ignore
-        self.edge_space_maps = {"top_to_bottom": top_to_bottom, "right_to_left": right_to_left}
-
+        right_to_left = build_map(r, L, 1)  # type: ignore
+        l = fem.Function(L)
+        left_to_right = build_map(l, R, 1)  # type: ignore
+        self.edge_space_maps = {
+            "top_to_bottom": top_to_bottom,
+            "right_to_left": right_to_left,
+            "bottom_to_top": bottom_to_top,
+            "left_to_right": left_to_right,
+        }
 
 
 class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
