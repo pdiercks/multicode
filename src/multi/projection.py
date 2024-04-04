@@ -62,7 +62,7 @@ def orthogonal_part(U: VectorArray, basis: VectorArray, product: Optional[Operat
     return U - U_proj
 
 
-def fine_scale_part(u: fem.Function, coarse_space: fem.FunctionSpaceBase, in_place: bool = False) -> Union[fem.Function, None]:
+def fine_scale_part(u: fem.Function, coarse_space: fem.FunctionSpace, in_place: bool = False) -> Union[fem.Function, None]:
     """Computes fine scale part u_f = u - u_c.
 
     Args:
@@ -80,13 +80,13 @@ def fine_scale_part(u: fem.Function, coarse_space: fem.FunctionSpaceBase, in_pla
     w = fem.Function(coarse_space)
 
     w.interpolate(u, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-        w.function_space.mesh._cpp_object,
+        w.function_space.mesh,
         w.function_space.element,
-        u.function_space.mesh._cpp_object))
+        u.function_space.mesh))
     u_c.interpolate(w, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-        u_c.function_space.mesh._cpp_object,
+        u_c.function_space.mesh,
         u_c.function_space.element,
-        w.function_space.mesh._cpp_object))
+        w.function_space.mesh))
 
     if in_place:
         u.vector.axpy(-1, u_c.vector)

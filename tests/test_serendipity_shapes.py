@@ -19,7 +19,7 @@ def test():
 
     omega = Domain(domain)
     omega.translate([-1, -1, 0])
-    V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 2))
+    V = dolfinx.fem.functionspace(domain, ("Lagrange", 2))
     quad8 = NumpyQuad(
         np.array([[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]])
     )

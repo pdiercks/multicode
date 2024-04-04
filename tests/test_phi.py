@@ -19,7 +19,7 @@ def test():
     rce = RectangularSubdomain(1, domain)
     rce.create_coarse_grid(1)
     rce.create_boundary_grids()
-    gdim = domain.ufl_cell().geometric_dimension()
+    gdim = domain.geometry.dim
 
     phases = LinearElasticMaterial(gdim, 60e3, 0.2, plane_stress=True)
     problem = LinearElasticityProblem(rce, V, phases)

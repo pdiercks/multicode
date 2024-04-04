@@ -157,7 +157,7 @@ class RectangularSubdomain(RectangularDomain):
 
         xmin, ymin, _ = self.xmin
         xmax, ymax, _ = self.xmax
-        cmap = self.grid.geometry.cmaps[0]
+        cmap = self.grid.geometry.cmap
         geom_deg = cmap.degree
 
         with tempfile.NamedTemporaryFile(suffix=".msh") as tf:

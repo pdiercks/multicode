@@ -17,7 +17,7 @@ def test_function_space():
         MPI.COMM_WORLD, n, n, mesh.CellType.quadrilateral
     )
     fe = element("Lagrange", domain.basix_cell(), 2, shape=())
-    V = fem.FunctionSpace(domain, fe)
+    V = fem.functionspace(domain, fe)
 
     h = 1.0 / n
     my_point = point_at(np.array([h * 2, h * 5, 0.0]))

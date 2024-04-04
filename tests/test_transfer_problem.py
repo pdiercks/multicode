@@ -38,9 +38,9 @@ def exact_solution(problem, dirichlet_bc, Vsub):
     u_in.interpolate(
         u_exact,
         nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-            u_in.function_space.mesh._cpp_object,
+            u_in.function_space.mesh,
             u_in.function_space.element,
-            u_exact.function_space.mesh._cpp_object,
+            u_exact.function_space.mesh,
         ),
     )
 
@@ -109,7 +109,7 @@ def test_remove_rot():
     range_product_mat = inner_range_product.assemble_matrix()
     range_product = FenicsxMatrixOperator(range_product_mat, Vsub, Vsub)
 
-    ns_vecs = build_nullspace(Vsub, gdim=submesh.ufl_cell().geometric_dimension())
+    ns_vecs = build_nullspace(Vsub, gdim=submesh.geometry.dim)
     range_space = FenicsxVectorSpace(Vsub)
     nullspace = range_space.make_array([ns_vecs[-1]])
     gram_schmidt(nullspace, product=range_product, copy=False)
@@ -226,7 +226,7 @@ def test_remove_trans_x_rot():
     range_product_mat = inner_range_product.assemble_matrix()
     range_product = FenicsxMatrixOperator(range_product_mat, Vsub, Vsub)
 
-    ns_vecs = build_nullspace(Vsub, gdim=submesh.ufl_cell().geometric_dimension())
+    ns_vecs = build_nullspace(Vsub, gdim=submesh.geometry.dim)
     from dolfinx.fem.petsc import set_bc
     for vec in ns_vecs:
         set_bc(vec, bc_hom)
@@ -347,7 +347,7 @@ def test_remove_full_kernel():
     inner_range_product = InnerProduct(Vsub, "h1")
     range_product_mat = inner_range_product.assemble_matrix()
     range_product = FenicsxMatrixOperator(range_product_mat, Vsub, Vsub)
-    ns_vecs = build_nullspace(Vsub, gdim=submesh.ufl_cell().geometric_dimension())
+    ns_vecs = build_nullspace(Vsub, gdim=submesh.geometry.dim)
     range_space = FenicsxVectorSpace(Vsub)
     nullspace = range_space.make_array(ns_vecs)
     gram_schmidt(nullspace, product=range_product, copy=False)

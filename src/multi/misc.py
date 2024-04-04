@@ -3,7 +3,7 @@
 import typing
 import numpy as np
 import numpy.typing as npt
-from dolfinx.fem import FunctionSpaceBase
+from dolfinx.fem import FunctionSpace
 
 
 def to_floats(x: typing.Union[typing.Iterable[int], typing.Iterable[float]]) -> list[float]:
@@ -28,7 +28,7 @@ def to_floats(x: typing.Union[typing.Iterable[int], typing.Iterable[float]]) -> 
     return floats
 
 
-def x_dofs_vectorspace(V: FunctionSpaceBase) -> npt.NDArray:
+def x_dofs_vectorspace(V: FunctionSpace) -> npt.NDArray:
     bs = V.dofmap.bs
     x = V.tabulate_dof_coordinates()
     x_dofs = np.repeat(x, repeats=bs, axis=0)

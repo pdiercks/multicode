@@ -43,9 +43,9 @@ def test_built_in(n):
         # ### interpolation of w for current cell
         u = fem.Function(V, name=f"u_{ci}")
         u.interpolate(w, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-            u.function_space.mesh._cpp_object,
+            u.function_space.mesh,
             u.function_space.element,
-            w.function_space.mesh._cpp_object))
+            w.function_space.mesh))
 
         uvec = u.vector
         assert dim == int(uvec.norm(0))

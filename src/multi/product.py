@@ -15,7 +15,7 @@ class InnerProduct(object):
 
     """
 
-    def __init__(self, V: fem.FunctionSpaceBase, product: Union[str, ufl.Form], bcs: Optional[Sequence[fem.DirichletBC]] = None):
+    def __init__(self, V: fem.FunctionSpace, product: Union[str, ufl.Form], bcs: Optional[Sequence[fem.DirichletBC]] = None):
         if bcs is None:
             bcs = ()
         self.V = V

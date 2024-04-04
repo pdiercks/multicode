@@ -6,7 +6,7 @@ from dolfinx import fem, la
 from petsc4py import PETSc
 
 
-def build_nullspace(V: fem.FunctionSpaceBase, gdim: Optional[int] = 2) -> list[PETSc.Vec]: # type: ignore
+def build_nullspace(V: fem.FunctionSpace, gdim: Optional[int] = 2) -> list[PETSc.Vec]: # type: ignore
     """Builds PETSc nullspace for elasticity problem.
 
     Args:

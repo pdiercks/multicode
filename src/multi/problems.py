@@ -43,7 +43,7 @@ from multi.utils import LogMixin
 class LinearProblem(ABC, LinearProblemBase, LogMixin):
     """Class for solving a linear variational problem"""
 
-    def __init__(self, domain: Domain, space: fem.FunctionSpaceBase):
+    def __init__(self, domain: Domain, space: fem.FunctionSpace):
         """Initialize domain and FE space
 
         Args:
@@ -197,7 +197,7 @@ class LinearElasticityProblem(LinearProblem):
     def __init__(
         self,
         domain: Domain,
-        space: fem.FunctionSpaceBase,
+        space: fem.FunctionSpace,
         phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]],
     ):
         """Initializes a linear elastic problem.
@@ -226,7 +226,7 @@ class LinearElasticityProblem(LinearProblem):
             raise ValueError(
                 "The type for the material phase(s) is not correctly defined."
             )
-        self.gdim = domain.grid.ufl_cell().geometric_dimension()
+        self.gdim = domain.grid.geometry.dim
 
     def update_material(self, values: tuple[dict[str, float], ...]):
         """Updates the material parameters for each material phase.
@@ -296,20 +296,14 @@ class SubdomainProblem(object):
         V = self.V
         ufl_element = V.ufl_element()
         family = ufl_element.family_name
-        shape = ufl_element.value_shape()
+        shape = ufl_element.reference_value_shape
 
         edge_spaces = {}
-        degree = {"coarse": 1, "fine": ufl_element.degree()}
+        degree = {"coarse": 1, "fine": ufl_element.degree}
         for scale, data in edge_meshes.items():
             edge_spaces[scale] = {}
             for edge, grid in data.items():
-                fe = element(
-                    family,
-                    grid.basix_cell(),
-                    degree[scale],
-                    shape=shape,
-                    gdim=grid.ufl_cell().geometric_dimension(),
-                )
+                fe = element(family, grid.basix_cell(), degree[scale], shape=shape)
                 space = fem.functionspace(grid, fe)
                 edge_spaces[scale][edge] = space
 
@@ -323,14 +317,8 @@ class SubdomainProblem(object):
         V = self.V
         ufl_element = V.ufl_element()
         family_name = ufl_element.family_name
-        shape = ufl_element.value_shape()
-        fe = element(
-            family_name,
-            coarse_grid.basix_cell(),
-            1,
-            shape=shape,
-            gdim=coarse_grid.ufl_cell().geometric_dimension(),
-        )
+        shape = ufl_element.reference_value_shape
+        fe = element(family_name, coarse_grid.basix_cell(), 1, shape=shape)
         self.W = fem.functionspace(coarse_grid, fe)
 
     def create_map_from_V_to_L(self) -> None:
@@ -346,6 +334,43 @@ class SubdomainProblem(object):
             V_to_L[edge] = make_mapping(L, V)
         self.V_to_L = V_to_L
 
+    def create_edge_space_maps(self) -> None:
+        from multi.interpolation import interpolate
+
+        try:
+            edge_spaces = self.edge_spaces
+        except AttributeError:
+            self.setup_edge_spaces()
+            edge_spaces = self.edge_spaces
+
+        spaces = edge_spaces["fine"]
+        T = spaces["top"]
+        B = spaces["bottom"]
+        R = spaces["right"]
+        L = spaces["left"]
+
+        def build_map(function: fem.Function, space_to: fem.FunctionSpace, comp: int):
+            assert comp in (0, 1)
+            space_from = function.function_space
+            dim = space_from.dofmap.bs * space_from.dofmap.index_map.size_local
+            function.x.array[:] = np.arange(dim, dtype=np.int32)
+
+            x_target = space_to.tabulate_dof_coordinates()
+            x_source = space_from.tabulate_dof_coordinates()
+            shift = x_source - x_target
+            shift[:, comp] *= 0
+            points = x_target + shift
+            values = interpolate(function, points)
+            map = (values.flatten() + 0.5).astype(np.int32)
+            return map
+
+        t = fem.Function(T)
+        top_to_bottom = build_map(t, B, 0) # type: ignore
+        r = fem.Function(R)
+        right_to_left = build_map(r, L, 1) # type: ignore
+        self.edge_space_maps = {"top_to_bottom": top_to_bottom, "right_to_left": right_to_left}
+
+
 
 class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     """Linear elasticity problem defined on a subdomain."""
@@ -353,7 +378,7 @@ class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     def __init__(
         self,
         domain: RectangularSubdomain,
-        space: fem.FunctionSpaceBase,
+        space: fem.FunctionSpace,
         phases: Union[LinearElasticMaterial, list[tuple[LinearElasticMaterial, int]]],
     ):
         super().__init__(domain, space, phases)
@@ -608,9 +633,9 @@ class TransferProblem(LogMixin):
             u_in.interpolate(
                 u,
                 nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-                    u_in.function_space.mesh._cpp_object,
+                    u_in.function_space.mesh,
                     u_in.function_space.element,
-                    u.function_space.mesh._cpp_object,
+                    u.function_space.mesh,
                 ),
             )
             U.append(self.range.make_array([u_in.vector.copy()]))

@@ -31,7 +31,7 @@ def test(create_grid):
 
     ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
     V = fem.functionspace(domain, ve)
-    gdim = domain.ufl_cell().geometric_dimension()
+    gdim = domain.geometry.dim
     phases = LinearElasticMaterial(gdim, 210e3, 0.3, plane_stress=True)
     Ω = RectangularSubdomain(1, domain, facet_tags=ft)
     problem = LinElaSubProblem(Ω, V, phases)
@@ -51,19 +51,24 @@ def test(create_grid):
     Ω.create_boundary_grids()
     problem.create_map_from_V_to_L() # sets up edge spaces if required
     problem.setup_coarse_space()
+    problem.create_edge_space_maps()
 
     # check mappings between spaces
+
+    # FIXME correct the mappings
+    # TODO use new function of SubProblem for that
+
     x_dofs = x_dofs_vectorspace(problem.V)
     bottom = x_dofs[problem.V_to_L["bottom"]]
     top = x_dofs[problem.V_to_L["top"]]
-    top_to_bottom = make_mapping(problem.edge_spaces["fine"]["bottom"], problem.edge_spaces["fine"]["top"])
+    top_to_bottom = problem.edge_space_maps["top_to_bottom"]
     assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
     assert np.allclose(top[:, 1], np.ones_like(top[:, 1]))
     assert np.allclose(bottom[:, 0], top[top_to_bottom, 0])
 
     left = x_dofs[problem.V_to_L["left"]]
     right = x_dofs[problem.V_to_L["right"]]
-    right_to_left = make_mapping(problem.edge_spaces["fine"]["left"], problem.edge_spaces["fine"]["right"])
+    right_to_left = problem.edge_space_maps["right_to_left"]
     assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
     assert np.allclose(right[:, 0], np.ones_like(right[:, 0]))
     assert np.allclose(left[:, 1], right[right_to_left, 1])

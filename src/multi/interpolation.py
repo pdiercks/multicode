@@ -52,9 +52,9 @@ def make_mapping(subspace, superspace):
     f = fem.Function(subspace)
 
     f.interpolate(u, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-        f.function_space.mesh._cpp_object,
+        f.function_space.mesh,
         f.function_space.element,
-        u.function_space.mesh._cpp_object))
+        u.function_space.mesh))
     f.x.scatter_forward()
     dofs = (f.vector.array + 0.5).astype(np.int32).flatten()
     return dofs
