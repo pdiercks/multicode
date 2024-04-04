@@ -334,6 +334,43 @@ class SubdomainProblem(object):
             V_to_L[edge] = make_mapping(L, V)
         self.V_to_L = V_to_L
 
+    def create_edge_space_maps(self) -> None:
+        from multi.interpolation import interpolate
+
+        try:
+            edge_spaces = self.edge_spaces
+        except AttributeError:
+            self.setup_edge_spaces()
+            edge_spaces = self.edge_spaces
+
+        spaces = edge_spaces["fine"]
+        T = spaces["top"]
+        B = spaces["bottom"]
+        R = spaces["right"]
+        L = spaces["left"]
+
+        def build_map(function: fem.Function, space_to: fem.FunctionSpace, comp: int):
+            assert comp in (0, 1)
+            space_from = function.function_space
+            dim = space_from.dofmap.bs * space_from.dofmap.index_map.size_local
+            function.x.array[:] = np.arange(dim, dtype=np.int32)
+
+            x_target = space_to.tabulate_dof_coordinates()
+            x_source = space_from.tabulate_dof_coordinates()
+            shift = x_source - x_target
+            shift[:, comp] *= 0
+            points = x_target + shift
+            values = interpolate(function, points)
+            map = (values.flatten() + 0.5).astype(np.int32)
+            return map
+
+        t = fem.Function(T)
+        top_to_bottom = build_map(t, B, 0) # type: ignore
+        r = fem.Function(R)
+        right_to_left = build_map(r, L, 1) # type: ignore
+        self.edge_space_maps = {"top_to_bottom": top_to_bottom, "right_to_left": right_to_left}
+
+
 
 class LinElaSubProblem(LinearElasticityProblem, SubdomainProblem):
     """Linear elasticity problem defined on a subdomain."""
