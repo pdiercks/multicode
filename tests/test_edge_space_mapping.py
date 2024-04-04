@@ -11,7 +11,8 @@ from basix.ufl import element
 from multi.domain import RectangularSubdomain
 from multi.preprocessing import create_unit_cell_01
 from multi.misc import x_dofs_vectorspace
-from multi.interpolation import interpolate
+from multi.problems import LinElaSubProblem
+from multi.materials import LinearElasticMaterial
 
 
 def test():
@@ -23,13 +24,28 @@ def test():
     # Therefore, mappings between edge spaces are done using multi.interpolation.interpolate
 
     num_cells = 10
-    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_unit_cell_01(0., 1., 0., 1., num_cells=num_cells, cell_tags={"matrix": 1, "inclusion": 2}, facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4}, out_file=tf.name)
+    gdim = 2
 
-        rce, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_unit_cell_01(
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            num_cells=num_cells,
+            cell_tags={"matrix": 1, "inclusion": 2},
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
+            out_file=tf.name,
+        )
+
+        rce, ct, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=gdim)
     Ω = RectangularSubdomain(1, rce, ct, ft)
     Ω.create_coarse_grid(1)
     Ω.create_boundary_grids()
+
+    V = fem.functionspace(rce, ("Lagrange", 2, (2,)))
+    material = LinearElasticMaterial(gdim, E=20e3, NU=0.3)
+    subproblem = LinElaSubProblem(Ω, V, material)
 
     bottom = Ω.fine_edge_grid["bottom"]
     top = Ω.fine_edge_grid["top"]
@@ -46,31 +62,15 @@ def test():
     Vl = fem.functionspace(left, le)
     Vr = fem.functionspace(right, re)
 
-    # ### Map from top to bottom
-    f = fem.Function(Vt)
-    x_bottom = Vb.tabulate_dof_coordinates()
-    x_top = Vt.tabulate_dof_coordinates()
-    shift = x_top - x_bottom
-    shift[:, 0] *= 0
-    f.x.array[:] = np.arange(f.x.array.size, dtype=np.int32)
-    values = interpolate(f, x_bottom + shift)
-    map = (values.flatten() + 0.5).astype(np.int32)
+    # ### Build mappings
+    subproblem.create_edge_space_maps()
 
     xdofs_b = x_dofs_vectorspace(Vb)
     xdofs_t = x_dofs_vectorspace(Vt)
-    assert np.allclose(xdofs_b[:, 0], xdofs_t[map, 0])
-
-
-    # ### Map from right to left
-    g = fem.Function(Vr)
-    x_left = Vl.tabulate_dof_coordinates()
-    x_right = Vr.tabulate_dof_coordinates()
-    shift = x_right - x_left
-    shift[:, 1] *= 0
-    g.x.array[:] = np.arange(g.x.array.size, dtype=np.int32)
-    values = interpolate(g, x_left + shift)
-    map = (values.flatten() + 0.5).astype(np.int32)
+    ttb = subproblem.edge_space_maps["top_to_bottom"]
+    assert np.allclose(xdofs_b[:, 0], xdofs_t[ttb, 0])
 
     xdofs_l = x_dofs_vectorspace(Vl)
     xdofs_r = x_dofs_vectorspace(Vr)
-    assert np.allclose(xdofs_l[:, 1], xdofs_r[map, 1])
+    rtl = subproblem.edge_space_maps["right_to_left"]
+    assert np.allclose(xdofs_l[:, 1], xdofs_r[rtl, 1])
