@@ -329,8 +329,8 @@ class StructuredQuadGrid(object):
             dx = mesh.compute_midpoints(self.grid, 0, vertices)
             dx = np.around(dx, decimals=3)
 
-            xmin = np.amin(dx, axis=0)
-            xmax = np.amax(dx, axis=0)
+            xmin = np.amin(dx, axis=0, keepdims=True)
+            xmax = np.amax(dx, axis=0, keepdims=True)
 
             fine_grid_method = self.fine_grid_method[cell]
 
@@ -342,16 +342,17 @@ class StructuredQuadGrid(object):
                     # duplicate given mesh for current coarse grid cell
                     # read msh file and translate, then save to msh again
                     subdomain_mesh = meshio.read(fine_grid_method)
-                    subdomain_mesh.points += xmin
+                    subdomain_gdim = subdomain_mesh.points.shape[1]
+                    subdomain_mesh.points += xmin[:, :subdomain_gdim]
                     meshio.write(tf.name, subdomain_mesh, file_format="gmsh")
                 else:
                     # create grid via method for current coarse grid cell
                     # FIXME: hardcoded interface of `fine_grid_method`
                     fine_grid_method(
-                        xmin[0],
-                        xmax[0],
-                        xmin[1],
-                        xmax[1],
+                        xmin[:, 0].item(),
+                        xmax[:, 0].item(),
+                        xmin[:, 1].item(),
+                        xmax[:, 1].item(),
                         out_file=tf.name,
                         **kwargs,
                     )
@@ -380,7 +381,11 @@ class StructuredQuadGrid(object):
         # cannot be read by dolfinx.io.gmshio
         in_mesh = meshio.read(tf_msh.name)
         prune_z = True
-        cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z)
+        if 'gmsh:physical' in in_mesh.cell_data_dict.keys():
+            name_to_read = 'gmsh:physical'
+        else:
+            name_to_read = None
+        cell_mesh = create_mesh(in_mesh, cell_type, prune_z=prune_z, name_to_read=name_to_read)
         meshio.write(output, cell_mesh)
         # if create_facets:
         #     outfile = pathlib.Path(output)

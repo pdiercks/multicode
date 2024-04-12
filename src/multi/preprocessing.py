@@ -19,14 +19,22 @@ GMSH_VERBOSITY = 0
 
 # this code is part of the FEniCSx tutorial
 # see https://jorgensd.github.io/dolfinx-tutorial/chapter3/subdomains.html#convert-msh-files-to-xdmf-using-meshio
-def create_mesh(mesh, cell_type, prune_z=False, name_to_read="gmsh:physical"):
+def create_mesh(
+    mesh, cell_type, prune_z=False, name_to_read: Optional[str] = "gmsh:physical"
+):
     """create a new instance of meshio.Mesh from meshio.Mesh object"""
     cells = mesh.get_cells_type(cell_type)
-    cell_data = mesh.get_cell_data(name_to_read, cell_type)
     points = mesh.points[:, :2] if prune_z else mesh.points
-    out_mesh = meshio.Mesh(
-        points=points, cells={cell_type: cells}, cell_data={name_to_read: [cell_data]}
-    )
+
+    if name_to_read is not None:
+        cell_data = mesh.get_cell_data(name_to_read, cell_type)
+        out_mesh = meshio.Mesh(
+            points=points,
+            cells={cell_type: cells},
+            cell_data={name_to_read: [cell_data]},
+        )
+    else:
+        out_mesh = meshio.Mesh(points=points, cells={cell_type: cells})
     return out_mesh
 
 
