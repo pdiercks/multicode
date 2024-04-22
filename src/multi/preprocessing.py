@@ -210,28 +210,34 @@ def create_rectangle(
     _set_gmsh_options(options)
     gmsh.model.add("rectangle")
 
+    entity_dim = 2
+    facet_dim = entity_dim - 1
+    tag_counter = tag_counter or {}
+    plane_surface_counter = 1 + tag_counter.get(entity_dim, 0)
+    line_counter = 1 + tag_counter.get(facet_dim, 0)
+
     p0 = gmsh.model.geo.addPoint(xmin, ymin, z, lc)
     p1 = gmsh.model.geo.addPoint(xmax, ymin, z, lc)
     p2 = gmsh.model.geo.addPoint(xmax, ymax, z, lc)
     p3 = gmsh.model.geo.addPoint(xmin, ymax, z, lc)
 
-    l0 = gmsh.model.geo.addLine(p0, p1)  # bottom
-    l1 = gmsh.model.geo.addLine(p1, p2)  # right
-    l2 = gmsh.model.geo.addLine(p2, p3)  # top
-    l3 = gmsh.model.geo.addLine(p3, p0)  # left
+    l0 = gmsh.model.geo.addLine(p0, p1, tag=line_counter)  # bottom
+    line_counter += 1
+    l1 = gmsh.model.geo.addLine(p1, p2, tag=line_counter)  # right
+    line_counter += 1
+    l2 = gmsh.model.geo.addLine(p2, p3, tag=line_counter)  # top
+    line_counter += 1
+    l3 = gmsh.model.geo.addLine(p3, p0, tag=line_counter)  # left
+    line_counter += 1
 
     curve_loop = gmsh.model.geo.addCurveLoop([l0, l1, l2, l3])
-
-    entity_dim = 2
-    plane_surface_counter = 1
-    if tag_counter is not None:
-        plane_surface_counter += tag_counter[entity_dim]
 
     surface = gmsh.model.geo.addPlaneSurface([curve_loop], tag=plane_surface_counter)
     plane_surface_counter += 1
 
-    if tag_counter is not None:
-        tag_counter[entity_dim] = plane_surface_counter - 1
+    # adjust return value
+    tag_counter[entity_dim] = plane_surface_counter - 1
+    tag_counter[facet_dim] = line_counter - 1
 
     if num_cells is not None:
         if isinstance(num_cells, int):
@@ -317,6 +323,12 @@ def create_voided_rectangle(
     width = abs(xmax - xmin)
     height = abs(ymax - ymin)
 
+    entity_dim = 2
+    facet_dim = entity_dim - 1
+    tag_counter = tag_counter or {}
+    plane_surface_counter = 1 + tag_counter.get(entity_dim, 0)
+    line_counter = 1 + tag_counter.get(facet_dim, 0)
+
     _initialize()
     _set_gmsh_options(options)
     gmsh.model.add("voided_rectangle")
@@ -343,10 +355,12 @@ def create_voided_rectangle(
 
     circle_arcs = []
     for i in range(len(circle_points) - 1):
-        arc = geom.add_circle_arc(circle_points[i], center, circle_points[i + 1])
+        arc = geom.add_circle_arc(circle_points[i], center, circle_points[i + 1], tag=line_counter)
         circle_arcs.append(arc)
-    arc = geom.add_circle_arc(circle_points[-1], center, circle_points[0])
+        line_counter += 1
+    arc = geom.add_circle_arc(circle_points[-1], center, circle_points[0], tag=line_counter)
     circle_arcs.append(arc)
+    line_counter += 1
 
     # add the rectangle defined by 8 points
     dx = np.array([width / 2, 0.0, 0.0])
@@ -372,16 +386,19 @@ def create_voided_rectangle(
     # draw rectangle lines
     rectangle_lines = []
     for i in range(len(rectangle_points) - 1):
-        line = geom.add_line(rectangle_points[i], rectangle_points[i + 1])
+        line = geom.add_line(rectangle_points[i], rectangle_points[i + 1], tag=line_counter)
         rectangle_lines.append(line)
-    line = geom.add_line(rectangle_points[-1], rectangle_points[0])
+        line_counter += 1
+    line = geom.add_line(rectangle_points[-1], rectangle_points[0], tag=line_counter)
     rectangle_lines.append(line)
+    line_counter += 1
 
     # connect rectangle points and circle points from outer to inner
     conn = []
     for i in range(len(circle_points)):
-        line = geom.add_line(rectangle_points[i], circle_points[i])
+        line = geom.add_line(rectangle_points[i], circle_points[i], tag=line_counter)
         conn.append(line)
+        line_counter += 1
 
     # add curve loops defining surfaces of the matrix
     mat_loops = []
@@ -395,19 +412,15 @@ def create_voided_rectangle(
     )
     mat_loops.append(cloop)
 
-    entity_dim = 2
-    plane_surface_counter = 1
-    if tag_counter is not None:
-        plane_surface_counter += tag_counter[entity_dim]
-
     matrix = []
     for curve_loop in mat_loops:
         mat_surface = geom.add_plane_surface([curve_loop], tag=plane_surface_counter)
         plane_surface_counter += 1
         matrix.append(mat_surface)
 
-    if tag_counter is not None:
-        tag_counter[entity_dim] = plane_surface_counter - 1
+    # adjust return value
+    tag_counter[entity_dim] = plane_surface_counter - 1
+    tag_counter[facet_dim] = line_counter - 1
 
     if num_cells is not None:
         if not num_cells % 2 == 0:
@@ -457,18 +470,21 @@ def create_voided_rectangle(
         gmsh.model.add_physical_group(2, matrix, 1, name="matrix")
 
     if facet_tags is not None:
-        facets = {
-            "bottom": rectangle_lines[5:7],
-            "left": rectangle_lines[3:5],
-            "right": [rectangle_lines[0], rectangle_lines[-1]],
-            "top": rectangle_lines[1:3],
-            "void": circle_arcs,
-        }
         for name, tag in facet_tags.items():
-            if name in facets.keys():
-                gmsh.model.add_physical_group(
-                    1, facets[name], facet_tags[name], name=name
-                )
+            match name:
+                case "bottom":
+                    facets = rectangle_lines[5:7]
+                case "left":
+                    facets = rectangle_lines[3:5]
+                case "right":
+                    facets = [rectangle_lines[0], rectangle_lines[-1]]
+                case "top":
+                    facets = rectangle_lines[1:3]
+                case "void":
+                    facets = circle_arcs
+                case _:
+                    raise KeyError
+            gmsh.model.add_physical_group(1, facets, tag, name=name)
 
     filepath = out_file or "./voided_rectangle.msh"
     _generate_and_write_grid(2, filepath)
@@ -526,8 +542,13 @@ def create_unit_cell_01(
 
     # options
     gmsh.option.setNumber("Mesh.Smoothing", 2)
-
     geom = gmsh.model.geo
+
+    entity_dim = 2
+    facet_dim = entity_dim - 1
+    tag_counter = tag_counter or {}
+    plane_surface_counter = 1 + tag_counter.get(entity_dim, 0)
+    line_counter = 1 + tag_counter.get(facet_dim, 0)
 
     # add the inclusion (circle) as 8 circle arcs
     phi = np.linspace(0, 2 * np.pi, num=9, endpoint=True)[:-1]
@@ -536,7 +557,6 @@ def create_unit_cell_01(
         [radius * np.cos(phi), radius * np.sin(phi), np.zeros_like(phi)]
     ).T
     x_circle = np.tile(x_center, (8, 1)) + x_unit_circle
-
     center = geom.add_point(*x_center, meshSize=lc, tag=-1)
 
     circle_points = []
@@ -546,16 +566,14 @@ def create_unit_cell_01(
 
     circle_arcs = []
     for i in range(len(circle_points) - 1):
-        arc = geom.add_circle_arc(circle_points[i], center, circle_points[i + 1])
+        arc = geom.add_circle_arc(circle_points[i], center, circle_points[i + 1], tag=line_counter)
         circle_arcs.append(arc)
-    arc = geom.add_circle_arc(circle_points[-1], center, circle_points[0])
+        line_counter += 1
+    arc = geom.add_circle_arc(circle_points[-1], center, circle_points[0], tag=line_counter)
     circle_arcs.append(arc)
+    line_counter += 1
     circle_loop = geom.add_curve_loop(circle_arcs)
 
-    entity_dim = 2
-    plane_surface_counter = 1
-    if tag_counter is not None:
-        plane_surface_counter += tag_counter[entity_dim]
     circle_surface = geom.add_plane_surface([circle_loop], tag=plane_surface_counter)
     plane_surface_counter += 1
 
@@ -583,15 +601,18 @@ def create_unit_cell_01(
     # draw rectangle lines
     rectangle_lines = []
     for i in range(len(rectangle_points) - 1):
-        line = geom.add_line(rectangle_points[i], rectangle_points[i + 1])
+        line = geom.add_line(rectangle_points[i], rectangle_points[i + 1], tag=line_counter)
         rectangle_lines.append(line)
-    line = geom.add_line(rectangle_points[-1], rectangle_points[0])
+        line_counter += 1
+    line = geom.add_line(rectangle_points[-1], rectangle_points[0], tag=line_counter)
+    line_counter += 1
     rectangle_lines.append(line)
 
     # connect rectangle points and circle points from outer to inner
     conn = []
     for i in range(len(circle_points)):
-        line = geom.add_line(rectangle_points[i], circle_points[i])
+        line = geom.add_line(rectangle_points[i], circle_points[i], tag=line_counter)
+        line_counter += 1
         conn.append(line)
 
     # add curve loops defining surfaces of the matrix
@@ -612,8 +633,9 @@ def create_unit_cell_01(
         matrix.append(mat_surface)
         plane_surface_counter += 1
 
-    if tag_counter is not None:
-        tag_counter[entity_dim] = plane_surface_counter - 1
+    # adjust return value
+    tag_counter[entity_dim] = plane_surface_counter - 1
+    tag_counter[facet_dim] = line_counter - 1
 
     if num_cells is not None:
         if not num_cells % 2 == 0:
@@ -672,21 +694,19 @@ def create_unit_cell_01(
         gmsh.model.add_physical_group(2, [circle_surface], 2, name="inclusion")
 
     if facet_tags is not None:
-        gmsh.model.add_physical_group(
-            1, rectangle_lines[5:7], facet_tags["bottom"], name="bottom"
-        )
-        gmsh.model.add_physical_group(
-            1, rectangle_lines[3:5], facet_tags["left"], name="left"
-        )
-        gmsh.model.add_physical_group(
-            1,
-            [rectangle_lines[0], rectangle_lines[-1]],
-            facet_tags["right"],
-            name="right",
-        )
-        gmsh.model.add_physical_group(
-            1, rectangle_lines[1:3], facet_tags["top"], name="top"
-        )
+        for name, tag in facet_tags.items():
+            match name:
+                case "bottom":
+                    facets = rectangle_lines[5:7]
+                case "left":
+                    facets = rectangle_lines[3:5]
+                case "right":
+                    facets = [rectangle_lines[0], rectangle_lines[-1]]
+                case "top":
+                    facets = rectangle_lines[1:3]
+                case _:
+                    raise KeyError
+            gmsh.model.add_physical_group(1, facets, tag, name=name)
 
     filepath = out_file or "./unit_cell_01.msh"
     _generate_and_write_grid(2, filepath)
