@@ -33,12 +33,13 @@ def test_physical_groups():
     num_cells = 10
     cell_tags = {"matrix": 6}
     facet_tags = {"bottom": 11, "left": 22, "right": 33, "top": 44, "void": 102}
-    offset = {2: 0}
+    offset = {2: 0, 1: 0}
 
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_voided_rectangle(0., 1., 0., 1., num_cells=num_cells, recombine=True, cell_tags=cell_tags, facet_tags=facet_tags, out_file=tf.name, tag_counter=offset)
 
-        assert np.isclose(offset[2], 8)
+        assert np.isclose(offset[2], 8) # 8 surfaces
+        assert np.isclose(offset[1], 24) # 24 lines
 
         mesh = meshio.read(tf.name)
         assert "gmsh:physical" in mesh.cell_data.keys()
