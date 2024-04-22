@@ -1,30 +1,7 @@
 from mpi4py import MPI
 from dolfinx.io import gmshio
-import gmsh
 import tempfile
-
-
-def merge(mshfiles, output):
-    """loads several .msh files and merges them"""
-    gmsh.initialize()
-    gmsh.clear()
-    gmsh.model.add("merged")
-
-    for msh_file in mshfiles:
-        gmsh.merge(msh_file)
-
-    # gmsh.merge simply loads all data in mshfile
-    # we have to remove duplicates ourselves
-    # also, no renumbering (of any entity tags) is done
-
-    gmsh.model.geo.synchronize()
-    gmsh.model.mesh.remove_duplicate_nodes()
-    gmsh.model.mesh.remove_duplicate_elements()
-
-    gmsh.model.mesh.generate(2)
-
-    gmsh.write(output)
-    gmsh.finalize()
+from multi.preprocessing import merge_mshfiles
 
 
 def test_merge_unit_cell_01():
@@ -55,7 +32,7 @@ def test_merge_unit_cell_01():
         )
         to_be_merged.append(tmp.name)
     final = tempfile.NamedTemporaryFile(suffix=".msh")
-    merge(to_be_merged, final.name)
+    merge_mshfiles(to_be_merged, final.name)
 
     # by providing tag_counter=offset we ensure that the `tag` is
     # different for each surface etc. in the two meshes that are created.

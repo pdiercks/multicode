@@ -94,6 +94,29 @@ def _generate_and_write_grid(dim, filepath):
     gmsh.finalize()
 
 
+def merge_mshfiles(mshfiles: list[str], output: str, gdim: int = 2) -> None:
+    """loads several .msh files and merges them"""
+    gmsh.initialize()
+    gmsh.clear()
+    gmsh.model.add("merged")
+
+    for msh_file in mshfiles:
+        gmsh.merge(msh_file)
+
+    # gmsh.merge simply loads all data in mshfile
+    # we have to remove duplicates ourselves
+    # also, no renumbering (of any entity tags) is done
+
+    gmsh.model.geo.synchronize()
+    gmsh.model.mesh.remove_duplicate_nodes()
+    gmsh.model.mesh.remove_duplicate_elements()
+
+    gmsh.model.mesh.generate(gdim)
+
+    gmsh.write(output)
+    gmsh.finalize()
+
+
 def create_line(
     start: Iterable[float],
     end: Iterable[float],
