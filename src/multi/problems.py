@@ -38,6 +38,7 @@ from multi.product import InnerProduct
 from multi.projection import orthogonal_part
 from multi.sampling import create_random_values
 from multi.utils import LogMixin
+from multi.io import read_mesh
 
 
 class LinearProblem(ABC, LinearProblemBase, LogMixin):
@@ -698,7 +699,7 @@ class TransferProblem(LogMixin):
 class MultiscaleProblemDefinition(ABC):
     """Base class to define a multiscale problem."""
 
-    def __init__(self, coarse_grid: str, fine_grid: str) -> None:
+    def __init__(self, coarse_grid: Union[str, pathlib.Path], fine_grid: Union[str, pathlib.Path]) -> None:
         """Initializes a multiscale problem.
 
         Args:
@@ -718,33 +719,29 @@ class MultiscaleProblemDefinition(ABC):
             mat = yaml.safe_load(instream)
         self._material = mat
 
-    def setup_coarse_grid(self, gdim: int):
+    def setup_coarse_grid(self, comm, gdim: int):
         """Reads the coarse scale grid from file.
 
         Args:
+            comm: MPI communicator.
             gdim: Geometric dimension.
 
         """
-        domain, ct, ft = gmshio.read_from_msh(
-            self.coarse_grid_path.as_posix(), MPI.COMM_SELF, gdim=gdim
-        )
+        domain, ct, ft = read_mesh(self.coarse_grid_path, comm, gdim)
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
-    def setup_fine_grid(self, cell_tags: bool = False) -> None:
+    def setup_fine_grid(self, comm, cell_tags: bool = False) -> None:
         """Reads the fine scale grid from file.
 
         Args:
+            comm: MPI communicator.
             cell_tags: If True, read meshtags from XDMFFile.
 
         Note:
             If `self.boundaries` is not None, facet tags are
             created accordingly.
         """
-        fine_ct = None
-        with XDMFFile(MPI.COMM_SELF, self.fine_grid_path.as_posix(), "r") as xdmf:
-            fine_domain = xdmf.read_mesh(name="Grid")
-            if cell_tags:
-                fine_ct = xdmf.read_meshtags(fine_domain, name="Grid")
+        fine_domain, fine_ct, _ = read_mesh(self.fine_grid_path, comm, cell_tags=cell_tags)
 
         fine_ft = None
         boundaries = self.boundaries

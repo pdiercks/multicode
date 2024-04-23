@@ -1,7 +1,11 @@
 import tempfile
 from typing import Optional, Union, Callable
+
+from mpi4py import MPI
 from dolfinx import default_scalar_type
+
 import numpy as np
+
 from multi.boundary import plane_at
 from multi.preprocessing import create_rectangle
 from multi.problems import MultiscaleProblemDefinition
@@ -61,7 +65,7 @@ def test():
     """
 
     problem = MyProblem(coarse.name, fine.name)
-    problem.setup_coarse_grid(2)
+    problem.setup_coarse_grid(MPI.COMM_SELF, 2)
     # problem.setup_fine_grid() # FIXME: would need XDMF
 
     coarse.close()
