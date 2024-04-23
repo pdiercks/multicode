@@ -53,6 +53,7 @@ def test():
     coarse = tempfile.NamedTemporaryFile(suffix='.msh')
     fine = tempfile.NamedTemporaryFile(suffix='.msh')
     create_rectangle(0., 1., 0., 1., num_cells=2, recombine=True, out_file=coarse.name)
+    create_rectangle(0., 1., 0., 1., num_cells=20, recombine=True, out_file=fine.name)
     """
 
     coarse grid cells
@@ -66,13 +67,13 @@ def test():
 
     problem = MyProblem(coarse.name, fine.name)
     problem.setup_coarse_grid(MPI.COMM_SELF, 2)
-    # problem.setup_fine_grid() # FIXME: would need XDMF
+    problem.setup_fine_grid(MPI.COMM_SELF, 2)
 
     coarse.close()
     fine.close()
 
     problem.setup_coarse_space()
-    # problem.setup_fine_space()
+    problem.setup_fine_space()
 
     cell_sets = {"A": set([0, 1]), "B": set([2, 3])}
     problem.build_edge_basis_config(cell_sets)
