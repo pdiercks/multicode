@@ -1,8 +1,40 @@
 from typing import Union, Optional
 from pathlib import Path
+
 import numpy as np
 import numpy.typing as npt
+
+from dolfinx import mesh
+from dolfinx.io import XDMFFile, gmshio
+
 from multi.dofmap import QuadrilateralDofLayout
+
+
+def read_mesh(instream: Path, comm, gdim: int = 2, cell_tags: Optional[bool] = False) -> tuple[mesh.Mesh, Union[mesh.MeshTags, None], Union[mesh.MeshTags, None]]:
+    """Reads a mesh from file.
+
+    Args:
+        instream: The file to read.
+        comm: MPI communicator.
+        gdim: Geometrical dimension.
+        cell_tags: If True, try `xdmf.read_meshtags`.
+
+    """
+    format = instream.suffix
+    filepath = instream.as_posix()
+    match format:
+        case ".msh":
+            domain, ct, ft = gmshio.read_from_msh(filepath, comm, gdim=gdim)
+            return (domain, ct, ft)
+        case ".xdmf":
+            ct = None
+            with XDMFFile(comm, filepath, "r") as xdmf:
+                domain = xdmf.read_mesh(name="Grid")
+                if cell_tags:
+                    ct = xdmf.read_meshtags(domain, name="Grid")
+            return (domain, ct, None)
+        case _:
+            raise NotImplementedError
 
 
 def select_modes(basis: npt.NDArray, max_modes: Union[int, list[int]], active_modes: Union[int, list[int]]) -> npt.NDArray:
