@@ -719,29 +719,31 @@ class MultiscaleProblemDefinition(ABC):
             mat = yaml.safe_load(instream)
         self._material = mat
 
-    def setup_coarse_grid(self, comm, gdim: int):
+    def setup_coarse_grid(self, comm, gdim: int = 2, cell_tags: Optional[bool] = False):
         """Reads the coarse scale grid from file.
 
         Args:
             comm: MPI communicator.
             gdim: Geometric dimension.
+            cell_tags: If True, attempt to read cell tags.
 
         """
-        domain, ct, ft = read_mesh(self.coarse_grid_path, comm, gdim)
+        domain, ct, ft = read_mesh(self.coarse_grid_path, comm, gdim=gdim, cell_tags=cell_tags)
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
-    def setup_fine_grid(self, comm, cell_tags: bool = False) -> None:
+    def setup_fine_grid(self, comm, gdim: int = 2, cell_tags: Optional[bool] = False) -> None:
         """Reads the fine scale grid from file.
 
         Args:
             comm: MPI communicator.
-            cell_tags: If True, read meshtags from XDMFFile.
+            gdim: Geometric dimension.
+            cell_tags: If True, attempt to read cell tags.
 
         Note:
             If `self.boundaries` is not None, facet tags are
             created accordingly.
         """
-        fine_domain, fine_ct, _ = read_mesh(self.fine_grid_path, comm, cell_tags=cell_tags)
+        fine_domain, fine_ct, _ = read_mesh(self.fine_grid_path, comm, gdim=gdim, cell_tags=cell_tags)
 
         fine_ft = None
         boundaries = self.boundaries
