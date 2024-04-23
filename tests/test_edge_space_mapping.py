@@ -68,9 +68,13 @@ def test():
     xdofs_b = x_dofs_vectorspace(Vb)
     xdofs_t = x_dofs_vectorspace(Vt)
     ttb = subproblem.edge_space_maps["top_to_bottom"]
+    btt = subproblem.edge_space_maps["bottom_to_top"]
     assert np.allclose(xdofs_b[:, 0], xdofs_t[ttb, 0])
+    assert np.allclose(xdofs_b[btt, 0], xdofs_t[:, 0])
 
     xdofs_l = x_dofs_vectorspace(Vl)
     xdofs_r = x_dofs_vectorspace(Vr)
     rtl = subproblem.edge_space_maps["right_to_left"]
+    ltr = subproblem.edge_space_maps["left_to_right"]
     assert np.allclose(xdofs_l[:, 1], xdofs_r[rtl, 1])
+    assert np.allclose(xdofs_l[ltr, 1], xdofs_r[:, 1])
