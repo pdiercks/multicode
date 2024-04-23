@@ -29,9 +29,9 @@ def read_mesh(instream: Path, comm, gdim: int = 2, cell_tags: Optional[bool] = F
         case ".xdmf":
             ct = None
             with XDMFFile(comm, filepath, "r") as xdmf:
-                domain = xdmf.read_mesh(name="Grid")
+                domain = xdmf.read_mesh()
                 if cell_tags:
-                    ct = xdmf.read_meshtags(domain, name="Grid")
+                    ct = xdmf.read_meshtags(domain, name="mesh")
             return (domain, ct, None)
         case _:
             raise NotImplementedError
