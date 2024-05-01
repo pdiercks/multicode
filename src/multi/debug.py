@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_modes(edge_space, edge, modes, component, mask):
+def plot_modes(edge_space, edge, modes, component, mask, show=True):
     """for hacking"""
     L = edge_space
     x_dofs = L.tabulate_dof_coordinates()
@@ -20,7 +20,8 @@ def plot_modes(edge_space, edge, modes, component, mask):
 
     for mode in modes[mask]:
         plt.plot(xx[oo], mode[oo])
-    plt.show()
+    if show:
+        plt.show()
 
 
 
