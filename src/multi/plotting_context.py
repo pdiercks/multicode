@@ -5,9 +5,11 @@
 
 from pathlib import Path
 import subprocess
-import matplotlib as mpl
+import matplotlib
 
-mpl.use("pgf")
+from matplotlib.backends.backend_pgf import FigureCanvasPgf
+matplotlib.backend_bases.register_backend('pdf', FigureCanvasPgf)
+
 import matplotlib.pyplot as plt
 
 
