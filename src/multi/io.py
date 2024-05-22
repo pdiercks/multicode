@@ -171,9 +171,10 @@ class BasesLoader(object):
 
     def _build_bases_config(self):
         cfg = {}
+        infiles = sorted(list(self.dir.glob("basis_*.npz")))
         for ci in range(self.num_cells):
             cfg[ci] = []
-            path = self.dir / f"basis_{ci:03}.npz"
+            path = infiles[ci]
             for basis in ["phi", "bottom", "left", "right", "top"]:
                 cfg[ci].append((path, basis))
         self._config = cfg
