@@ -1,6 +1,6 @@
 from typing import Union, Optional
 import numpy as np
-from dolfinx import fem, mesh
+from dolfinx import fem
 from petsc4py.PETSc import Vec as PETScVec
 from multi.problems import LinearProblem
 
