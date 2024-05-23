@@ -118,7 +118,7 @@ class RectangularDomain(Domain):
         supported = set(self.boundaries)
         _markers = self._init_markers()
         for boundary, tag in boundaries.items():
-            if not boundary in supported:
+            if boundary not in supported:
                 raise ValueError(f"{boundary=} does not match. Supported values are {supported}.")
             marker = _markers[boundary]
             fmarkers[boundary] = (tag, marker)
