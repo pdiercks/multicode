@@ -630,6 +630,12 @@ class TransferProblem(LogMixin):
         u_in = fem.Function(self.range.V)  # target subdomain
         U = self.range.empty()  # VectorArray to store u_in
 
+        interpolation_data = fem.create_nonmatching_meshes_interpolation_data(
+            u_in.function_space.mesh,
+            u_in.function_space.element,
+            u.function_space.mesh,
+        )
+
         # construct rhs from boundary data
         for array in boundary_values:
             self.discretize_rhs(array)
@@ -639,14 +645,8 @@ class TransferProblem(LogMixin):
             # ### restrict full solution to target subdomain
             # need to use nmm_interpolation_data even if subdomain discretization
             # matches the global mesh
-            u_in.interpolate(
-                u,
-                nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-                    u_in.function_space.mesh,
-                    u_in.function_space.element,
-                    u.function_space.mesh,
-                ),
-            )
+            u_in.interpolate(u, nmm_interpolation_data=interpolation_data)
+            u_in.x.scatter_forward()
             U.append(self.range.make_array([u_in.vector.copy()]))
 
         if self.kernel is not None:
@@ -699,7 +699,9 @@ class TransferProblem(LogMixin):
 class MultiscaleProblemDefinition(ABC):
     """Base class to define a multiscale problem."""
 
-    def __init__(self, coarse_grid: Union[str, pathlib.Path], fine_grid: Union[str, pathlib.Path]) -> None:
+    def __init__(
+        self, coarse_grid: Union[str, pathlib.Path], fine_grid: Union[str, pathlib.Path]
+    ) -> None:
         """Initializes a multiscale problem.
 
         Args:
@@ -728,10 +730,14 @@ class MultiscaleProblemDefinition(ABC):
             cell_tags: If True, attempt to read cell tags.
 
         """
-        domain, ct, ft = read_mesh(self.coarse_grid_path, comm, gdim=gdim, cell_tags=cell_tags)
+        domain, ct, ft = read_mesh(
+            self.coarse_grid_path, comm, gdim=gdim, cell_tags=cell_tags
+        )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
-    def setup_fine_grid(self, comm, gdim: int = 2, cell_tags: Optional[bool] = False) -> None:
+    def setup_fine_grid(
+        self, comm, gdim: int = 2, cell_tags: Optional[bool] = False
+    ) -> None:
         """Reads the fine scale grid from file.
 
         Args:
@@ -743,7 +749,9 @@ class MultiscaleProblemDefinition(ABC):
             If `self.boundaries` is not None, facet tags are
             created accordingly.
         """
-        fine_domain, fine_ct, _ = read_mesh(self.fine_grid_path, comm, gdim=gdim, cell_tags=cell_tags)
+        fine_domain, fine_ct, _ = read_mesh(
+            self.fine_grid_path, comm, gdim=gdim, cell_tags=cell_tags
+        )
 
         fine_ft = None
         boundaries = self.boundaries
