@@ -299,21 +299,23 @@ def test_remove_trans_x_rot():
 def test_remove_full_kernel():
     """Topology
 
-    Ω = (0, 3) x (0, 3)
-    Ω_in = (1, 1) x (2, 2)
+    a - unit length
+    Ω = (0, 3a) x (0, 3a)
+    Ω_in = (1a, 1a) x (2a, 2a)
     Γ_out = ∂Ω
     """
 
-    target_subdomain = within_range([1, 1, 0], [2, 2, 0])
+    ul = 100.
+    target_subdomain = within_range([ul, ul, 0], [2 * ul, 2 * ul, 0])
 
     n = 60
     gdim = 2
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
         create_rectangle(
             0.0,
-            3.0,
+            3 * ul,
             0.0,
-            3.0,
+            3 * ul,
             num_cells=(n, n),
             facet_tags = {"bottom": 1, "left": 2, "right": 3, "top": 4},
             recombine=True,

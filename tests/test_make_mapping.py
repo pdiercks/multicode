@@ -20,9 +20,10 @@ def test_function_space(value_shape):
         return x_dofs
 
     # rectangle
+    a = b = 1000.
     domain = dolfinx.mesh.create_rectangle(
         MPI.COMM_WORLD,
-        np.array([[0.0, 0.0], [2.0, 2.0]]),
+        np.array([[0.0, 0.0], [a, b]]),
         [num_cells, num_cells],
         dolfinx.mesh.CellType.quadrilateral,
     )
@@ -30,7 +31,7 @@ def test_function_space(value_shape):
     V = dolfinx.fem.functionspace(domain, quad)
 
     # bottom edge
-    interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, 2.0])
+    interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, a])
     line = element("Lagrange", interval.basix_cell(), degree, shape=value_shape)
     L = dolfinx.fem.functionspace(interval, line)
     dofs = make_mapping(L, V)

@@ -11,22 +11,22 @@ from multi.materials import LinearElasticMaterial
 from multi.misc import x_dofs_vectorspace
 from multi.preprocessing import create_rectangle, create_voided_rectangle
 from multi.problems import LinElaSubProblem
-from multi.interpolation import make_mapping
 
 
 @pytest.mark.parametrize("create_grid",[create_rectangle,create_voided_rectangle])
 def test(create_grid):
+    ul = 1000.0
+    width = ul
+    height = ul
+    num_cells = 16
+
+    args = (0.0, width, 0.0, height)
+
     with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
-        create_grid(
-            0.0,
-            1.0,
-            0.0,
-            1.0,
-            num_cells=10,
-            recombine=True,
-            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
-            out_file=tf.name,
-        )
+        kwargs = {"num_cells": num_cells, "recombine": True, "facet_tags": {"bottom": 1, "left": 2, "right": 3, "top": 4}, "out_file": tf.name}
+        if create_grid.__name__ == 'create_voided_rectangle':
+            kwargs.update({"radius": 0.2 * ul})
+        create_grid(*args, **kwargs)
         domain, _, ft = gmshio.read_from_msh(tf.name, MPI.COMM_WORLD, gdim=2)
 
     ve = element("Lagrange", domain.basix_cell(), 1, shape=(2,))
@@ -63,14 +63,14 @@ def test(create_grid):
     top = x_dofs[problem.V_to_L["top"]]
     top_to_bottom = problem.edge_space_maps["top_to_bottom"]
     assert np.allclose(bottom[:, 1], np.zeros_like(bottom[:, 1]))
-    assert np.allclose(top[:, 1], np.ones_like(top[:, 1]))
+    assert np.allclose(top[:, 1], height * np.ones_like(top[:, 1]))
     assert np.allclose(bottom[:, 0], top[top_to_bottom, 0])
 
     left = x_dofs[problem.V_to_L["left"]]
     right = x_dofs[problem.V_to_L["right"]]
     right_to_left = problem.edge_space_maps["right_to_left"]
     assert np.allclose(left[:, 0], np.zeros_like(left[:, 0]))
-    assert np.allclose(right[:, 0], np.ones_like(right[:, 0]))
+    assert np.allclose(right[:, 0], width * np.ones_like(right[:, 0]))
     assert np.allclose(left[:, 1], right[right_to_left, 1])
 
     # arbitrary solution of the problem
