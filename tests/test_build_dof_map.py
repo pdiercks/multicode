@@ -5,7 +5,7 @@ import pytest
 import dolfinx
 import numpy as np
 from basix.ufl import element
-from multi.interpolation import make_mapping
+from multi.interpolation import build_dof_map
 
 
 @pytest.mark.parametrize("value_shape", [(), (2,)])
@@ -34,7 +34,7 @@ def test_function_space(value_shape):
     interval = dolfinx.mesh.create_interval(MPI.COMM_WORLD, num_cells, [0.0, a])
     line = element("Lagrange", interval.basix_cell(), degree, shape=value_shape)
     L = dolfinx.fem.functionspace(interval, line)
-    dofs = make_mapping(L, V)
+    dofs = build_dof_map(V, L)
 
     # V.tabulate_dof_coordinates() does not consider dofmap.bs
     # if dofmap.bs == 1, no problem

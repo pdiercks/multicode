@@ -32,7 +32,7 @@ from pymor.operators.numpy import NumpyMatrixOperator
 from multi.bcs import BoundaryConditions
 from multi.domain import Domain, StructuredQuadGrid, RectangularSubdomain
 from multi.dofmap import QuadrilateralDofLayout
-from multi.interpolation import make_mapping
+from multi.interpolation import build_dof_map, make_mapping
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
@@ -332,7 +332,7 @@ class SubdomainProblem(object):
         V = self.V
         V_to_L = {}
         for edge, L in edge_spaces["fine"].items():
-            V_to_L[edge] = make_mapping(L, V)
+            V_to_L[edge] = build_dof_map(V, L)
         self.V_to_L = V_to_L
 
     def create_edge_space_maps(self) -> None:
@@ -519,6 +519,9 @@ class TransferProblem(LogMixin):
 
     def _make_mapping(self):
         """builds map from source space to range space"""
+        # return build_dof_map(self.source.V, self.range.V)
+        # even for spaces of modest size `make_mapping` is much faster
+        # than `build_dof_map`
         return make_mapping(self.range.V, self.source.V)
 
     def discretize_operator(self):
