@@ -46,8 +46,8 @@ def make_mapping(subspace, superspace):
         The dofs of `superspace` corresponding to dofs of `subspace`.
     """
     u = fem.Function(superspace)
-    ndofs = superspace.dofmap.index_map.size_global * superspace.dofmap.bs
-    u.vector.array[:] = np.arange(ndofs, dtype=np.intc)
+    ndofs = superspace.dofmap.index_map.size_local * superspace.dofmap.bs
+    u.vector.array[:] = np.arange(ndofs, dtype=np.int32)
 
     f = fem.Function(subspace)
 
@@ -58,3 +58,43 @@ def make_mapping(subspace, superspace):
     f.x.scatter_forward()
     dofs = (f.vector.array + 0.5).astype(np.int32).flatten()
     return dofs
+
+
+def build_dof_map(V, W):
+    """Returns DOFs of V corresponding to DOFs of W.
+
+    Args:
+        V: The parent or super FE space.
+        W: The child or sub FE space.
+    """
+
+    u = fem.Function(V)
+    uvec = u.vector
+
+    w = fem.Function(W)
+    wvec = w.vector
+
+    interp_data = fem.create_nonmatching_meshes_interpolation_data(
+            V.mesh,
+            V.element,
+            W.mesh)
+
+    ndofs = W.dofmap.bs * W.dofmap.index_map.size_local
+    dofs = np.arange(ndofs, dtype=np.int32)
+
+    super = []
+    for dof in dofs:
+        wvec.zeroEntries()
+        wvec.array[dof] = 1
+
+        u.interpolate(w, nmm_interpolation_data=interp_data)
+        u_array = uvec.array
+        if not np.all(np.logical_or(np.abs(u_array) < 1e-10, np.abs(u_array - 1.0) < 1e-10)):
+            raise NotImplementedError
+        u_dof = np.where(np.abs(u_array - 1.0) < 1e-10)[0]
+        if not len(u_dof) == 1:
+            raise NotImplementedError
+        super.append(u_dof[0])
+    super = np.array(super, dtype=np.int32)
+    assert len(set(super)) == len(set(dofs))
+    return super

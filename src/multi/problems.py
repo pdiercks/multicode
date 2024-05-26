@@ -32,7 +32,7 @@ from pymor.operators.numpy import NumpyMatrixOperator
 from multi.bcs import BoundaryConditions
 from multi.domain import Domain, StructuredQuadGrid, RectangularSubdomain
 from multi.dofmap import QuadrilateralDofLayout
-from multi.interpolation import make_mapping
+from multi.interpolation import build_dof_map
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
@@ -332,7 +332,7 @@ class SubdomainProblem(object):
         V = self.V
         V_to_L = {}
         for edge, L in edge_spaces["fine"].items():
-            V_to_L[edge] = make_mapping(L, V)
+            V_to_L[edge] = build_dof_map(V, L)
         self.V_to_L = V_to_L
 
     def create_edge_space_maps(self) -> None:
@@ -453,7 +453,6 @@ class TransferProblem(LogMixin):
 
         # initialize commonly used quantities
         self._init_bc_gamma_out()
-        self._S_to_R = self._make_mapping()
 
         # initialize fixed set of dirichlet boundary conditions on Γ_D
         self._bc_hom = list()
@@ -471,6 +470,12 @@ class TransferProblem(LogMixin):
         range_prod = range_product or default
         self.source_product = self._init_source_product(source_prod)
         self.range_product = self._init_range_product(range_prod)
+
+        # ### setup objects for solution
+        self._u = fem.Function(self.source.V)
+        self._u_in = fem.Function(self.range.V)
+        self._interp_data = fem.create_nonmatching_meshes_interpolation_data(
+                self.range.V.mesh, self.range.V.element, self.source.V.mesh)
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
@@ -511,15 +516,6 @@ class TransferProblem(LogMixin):
     def source_gamma_out(self):
         """NumpyVectorSpace of dim `self.bc_dofs_gamma_out.size`"""
         return self._source_gamma
-
-    @property
-    def S_to_R(self):
-        """map from source to range space"""
-        return self._S_to_R
-
-    def _make_mapping(self):
-        """builds map from source space to range space"""
-        return make_mapping(self.range.V, self.source.V)
 
     def discretize_operator(self):
         """discretize the operator A of the oversampling problem"""
@@ -626,15 +622,9 @@ class TransferProblem(LogMixin):
         rhs = p.b
 
         # solution
-        u = fem.Function(p.V)  # full space
-        u_in = fem.Function(self.range.V)  # target subdomain
+        u = self._u
+        u_in = self._u_in
         U = self.range.empty()  # VectorArray to store u_in
-
-        interpolation_data = fem.create_nonmatching_meshes_interpolation_data(
-            u_in.function_space.mesh,
-            u_in.function_space.element,
-            u.function_space.mesh,
-        )
 
         # construct rhs from boundary data
         for array in boundary_values:
@@ -645,7 +635,7 @@ class TransferProblem(LogMixin):
             # ### restrict full solution to target subdomain
             # need to use nmm_interpolation_data even if subdomain discretization
             # matches the global mesh
-            u_in.interpolate(u, nmm_interpolation_data=interpolation_data)
+            u_in.interpolate(u, nmm_interpolation_data=self._interp_data)
             u_in.x.scatter_forward()
             U.append(self.range.make_array([u_in.vector.copy()]))
 
