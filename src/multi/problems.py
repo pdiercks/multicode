@@ -32,7 +32,7 @@ from pymor.operators.numpy import NumpyMatrixOperator
 from multi.bcs import BoundaryConditions
 from multi.domain import Domain, StructuredQuadGrid, RectangularSubdomain
 from multi.dofmap import QuadrilateralDofLayout
-from multi.interpolation import build_dof_map, make_mapping
+from multi.interpolation import build_dof_map
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
@@ -471,6 +471,12 @@ class TransferProblem(LogMixin):
         self.source_product = self._init_source_product(source_prod)
         self.range_product = self._init_range_product(range_prod)
 
+        # ### setup objects for solution
+        self._u = fem.Function(self.source.V)
+        self._u_in = fem.Function(self.range.V)
+        self._interp_data = fem.create_nonmatching_meshes_interpolation_data(
+                self.range.V.mesh, self.range.V.element, self.source.V.mesh)
+
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
         V = self.source.V
@@ -616,15 +622,9 @@ class TransferProblem(LogMixin):
         rhs = p.b
 
         # solution
-        u = fem.Function(p.V)  # full space
-        u_in = fem.Function(self.range.V)  # target subdomain
+        u = self._u
+        u_in = self._u_in
         U = self.range.empty()  # VectorArray to store u_in
-
-        interpolation_data = fem.create_nonmatching_meshes_interpolation_data(
-            u_in.function_space.mesh,
-            u_in.function_space.element,
-            u.function_space.mesh,
-        )
 
         # construct rhs from boundary data
         for array in boundary_values:
@@ -635,7 +635,7 @@ class TransferProblem(LogMixin):
             # ### restrict full solution to target subdomain
             # need to use nmm_interpolation_data even if subdomain discretization
             # matches the global mesh
-            u_in.interpolate(u, nmm_interpolation_data=interpolation_data)
+            u_in.interpolate(u, nmm_interpolation_data=self._interp_data)
             u_in.x.scatter_forward()
             U.append(self.range.make_array([u_in.vector.copy()]))
 

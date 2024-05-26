@@ -127,7 +127,6 @@ def test_remove_rot():
     D = tp.generate_random_boundary_data(2, distribution="normal")
     assert np.isclose(tp.source_gamma_out.dim, D.shape[-1])
     U = tp.solve(D)
-    assert np.isclose(U.dim, tp.S_to_R.size)
     u_arr = U.to_numpy()
 
     dofs_origin = locate_dofs(x_dofs_vectorspace(Vsub), x_origin)
@@ -254,7 +253,6 @@ def test_remove_trans_x_rot():
     D = tp.generate_random_boundary_data(2, distribution="normal")
     assert np.isclose(tp.source_gamma_out.dim, D.shape[-1])
     U = tp.solve(D)
-    assert np.isclose(U.dim, tp.S_to_R.size)
 
     # check dirichlet dofs origin
     dofs = locate_dofs(x_dofs_vectorspace(Vsub), x_bottom_right, s_=np.s_[1::2])
