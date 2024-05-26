@@ -453,7 +453,6 @@ class TransferProblem(LogMixin):
 
         # initialize commonly used quantities
         self._init_bc_gamma_out()
-        self._S_to_R = self._make_mapping()
 
         # initialize fixed set of dirichlet boundary conditions on Γ_D
         self._bc_hom = list()
@@ -511,18 +510,6 @@ class TransferProblem(LogMixin):
     def source_gamma_out(self):
         """NumpyVectorSpace of dim `self.bc_dofs_gamma_out.size`"""
         return self._source_gamma
-
-    @property
-    def S_to_R(self):
-        """map from source to range space"""
-        return self._S_to_R
-
-    def _make_mapping(self):
-        """builds map from source space to range space"""
-        # return build_dof_map(self.source.V, self.range.V)
-        # even for spaces of modest size `make_mapping` is much faster
-        # than `build_dof_map`
-        return make_mapping(self.range.V, self.source.V)
 
     def discretize_operator(self):
         """discretize the operator A of the oversampling problem"""
