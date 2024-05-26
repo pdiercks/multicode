@@ -428,6 +428,7 @@ class TransferProblem(LogMixin):
         or a `dict` that defines the inner product, see `multi.product.InnerProduct`.
         kernel: The kernel (rigid body modes) of A. If not None, the part of the
         solution orthogonal to this kernel is returned by `solve`.
+        padding: Padding value to create interpolation data.
 
     Note:
         The kernel needs to be orthonormal wrt chosen range product.
@@ -443,6 +444,7 @@ class TransferProblem(LogMixin):
         source_product: Optional[Union[Operator, dict]] = None,
         range_product: Optional[Union[Operator, dict]] = None,
         kernel: Optional[VectorArray] = None,
+        padding: float = 1e-14,
     ):
         self.problem = problem
         self.subproblem = subproblem
@@ -475,7 +477,8 @@ class TransferProblem(LogMixin):
         self._u = fem.Function(self.source.V)
         self._u_in = fem.Function(self.range.V)
         self._interp_data = fem.create_nonmatching_meshes_interpolation_data(
-                self.range.V.mesh, self.range.V.element, self.source.V.mesh)
+            self.range.V.mesh, self.range.V.element, self.source.V.mesh, padding=padding
+        )
 
     def _init_bc_gamma_out(self):
         """define bc on gamma out"""
