@@ -69,15 +69,17 @@ def build_dof_map(V, W):
     """
 
     u = fem.Function(V)
-    uvec = u.vector
+    uvec = u.x.petsc_vec
 
     w = fem.Function(W)
-    wvec = w.vector
+    wvec = w.x.petsc_vec
 
+    padding = 1e-10
     interp_data = fem.create_nonmatching_meshes_interpolation_data(
             V.mesh,
             V.element,
-            W.mesh)
+            W.mesh,
+            padding=padding)
 
     ndofs = W.dofmap.bs * W.dofmap.index_map.size_local
     dofs = np.arange(ndofs, dtype=np.int32)
@@ -85,9 +87,13 @@ def build_dof_map(V, W):
     super = []
     for dof in dofs:
         wvec.zeroEntries()
-        wvec.array[dof] = 1
+        wvec.array[dof] = 1.0
+        w.x.scatter_forward()
 
+        uvec.zeroEntries()
         u.interpolate(w, nmm_interpolation_data=interp_data)
+        u.x.scatter_forward()
+
         u_array = uvec.array
         if not np.all(np.logical_or(np.abs(u_array) < 1e-10, np.abs(u_array - 1.0) < 1e-10)):
             raise NotImplementedError
