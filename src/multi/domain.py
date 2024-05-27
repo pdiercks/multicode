@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Callable
 from mpi4py import MPI
 import pathlib
@@ -111,9 +110,6 @@ class RectangularDomain(Domain):
             See `self.boundaries` for appropriate values for dict keys.
 
         """
-        if self.facet_tags is not None:
-            warnings.warn("Facet tags already exist for this domain and will be overridden!")
-
         fmarkers = {}
         supported = set(self.boundaries)
         _markers = self._init_markers()
@@ -123,7 +119,7 @@ class RectangularDomain(Domain):
             marker = _markers[boundary]
             fmarkers[boundary] = (tag, marker)
 
-        facet_tags, _ = create_meshtags(self.grid, self.tdim-1, fmarkers)
+        facet_tags, _ = create_meshtags(self.grid, self.tdim-1, fmarkers, tags=self.facet_tags)
         self.facet_tags = facet_tags
 
 

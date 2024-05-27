@@ -17,15 +17,14 @@ def test():
         entities = omega.facet_tags.find(i)
         assert entities.size == n
 
-    with pytest.warns():
+    with pytest.raises(NotImplementedError):
         omega.create_facet_tags({"bottom": 256, "right": 12})
 
-    assert omega.facet_tags.find(256).size == n
-    assert omega.facet_tags.find(12).size == n
-    assert omega.facet_tags.find(1).size == 0
-    assert omega.facet_tags.find(2).size == 0
-    assert omega.facet_tags.find(3).size == 0
-    assert omega.facet_tags.find(4).size == 0
+    assert omega.facet_tags.find(256).size == 0
+    assert omega.facet_tags.find(12).size == 0
+    for i in range(1, 5):
+        entities = omega.facet_tags.find(i)
+        assert entities.size == n
 
     Ω = RectangularDomain(domain)
     with pytest.raises(ValueError):

@@ -39,7 +39,7 @@ def create_mesh(
 
 
 def create_meshtags(
-    domain: dolfinx.mesh.Mesh, entity_dim: int, markers: dict[str, tuple[int, Callable]]
+        domain: dolfinx.mesh.Mesh, entity_dim: int, markers: dict[str, tuple[int, Callable]], tags: Optional[dolfinx.mesh.MeshTags] = None
 ) -> tuple[dolfinx.mesh.MeshTags, dict[str, int]]:
     """Creates meshtags for the given markers.
 
@@ -52,6 +52,7 @@ def create_meshtags(
         entity_dim: Dimension of the entities to mark.
         markers: The definition of subdomains or boundaries where each key is a string
           and each value is a tuple of an integer and a marker function.
+        tags: Tags that may already exist.
 
     """
     tdim = domain.topology.dim
@@ -68,9 +69,16 @@ def create_meshtags(
             marked[key] = marker
     entity_indices = np.hstack(entity_indices).astype(np.int32)
     entity_markers = np.hstack(entity_markers).astype(np.int32)
-    sorted_facets = np.argsort(entity_indices)
+
+    if tags is not None:
+        if len(np.intersect1d(entity_indices, tags.indices)):
+            raise NotImplementedError("You are retagging entities that were already tagged!")
+        entity_indices = np.append(entity_indices, tags.indices)
+        entity_markers = np.append(entity_markers, tags.values)
+
+    sorted_ents = np.argsort(entity_indices)
     mesh_tags = dolfinx.mesh.meshtags(
-        domain, edim, entity_indices[sorted_facets], entity_markers[sorted_facets]
+        domain, edim, entity_indices[sorted_ents], entity_markers[sorted_ents]
     )
     return mesh_tags, marked
 

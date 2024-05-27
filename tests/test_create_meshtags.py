@@ -14,7 +14,7 @@ from multi.preprocessing import create_meshtags
 def test_cells(domain):
     tdim = domain.topology.dim
 
-    marker_id = int(39) # tell pyright this really is an int
+    marker_id = int(39)
     subdomain = {
             "inner": (marker_id, within_range([0., 0., 0.], [1./3, 1./3, 1./3]))
             }
@@ -44,3 +44,17 @@ def test_facets(domain):
     assert tags.find(4).size > 0
     assert tags.find(112).size > 0
     assert tags.find(4).size == tags.find(112).size
+
+    boundaries.clear()
+    boundaries.update({"top": (int(42), plane_at(1.0, "y"))})
+
+    tags_, marked_ = create_meshtags(domain, tdim-1, boundaries, tags=tags)
+    assert marked_["top"] == 42
+    assert tags_.find(4).size > 0
+    assert tags_.find(112).size > 0
+    assert tags_.find(42).size > 0
+    assert tags_.find(4).size == tags_.find(112).size
+
+    with pytest.raises(NotImplementedError):
+        bndry = {"left": (int(44), plane_at(0.0, "x"))}
+        create_meshtags(domain, tdim-1, bndry, tags=tags_)
