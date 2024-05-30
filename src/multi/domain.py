@@ -308,12 +308,10 @@ class StructuredQuadGrid(object):
             raise NotImplementedError
 
         def cell_type_mismatch(mesh, cell_type) -> bool:
-            """Returns True if there is a mismatch"""
-            # FIXME
-            # meshes with more than one cell type are not supported
+            """Returns True if `cell_type` does not exist in `mesh`"""
             blocks = mesh.cells
-            types = [cb.type for cb in blocks]
-            return not all([t == cell_type for t in types])
+            types = set([cb.type for cb in blocks])
+            return cell_type not in types
 
         # initialize
         tdim = self.tdim

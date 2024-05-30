@@ -10,28 +10,32 @@ from dolfinx.io import XDMFFile, gmshio
 from multi.dofmap import QuadrilateralDofLayout
 
 
-def read_mesh(instream: Path, comm, gdim: int = 2, cell_tags: Optional[bool] = False) -> tuple[mesh.Mesh, Union[mesh.MeshTags, None], Union[mesh.MeshTags, None]]:
-    """Reads a mesh from file.
+def read_mesh(instream: Path, comm, cell_tags: Optional[bool] = False, kwargs: Optional[dict] = None) -> tuple[mesh.Mesh, Union[mesh.MeshTags, None], Union[mesh.MeshTags, None]]:
+    """Reads a mesh from file. Depending on the file format either
+    method ``gmshio.read_from_msh`` or ``XDMFFile.read_mesh`` is used.
 
     Args:
         instream: The file to read.
         comm: MPI communicator.
-        gdim: Geometrical dimension.
         cell_tags: If True, try `xdmf.read_meshtags`.
+        kwargs: Additional args to be passed to method.
 
     """
     format = instream.suffix
     filepath = instream.as_posix()
+    options = kwargs or {}
     match format:
         case ".msh":
+            gdim = options.get("gdim", 2)
             domain, ct, ft = gmshio.read_from_msh(filepath, comm, gdim=gdim)
             return (domain, ct, ft)
         case ".xdmf":
+            name = options.get("name", "mesh")
             ct = None
             with XDMFFile(comm, filepath, "r") as xdmf:
-                domain = xdmf.read_mesh()
+                domain = xdmf.read_mesh(name=name)
                 if cell_tags:
-                    ct = xdmf.read_meshtags(domain, name="mesh")
+                    ct = xdmf.read_meshtags(domain, name=name)
             return (domain, ct, None)
         case _:
             raise NotImplementedError

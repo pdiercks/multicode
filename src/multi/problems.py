@@ -714,6 +714,7 @@ class MultiscaleProblemDefinition(ABC):
             mat = yaml.safe_load(instream)
         self._material = mat
 
+    # TODO: revise this interface
     def setup_coarse_grid(self, comm, gdim: int = 2, cell_tags: Optional[bool] = False):
         """Reads the coarse scale grid from file.
 
@@ -724,10 +725,11 @@ class MultiscaleProblemDefinition(ABC):
 
         """
         domain, ct, ft = read_mesh(
-            self.coarse_grid_path, comm, gdim=gdim, cell_tags=cell_tags
+                self.coarse_grid_path, comm, cell_tags=cell_tags, kwargs={"gdim": gdim}
         )
         self.coarse_grid = StructuredQuadGrid(domain, ct, ft)
 
+    # TODO: revise this interface
     def setup_fine_grid(
         self, comm, gdim: int = 2, cell_tags: Optional[bool] = False
     ) -> None:
@@ -743,7 +745,7 @@ class MultiscaleProblemDefinition(ABC):
             created accordingly.
         """
         fine_domain, fine_ct, _ = read_mesh(
-            self.fine_grid_path, comm, gdim=gdim, cell_tags=cell_tags
+                self.fine_grid_path, comm, cell_tags=cell_tags, kwargs={"gdim": gdim}
         )
 
         fine_ft = None
