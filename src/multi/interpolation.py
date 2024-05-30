@@ -60,7 +60,7 @@ def make_mapping(subspace, superspace):
     return dofs
 
 
-def build_dof_map(V, W):
+def build_dof_map(V, W, padding=1e-14):
     """Returns DOFs of V corresponding to DOFs of W.
 
     Args:
@@ -74,7 +74,6 @@ def build_dof_map(V, W):
     w = fem.Function(W)
     wvec = w.x.petsc_vec
 
-    padding = 1e-10
     interp_data = fem.create_nonmatching_meshes_interpolation_data(
             V.mesh,
             V.element,
