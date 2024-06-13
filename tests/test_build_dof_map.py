@@ -1,4 +1,4 @@
-"""test make mapping"""
+"""Test build_dof_map."""
 
 from mpi4py import MPI
 import pytest

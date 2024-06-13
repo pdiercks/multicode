@@ -37,7 +37,7 @@ def interpolate(u: fem.Function, points: npt.NDArray[np.float64]):
     return u_values
 
 
-def make_mapping(subspace, superspace):
+def make_mapping(subspace, superspace, padding=1e-14, check=True):
     """Computes dof mapping from superspace to subspace.
 
     Returns
@@ -47,16 +47,21 @@ def make_mapping(subspace, superspace):
     """
     u = fem.Function(superspace)
     ndofs = superspace.dofmap.index_map.size_local * superspace.dofmap.bs
-    u.vector.array[:] = np.arange(ndofs, dtype=np.int32)
+    u.x.array[:] = np.arange(ndofs, dtype=np.int32)
 
     f = fem.Function(subspace)
 
-    f.interpolate(u, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
-        f.function_space.mesh,
-        f.function_space.element,
-        u.function_space.mesh))
+    interp_data = fem.create_nonmatching_meshes_interpolation_data(
+            f.function_space.mesh, f.function_space.element, u.function_space.mesh,
+            padding=padding)
+    f.interpolate(u, nmm_interpolation_data=interp_data)
     f.x.scatter_forward()
-    dofs = (f.vector.array + 0.5).astype(np.int32).flatten()
+    dofs = (f.x.array[:] + 0.5).astype(np.int32).flatten()
+
+    if check:
+        _, counts = np.unique(dofs, return_counts=True)
+        if not np.isclose(np.sum(counts), dofs.size):
+            raise ValueError("Something went wrong! Dofmap is not unique!")
     return dofs
 
 
