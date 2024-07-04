@@ -1,12 +1,12 @@
 import numpy as np
-from scipy.sparse import csr_array
 
 from mpi4py import MPI
-from dolfinx import mesh, fem, default_scalar_type
-from basix.ufl import element
+import dolfinx as df
+import basix
+import basix.ufl
+
 from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
-from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.operators.constructions import LincombOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
@@ -19,92 +19,94 @@ from multi.projection import orthogonal_part
 from multi.problems import LinearElasticityProblem
 from multi.solver import build_nullspace
 from multi.transfer_operator import (
-    transfer_operator_subdomains_2d,
+    discretize_transfer_operator,
     OrthogonallyProjectedOperator,
 )
 import pytest
+
+
+def convert_dofs(value, dofs, V):
+    bc = df.fem.dirichletbc(value, dofs, V)
+    dofs = bc._cpp_object.dof_indices()[0]
+    return dofs
 
 
 @pytest.mark.parametrize("product_name", ["euclidean", "h1"])
 def test(product_name):
     """test transfer operator with ∂Ω=Γ_out"""
 
+    # ### Oversampling domain
     # create oversampling domain 3x3 coarse cells
-    # each coarse cell is discretized with resolutionxresolution quads
+    # each coarse cell is discretized with (resolution x resolution) quadrilaterals
     num_cells = 3
     resolution = 10  # manually tested resolution = 50 with success
     nn = num_cells * resolution
-    domain = mesh.create_unit_square(
-        MPI.COMM_WORLD, nn, nn, mesh.CellType.quadrilateral
+    domain = df.mesh.create_unit_square(
+        MPI.COMM_WORLD, nn, nn, df.mesh.CellType.quadrilateral
     )
-    # discretize A
-    fe_deg = 1
-    fe = element("P", domain.basix_cell(), fe_deg, shape=(2,))
-    V = fem.functionspace(domain, fe)
-    print(f"V dim: {V.dofmap.index_map.size_global * V.dofmap.bs}")
 
+    # ### Finite elements and FE space
+    fe_deg = 1
     gdim = domain.geometry.dim
+    fe_quad = basix.ufl.element("P", domain.basix_cell(), fe_deg, shape=(gdim,))
+    fe_line = basix.ufl.element("P", basix.CellType.interval, fe_deg, shape=(gdim,))
+    V = df.fem.functionspace(domain, fe_quad)
+    zero = df.fem.Constant(domain, (df.default_scalar_type(0.0),) * gdim)
+
+    # ### Full operator A
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
     omega = Domain(domain)
     problem = LinearElasticityProblem(omega, V, mat)
     problem.setup_solver()
     problem.assemble_matrix()
-    ai, aj, av = problem._A.getValuesCSR()
-    A = csr_array((av, aj, ai))
+    A = problem._A
 
-    # dof indices
-    boundary_dofs = get_boundary_dofs(V)
+    # ### Target subdomain
     tdim = domain.topology.dim
-    target_subdomain = within_range(
+    target_subdomain_locator = within_range(
         [1.0 / num_cells, 1.0 / num_cells], [2.0 / num_cells, 2.0 / num_cells]
     )
-
     domain.topology.create_connectivity(tdim, tdim)
-    range_cells = mesh.locate_entities(domain, tdim, target_subdomain)
-    range_dofs = fem.locate_dofs_topological(V, tdim, range_cells)
+    cells_subdomain = df.mesh.locate_entities(domain, tdim, target_subdomain_locator)
+    submesh = df.mesh.create_submesh(domain, tdim, cells_subdomain)[0]
+    assert np.isclose(cells_subdomain.size, resolution**2)
+    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
+    target_dofs = convert_dofs(zero, target_dofs_, V)
 
-    # FIXME V.dofmap.bs == 2 is not considered in boundary_dofs and range_dofs
-    # workaround: create bc and get dof indices
-    zero = fem.Constant(domain, (default_scalar_type(0.0),) * gdim)
-    bc_boundary = fem.dirichletbc(zero, boundary_dofs, V)
-    bc_target = fem.dirichletbc(zero, range_dofs, V)
+    # ### Gamma out (the whole boundary)
+    def everywhere(x):
+        return np.full(x[0].shape, True, dtype=bool)
 
-    # build projection matrix in the range space!
-    tdim = domain.topology.dim
-    cells_in = mesh.locate_entities(domain, tdim, target_subdomain)
-    omega_in, _, _, _ = mesh.create_submesh(domain, tdim, cells_in)
-    W = fem.functionspace(omega_in, fe)
-    rangespace = FenicsxVectorSpace(W)
+    facets_gamma_out = df.mesh.locate_entities_boundary(domain, tdim - 1, everywhere)
+    gamma_out = df.mesh.create_submesh(domain, tdim - 1, facets_gamma_out)[0]
+    assert np.isclose(facets_gamma_out.size, num_cells * resolution * 4)
+    gamma_dofs_ = df.fem.locate_dofs_topological(V, tdim - 1, facets_gamma_out)
+    gamma_dofs = convert_dofs(zero, gamma_dofs_, V)
+
+    # ### source and range space of T
+    S = df.fem.functionspace(gamma_out, fe_line)
+    R = df.fem.functionspace(submesh, fe_quad)
+    range_space = FenicsxVectorSpace(R)
 
     product = None
-    product_numpy = None
     if not product_name == "euclidean":
-        product = InnerProduct(W, product_name)
+        product = InnerProduct(R, product_name)
         product_mat = product.assemble_matrix()
-        product = FenicsxMatrixOperator(product_mat, W, W)
-        product_numpy = NumpyMatrixOperator(
-            csr_array(product.matrix.getValuesCSR()[::-1])
-        )
+        product = FenicsxMatrixOperator(product_mat, R, R)
 
-    ns_vecs = build_nullspace(rangespace.V, gdim=2)
-    nullspace = rangespace.make_array(ns_vecs)
+    ns_vecs = build_nullspace(R, gdim=2)
+    nullspace = range_space.make_array(ns_vecs)
     gram_schmidt(nullspace, product=product, copy=False)
 
-    # build transfer operator
-    boundary_dofs_full = bc_boundary._cpp_object.dof_indices()[0]
-    range_dofs_full = bc_target._cpp_object.dof_indices()[0]
-
     # without removing kernel
-    T_hat = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full)
+    t_mat = discretize_transfer_operator(A, gamma_dofs, target_dofs)
+    T_hat = FenicsxMatrixOperator(t_mat, S, R)
     U = T_hat.source.random(1)
     ThatU = T_hat.apply(U)
 
     # with removing kernel
-    # T_hat is a NumpyMatrixOperator and therefore nullspace is not in T_hat.range
-    # FIXME: this conversion should be avoided
-    basis = T_hat.range.from_numpy(nullspace.to_numpy())
     Tproj = OrthogonallyProjectedOperator(
-        T_hat, basis, product=product_numpy, orthonormal=True
+        T_hat, nullspace, product=product, orthonormal=True
     )
     ops = [T_hat, Tproj]
     coeffs = [1.0, -1.0]
@@ -112,21 +114,21 @@ def test(product_name):
     TpU = T.apply(U)
 
     # reference solution
-    g = fem.Function(V)
-    g.vector.array[boundary_dofs_full] = U.to_numpy().flatten()
-    bc = fem.dirichletbc(g, boundary_dofs)
+    g = df.fem.Function(V)
+    g.vector.array[gamma_dofs] = U.to_numpy().flatten()
+    bc = df.fem.dirichletbc(g, gamma_dofs_)
     problem.clear_bcs()
     problem.add_dirichlet_bc(bc)
     problem.setup_solver()
     u = problem.solve()
-    u_in = u.vector.array[range_dofs_full]
+    u_in = u.vector.array[target_dofs]
 
     # comparison without removing the kernel
     error = u_in - ThatU.to_numpy().flatten()
     assert np.linalg.norm(error).item() < 1e-9
 
     # test against alternative orthogonal part computation
-    UIN = rangespace.from_numpy([u_in])
+    UIN = range_space.from_numpy([u_in])
     U_orth = orthogonal_part(UIN, nullspace, product=product, orthonormal=True)
     error = U_orth.to_numpy().flatten() - TpU.to_numpy().flatten()
     assert np.linalg.norm(error).item() < 1e-9
@@ -135,6 +137,8 @@ def test(product_name):
 @pytest.mark.parametrize("product_name", ["euclidean", "h1"])
 def test_bc_hom(product_name):
     """test transfer operator with homogeneous Dirichlet BCs on some part of ∂Ω"""
+
+    # ### Oversampling domain
     # create oversampling domain 2x2 coarse cells (e. g. corner case)
     # corner case usually means we have the following topology:
     # Σ_D = left, Σ_N = bottom, Γ_out = remainder (within structure)
@@ -142,88 +146,94 @@ def test_bc_hom(product_name):
     num_cells = 2
     resolution = 6
     nn = num_cells * resolution
-    domain = mesh.create_unit_square(
-        MPI.COMM_WORLD, nn, nn, mesh.CellType.quadrilateral
+    domain = df.mesh.create_unit_square(
+        MPI.COMM_WORLD, nn, nn, df.mesh.CellType.quadrilateral
     )
     fe_deg = 1
-    fe = element("P", domain.basix_cell(), fe_deg, shape=(2,))
-    V = fem.functionspace(domain, fe)
+    gdim = domain.geometry.dim
+    fe_quad = basix.ufl.element("P", domain.basix_cell(), fe_deg, shape=(gdim,))
+    fe_line = basix.ufl.element("P", basix.CellType.interval, fe_deg, shape=(gdim,))
+    V = df.fem.functionspace(domain, fe_quad)
 
     # ### Define homogeneous Dirichlet BC
     sigma_D = plane_at(0.0, "x")
     tdim = domain.topology.dim
     fdim = tdim - 1
-    facets = mesh.locate_entities_boundary(domain, fdim, sigma_D)
+    facets = df.mesh.locate_entities_boundary(domain, fdim, sigma_D)
     gdim = domain.geometry.dim
-    zero = fem.Constant(domain, (default_scalar_type(0.0),) * gdim)
+    zero = df.fem.Constant(domain, (df.default_scalar_type(0.0),) * gdim)
 
+    # ### Full operator A
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
     omega = Domain(domain)
     problem = LinearElasticityProblem(omega, V, mat)
     problem.add_dirichlet_bc(zero, facets, entity_dim=fdim)
     problem.setup_solver()
     problem.assemble_matrix(bcs=problem.bcs)
-    ai, aj, av = problem._A.getValuesCSR()
-    A = csr_array((av, aj, ai))
+    A = problem._A
 
-    # ### prepare data for Γ_out and range space on target subdomain
-    # Γ_out should be union of top and right boundary excl. points on Σ_D or Σ_N
-    # simpley exclude left and bottom boundary, but mark everything else
-    Δx = Δy = 1e-2  # should be smaller than local mesh cell size
-    gamma_out = within_range([Δx, Δy], [1.0, 1.0])
-    boundary_dofs = get_boundary_dofs(V, marker=gamma_out)
-    target_subdomain = within_range([0.0, 0.0], [1.0 / num_cells, 1.0 / num_cells])
-
+    # ### Target subdomain
+    target_subdomain_locator = within_range(
+        [0.0, 0.0], [1.0 / num_cells, 1.0 / num_cells]
+    )
     domain.topology.create_connectivity(tdim, tdim)
-    range_cells = mesh.locate_entities(domain, tdim, target_subdomain)
-    range_dofs = fem.locate_dofs_topological(V, tdim, range_cells)
+    cells_subdomain = df.mesh.locate_entities(domain, tdim, target_subdomain_locator)
+    submesh = df.mesh.create_submesh(domain, tdim, cells_subdomain)[0]
+    assert np.isclose(cells_subdomain.size, resolution**2)
+    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
+    target_dofs = convert_dofs(zero, target_dofs_, V)
 
-    # FIXME V.dofmap.bs == 2 is not considered in boundary_dofs and range_dofs
-    # workaround: create bc and get dof indices
-    bc_boundary = fem.dirichletbc(zero, boundary_dofs, V)
-    bc_target = fem.dirichletbc(zero, range_dofs, V)
+    # ### Gamma out
+    # Γ_out should be union of top and right boundary excl. points on Σ_D or Σ_N
+    # simply exclude left and bottom boundary, but mark everything else
+    Δx = Δy = 1e-2  # should be smaller than local mesh cell size
+    gamma_out_locator = within_range([Δx, Δy], [1.0, 1.0])
+    facets_gamma_out = df.mesh.locate_entities_boundary(
+        domain, tdim - 1, gamma_out_locator
+    )
+    gamma_out = df.mesh.create_submesh(domain, tdim - 1, facets_gamma_out)[0]
+    assert np.isclose(facets_gamma_out.size, num_cells * resolution * 2 - 2)
+    gamma_dofs_ = df.fem.locate_dofs_topological(V, tdim - 1, facets_gamma_out)
+    gamma_dofs = convert_dofs(zero, gamma_dofs_, V)
 
-    # build projection matrix in the range space!
-    tdim = domain.topology.dim
-    cells_in = mesh.locate_entities(domain, tdim, target_subdomain)
-    omega_in, _, _, _ = mesh.create_submesh(domain, tdim, cells_in)
-    W = fem.functionspace(omega_in, fe)
-    rangespace = FenicsxVectorSpace(W)
+    # ### source and range space of T
+    S = df.fem.functionspace(gamma_out, fe_line)
+    R = df.fem.functionspace(submesh, fe_quad)
+    range_space = FenicsxVectorSpace(R)
 
     product = None
     if not product_name == "euclidean":
-        product = InnerProduct(W, product_name)
+        product = InnerProduct(R, product_name)
         product_mat = product.assemble_matrix()
-        product = FenicsxMatrixOperator(product_mat, W, W)
+        product = FenicsxMatrixOperator(product_mat, R, R)
 
-    ns_vecs = build_nullspace(rangespace.V, gdim=2)
-    basis = rangespace.make_array(ns_vecs)
+    ns_vecs = build_nullspace(R, gdim=gdim)
+    basis = range_space.make_array(ns_vecs)
     gram_schmidt(basis, product=product, copy=False)
 
     _dofs_sigma_d = get_boundary_dofs(V, marker=sigma_D)
-    bc_hom = fem.dirichletbc(zero, _dofs_sigma_d, V)
+    bc_hom = df.fem.dirichletbc(zero, _dofs_sigma_d, V)
     V_dofs_sigma_d = bc_hom._cpp_object.dof_indices()[0]
-    _dofs_sigma_d = get_boundary_dofs(W, marker=sigma_D)
-    bc_hom = fem.dirichletbc(zero, _dofs_sigma_d, W)
+    _dofs_sigma_d = get_boundary_dofs(R, marker=sigma_D)
+    bc_hom = df.fem.dirichletbc(zero, _dofs_sigma_d, R)
     W_dofs_sigma_d = bc_hom._cpp_object.dof_indices()[0]
 
-    # build transfer operator
-    boundary_dofs_full = bc_boundary._cpp_object.dof_indices()[0]
-    range_dofs_full = bc_target._cpp_object.dof_indices()[0]
+    # ### Build transfer operator
     # projection to remove kernel should not be necessary
-    T = transfer_operator_subdomains_2d(A, boundary_dofs_full, range_dofs_full)
+    t_mat = discretize_transfer_operator(A, gamma_dofs, target_dofs)
+    T = FenicsxMatrixOperator(t_mat, S, R)
     U = T.source.random(1)
     TU = T.apply(U)
 
     # ### reference solution
-    g = fem.Function(V)
-    g.vector.array[boundary_dofs_full] = U.to_numpy().flatten()
-    bc = fem.dirichletbc(g, boundary_dofs)
+    g = df.fem.Function(V)
+    g.vector.array[gamma_dofs] = U.to_numpy().flatten()
+    bc = df.fem.dirichletbc(g, gamma_dofs)
     # so far only added homogeneous Dirichlet bc
     problem.add_dirichlet_bc(bc)  # add some random values on Γ_out
     problem.setup_solver()
     u = problem.solve()
-    u_in = u.vector.array[range_dofs_full]
+    u_in = u.vector.array[target_dofs]
 
     # ### check homogeneous Dirichlet bc is satisfied
     assert np.isclose(np.sum(u.vector.array[V_dofs_sigma_d]), 0.0)
@@ -235,7 +245,7 @@ def test_bc_hom(product_name):
 
     # check that u is not in ker(A)
     # if u in ker(A) then the projection error should be zero
-    UIN = rangespace.from_numpy([u_in])
+    UIN = range_space.from_numpy([u_in])
     Uorth = orthogonal_part(UIN, basis, product=product, orthonormal=True)
     assert Uorth.norm(product).item() > 0
 
