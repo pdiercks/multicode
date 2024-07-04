@@ -159,7 +159,7 @@ def test_bc_hom(product_name):
     sigma_D = plane_at(0.0, "x")
     tdim = domain.topology.dim
     fdim = tdim - 1
-    facets = df.mesh.locate_entities_boundary(domain, fdim, sigma_D)
+    facets_sigma_D = df.mesh.locate_entities_boundary(domain, fdim, sigma_D)
     gdim = domain.geometry.dim
     zero = df.fem.Constant(domain, (df.default_scalar_type(0.0),) * gdim)
 
@@ -167,7 +167,7 @@ def test_bc_hom(product_name):
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
     omega = Domain(domain)
     problem = LinearElasticityProblem(omega, V, mat)
-    problem.add_dirichlet_bc(zero, facets, entity_dim=fdim)
+    problem.add_dirichlet_bc(zero, facets_sigma_D, entity_dim=fdim)
     problem.setup_solver()
     problem.assemble_matrix(bcs=problem.bcs)
     A = problem._A
@@ -225,18 +225,21 @@ def test_bc_hom(product_name):
     U = T.source.random(1)
     TU = T.apply(U)
 
+
     # ### reference solution
     g = df.fem.Function(V)
-    g.vector.array[gamma_dofs] = U.to_numpy().flatten()
-    bc = df.fem.dirichletbc(g, gamma_dofs)
-    # so far only added homogeneous Dirichlet bc
-    problem.add_dirichlet_bc(bc)  # add some random values on Γ_out
+    g.x.array[gamma_dofs] = U.to_numpy().flatten()
+
+    problem.clear_bcs()
+    problem.add_dirichlet_bc(zero, facets_sigma_D, entity_dim=fdim)
+    problem.add_dirichlet_bc(g, facets_gamma_out, entity_dim=fdim)
     problem.setup_solver()
     u = problem.solve()
-    u_in = u.vector.array[target_dofs]
+    u.x.scatter_forward()
+    u_in = u.x.array[target_dofs]
 
     # ### check homogeneous Dirichlet bc is satisfied
-    assert np.isclose(np.sum(u.vector.array[V_dofs_sigma_d]), 0.0)
+    assert np.isclose(np.sum(u.x.array[V_dofs_sigma_d]), 0.0)
     assert np.isclose(np.sum(TU.dofs(W_dofs_sigma_d)), 0.0)
 
     # comparison with reference fem solution
