@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 # this code is part of the fenicsx-tutorial written by Jørgen S. Dokken
 # see https://jorgensd.github.io/dolfinx-tutorial/chapter1/membrane_code.html#making-curve-plots-throughout-the-domain
-def interpolate(u: fem.Function, points: npt.NDArray[np.float64]):
+def interpolate(u: fem.Function, points: npt.NDArray[np.float64], padding: float=1e-12):
     """Evaluates u at points.
 
     Args:
@@ -16,7 +16,7 @@ def interpolate(u: fem.Function, points: npt.NDArray[np.float64]):
     """
     V = u.function_space
     domain = V.mesh
-    tree = bb_tree(domain, domain.topology.dim)
+    tree = bb_tree(domain, domain.topology.dim, padding=padding)
 
     cells = []
     points_on_proc = []
