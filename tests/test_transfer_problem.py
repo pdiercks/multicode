@@ -46,7 +46,7 @@ def exact_solution(problem, dirichlet_bc, Vsub):
 
     # clean up
     problem.clear_bcs()
-    return u_in.vector.array
+    return u_in.x.array
 
 
 def test_remove_rot():
@@ -219,7 +219,7 @@ def test_remove_trans_x_rot():
     dirichlet_bc = {"boundary": bottom_right, "value": uy_zero, "sub": 1, "entity_dim": 0, "method": "geometrical"}
 
     subproblem.add_dirichlet_bc(**dirichlet_bc)
-    bc_hom = subproblem.get_dirichlet_bcs()
+    bc_hom = subproblem.bcs
 
     inner_range_product = InnerProduct(Vsub, "h1", bcs=bc_hom)
     range_product_mat = inner_range_product.assemble_matrix()

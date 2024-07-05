@@ -7,7 +7,6 @@ import numpy.typing as npt
 from scipy.sparse import csr_array
 
 import ufl
-from mpi4py import MPI
 from basix.ufl import element
 from dolfinx import fem, la, mesh, default_scalar_type
 from dolfinx.fem.petsc import (
@@ -19,8 +18,6 @@ from dolfinx.fem.petsc import (
     assemble_matrix,
 )
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
-from dolfinx.io import gmshio
-from dolfinx.io.utils import XDMFFile
 from petsc4py import PETSc
 
 from pymor.bindings.fenicsx import FenicsxMatrixOperator, FenicsxVectorSpace
@@ -74,9 +71,8 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
         """remove all Dirichlet and Neumann bcs"""
         self._bc_handler.clear(dirichlet=dirichlet, neumann=neumann)
 
-    def get_dirichlet_bcs(self):
-        """The Dirichlet bcs"""
-        # NOTE instance of dolfinx.fem.petsc.LinearProblem has attribute bcs
+    @property
+    def bcs(self) -> list[fem.DirichletBC]:
         return self._bc_handler.bcs
 
     @property
@@ -114,10 +110,6 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
                 option values.
         """
 
-        a = self.form_lhs
-        L = self.form_rhs
-        bcs = self.get_dirichlet_bcs()
-
         # FIXME there are issues with PETSc.Options()
         # see here https://gitlab.com/petsc/petsc/-/issues/1201
         # Avoid using global PETSc.Options until the issues is closed.
@@ -132,6 +124,9 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
 
         # Get tpye aliases for "Form" and possibly other dolfinx types
         # simplified version of super().__init__ as workaround
+
+        a = self.form_lhs
+        L = self.form_rhs
         self._a = fem.form(
             a, form_compiler_options=form_compiler_options, jit_options=jit_options
         )
@@ -146,7 +141,6 @@ class LinearProblem(ABC, LinearProblemBase, LogMixin):
         self.u = fem.Function(self.V)
 
         self._x = la.create_petsc_vector_wrap(self.u.x)
-        self.bcs = bcs
 
         self._solver = PETSc.KSP().create(self.u.function_space.mesh.comm)
         self._solver.setOperators(self._A)
@@ -464,7 +458,7 @@ class TransferProblem(LogMixin):
                     problem.add_dirichlet_bc(**dirichlet_bc)
             else:
                 problem.add_dirichlet_bc(**dirichlet)
-            self._bc_hom = problem.get_dirichlet_bcs()
+            self._bc_hom = problem.bcs
 
         # ### inner products
         default = {"product": "euclidean", "bcs": ()}

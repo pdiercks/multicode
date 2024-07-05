@@ -30,12 +30,12 @@ def extend(
 
     # ### Assemble operator A
     zero_fun = fem.Function(V)
-    zero_fun.vector.zeroEntries()
+    zero_fun.x.petsc_vec.zeroEntries()
     problem.add_dirichlet_bc(
         zero_fun, boundary_entities, method="topological", entity_dim=fdim
     )
     problem.setup_solver(petsc_options=petsc_options)
-    problem.assemble_matrix(bcs=problem.get_dirichlet_bcs())
+    problem.assemble_matrix(bcs=problem.bcs)
 
     # define all extensions that should be computed
     assert all(
@@ -47,7 +47,7 @@ def extend(
     )
 
     # ### initialize
-    u = fem.Function(V)
+    u = problem.u
     rhs = problem.b
     solver = problem.solver
     extensions = []
@@ -59,10 +59,10 @@ def extend(
                 problem.add_dirichlet_bc(**bc)
             else:
                 problem.add_dirichlet_bc(bc)
-        current_bcs = problem.get_dirichlet_bcs()
+        current_bcs = problem.bcs
 
         problem.assemble_vector(current_bcs)
-        solver.solve(rhs, u.vector)
-        extensions.append(u.vector.copy())
+        solver.solve(rhs, u.x.petsc_vec)
+        extensions.append(u.x.petsc_vec.copy())
 
     return extensions

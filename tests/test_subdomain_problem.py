@@ -89,15 +89,15 @@ def test(create_grid):
     problem.setup_solver(petsc_options=petsc_options)
     solver = problem.solver
 
-    bcs = problem.get_dirichlet_bcs()
+    bcs = problem.bcs
     problem.assemble_matrix(bcs)
     problem.assemble_vector(bcs)
 
-    u = fem.Function(V)
-    solver.solve(problem.b, u.vector)
+    u = problem.u
+    solver.solve(problem.b, u.x.petsc_vec)
     u.x.scatter_forward()
 
     Vdim = V.dofmap.bs * V.dofmap.index_map.size_global
     assert np.sum(problem.b[:]) > 0.0
     assert problem.A[:, :].shape == (Vdim, Vdim)
-    assert np.sum(np.abs(u.vector.array[:])) > 0.0
+    assert np.sum(np.abs(u.x.array[:])) > 0.0

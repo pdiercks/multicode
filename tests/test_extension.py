@@ -78,7 +78,7 @@ def test(name):
         if i < 15:
             # add fem.DirichletBC
             problem.add_dirichlet_bc(g, boundary_facets, entity_dim=1)
-            bcs = problem.get_dirichlet_bcs()
+            bcs = problem.bcs
             boundary_data.append(bcs.copy())
         else:
             # add dict

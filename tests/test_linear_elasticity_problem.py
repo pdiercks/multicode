@@ -60,28 +60,26 @@ def test():
     problem.setup_solver(petsc_options=petsc_options)
     solver = problem.solver
 
-    bcs = problem.get_dirichlet_bcs()
-    problem.assemble_matrix(bcs)
-    problem.assemble_vector(bcs)
+    bcs = problem.bcs
+    # high level solve
+    u = problem.solve()
 
-    u = fem.Function(V)
-    rhs = problem.b
-    solver.solve(rhs, u.vector)
-
-    assert np.isclose(np.sum(rhs[:]), 1000.0)
+    assert np.isclose(np.sum(problem.b[:]), 1000.0)
     assert np.sum(np.abs(u.x.array[:])) > 0.0
 
-    # high level solve
-    other = problem.solve()
-    assert np.allclose(other.vector.array[:], u.vector.array[:])
+
+    # manually solve and store solution in different function
+    other = fem.Function(u.function_space)
+    solver.solve(problem.b, other.x.petsc_vec)
+    assert np.allclose(other.x.array[:], u.x.array[:])
 
     # update material and solve problem again after re-assembly
     new_material = ({"E": 105e3, "NU": 0.3},)
     problem.update_material(new_material)
     problem.assemble_matrix(bcs)
-    solver.solve(rhs, u.vector)
-    assert not np.allclose(other.vector.array[:], u.vector.array[:])
-    assert np.isclose(other.x.array.max() * 2, u.x.array.max())
+    solver.solve(problem.b, other.x.petsc_vec)
+    assert not np.allclose(other.x.array[:], u.x.array[:])
+    assert np.isclose(other.x.array.max(), 2 * u.x.array.max())
 
 
 def test_dirichlet():
@@ -137,12 +135,12 @@ def test_dirichlet():
     problem.setup_solver(petsc_options=petsc_options)
     solver = problem.solver
 
-    bcs = problem.get_dirichlet_bcs()
+    bcs = problem.bcs
     problem.assemble_matrix(bcs)
     problem.assemble_vector(bcs)
 
-    u = fem.Function(V)
-    solver.solve(problem.b, u.vector)
+    u = problem.u
+    solver.solve(problem.b, u.x.petsc_vec)
     u.x.scatter_forward()
 
     assert np.sum(problem.b[:]) > 0
