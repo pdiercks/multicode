@@ -104,7 +104,7 @@ def _generate_and_write_grid(dim, filepath):
 
 def merge_mshfiles(mshfiles: list[str], output: str, gdim: int = 2) -> None:
     """loads several .msh files and merges them"""
-    gmsh.initialize()
+    _initialize()
     gmsh.clear()
     gmsh.model.add("merged")
 
