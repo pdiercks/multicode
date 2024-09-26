@@ -1,3 +1,4 @@
+import tempfile
 import numpy as np
 
 from mpi4py import MPI
@@ -6,10 +7,14 @@ import basix
 import basix.ufl
 
 from pymor.algorithms.gram_schmidt import gram_schmidt
-from pymor.bindings.fenicsx import FenicsxVectorSpace, FenicsxMatrixOperator
+from pymor.bindings.fenicsx import (
+    FenicsxVectorSpace,
+    FenicsxMatrixOperator,
+)
 from pymor.operators.constructions import LincombOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
+from multi.preprocessing import create_rectangle
 from multi.domain import Domain
 from multi.bcs import get_boundary_dofs
 from multi.boundary import within_range, plane_at
@@ -22,13 +27,9 @@ from multi.transfer_operator import (
     discretize_transfer_operator,
     OrthogonallyProjectedOperator,
 )
+from multi.misc import x_dofs_vectorspace
+from multi.interpolation import make_mapping
 import pytest
-
-
-def convert_dofs(value, dofs, V):
-    bc = df.fem.dirichletbc(value, dofs, V)
-    dofs = bc._cpp_object.dof_indices()[0]
-    return dofs
 
 
 @pytest.mark.parametrize("product_name", ["euclidean", "h1"])
@@ -36,57 +37,79 @@ def test(product_name):
     """test transfer operator with ∂Ω=Γ_out"""
 
     # ### Oversampling domain
-    # create oversampling domain 3x3 coarse cells
-    # each coarse cell is discretized with (resolution x resolution) quadrilaterals
+    gdim = 2
+    ul = 100.0
     num_cells = 3
-    resolution = 10  # manually tested resolution = 50 with success
-    nn = num_cells * resolution
-    domain = df.mesh.create_unit_square(
-        MPI.COMM_WORLD, nn, nn, df.mesh.CellType.quadrilateral
-    )
+    resolution = 20
+    n = num_cells * resolution
+    with tempfile.NamedTemporaryFile(suffix=".msh") as tf:
+        create_rectangle(
+            0.0,
+            num_cells * ul,
+            0.0,
+            num_cells * ul,
+            num_cells=(n, n),
+            facet_tags={"bottom": 1, "left": 2, "right": 3, "top": 4},
+            recombine=True,
+            out_file=tf.name,
+        )
+        omega, _, facet_markers = df.io.gmshio.read_from_msh(
+            tf.name, MPI.COMM_WORLD, gdim=gdim
+        )
 
     # ### Finite elements and FE space
     fe_deg = 1
-    gdim = domain.geometry.dim
-    fe_quad = basix.ufl.element("P", domain.basix_cell(), fe_deg, shape=(gdim,))
+    gdim = omega.geometry.dim
+    fe_quad = basix.ufl.element("P", omega.basix_cell(), fe_deg, shape=(gdim,))
     fe_line = basix.ufl.element("P", basix.CellType.interval, fe_deg, shape=(gdim,))
-    V = df.fem.functionspace(domain, fe_quad)
-    zero = df.fem.Constant(domain, (df.default_scalar_type(0.0),) * gdim)
+    V = df.fem.functionspace(omega, fe_quad)
 
     # ### Full operator A
-    mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
-    omega = Domain(domain)
-    problem = LinearElasticityProblem(omega, V, mat)
+    mat = LinearElasticMaterial(gdim, 30e3, 0.2, plane_stress=False)
+    Omega = Domain(omega)
+    problem = LinearElasticityProblem(Omega, V, mat)
     problem.setup_solver()
     problem.assemble_matrix()
-    A = problem._A
+    A = problem.A
 
     # ### Target subdomain
-    tdim = domain.topology.dim
-    target_subdomain_locator = within_range(
-        [1.0 / num_cells, 1.0 / num_cells], [2.0 / num_cells, 2.0 / num_cells]
-    )
-    domain.topology.create_connectivity(tdim, tdim)
-    cells_subdomain = df.mesh.locate_entities(domain, tdim, target_subdomain_locator)
-    submesh = df.mesh.create_submesh(domain, tdim, cells_subdomain)[0]
+    tdim = omega.topology.dim
+    omega.topology.create_connectivity(tdim, tdim)
+    marker_omega_in = within_range([ul, ul, 0], [2 * ul, 2 * ul, 0])
+    cells_subdomain = df.mesh.locate_entities(omega, tdim, marker_omega_in)
+    submesh = df.mesh.create_submesh(omega, tdim, cells_subdomain)[0]
     assert np.isclose(cells_subdomain.size, resolution**2)
-    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
-    target_dofs = convert_dofs(zero, target_dofs_, V)
 
     # ### Gamma out (the whole boundary)
     def everywhere(x):
         return np.full(x[0].shape, True, dtype=bool)
 
-    facets_gamma_out = df.mesh.locate_entities_boundary(domain, tdim - 1, everywhere)
-    gamma_out = df.mesh.create_submesh(domain, tdim - 1, facets_gamma_out)[0]
+    facets_gamma_out = df.mesh.locate_entities_boundary(omega, tdim - 1, everywhere)
+    gamma_out = df.mesh.create_submesh(omega, tdim - 1, facets_gamma_out)[0]
     assert np.isclose(facets_gamma_out.size, num_cells * resolution * 4)
     gamma_dofs_ = df.fem.locate_dofs_topological(V, tdim - 1, facets_gamma_out)
-    gamma_dofs = convert_dofs(zero, gamma_dofs_, V)
+
+    # NOTE
+    # We could use `locate_dofs_topological` to determine `gamma_dofs`.
+    # However, since `FenicsxMatrixOperator` requires a source space
+    # the "link" between `gamma_dofs` and `source` would be lost.
+    # (the dof ordering would be wrong)
+    # Therefore, `gamma_dofs` & `target_dofs` are determined via `make_mapping`.
 
     # ### source and range space of T
     S = df.fem.functionspace(gamma_out, fe_line)
     R = df.fem.functionspace(submesh, fe_quad)
     range_space = FenicsxVectorSpace(R)
+
+    gamma_dofs = make_mapping(S, V, padding=1e-12, check=True)
+    target_dofs = make_mapping(R, V, padding=1e-12, check=True)
+
+    # compare ordering of dofs
+    x_dofs_V = x_dofs_vectorspace(V)
+    egamma = x_dofs_V[gamma_dofs] - x_dofs_vectorspace(S)
+    etarget = x_dofs_V[target_dofs] - x_dofs_vectorspace(R)
+    assert np.linalg.norm(egamma) < 1e-12
+    assert np.linalg.norm(etarget) < 1e-12
 
     product = None
     if not product_name == "euclidean":
@@ -101,7 +124,7 @@ def test(product_name):
     # without removing kernel
     t_mat = discretize_transfer_operator(A, gamma_dofs, target_dofs)
     T_hat = FenicsxMatrixOperator(t_mat, S, R)
-    U = T_hat.source.random(1)
+    U = T_hat.source.random(1, distribution="normal")
     ThatU = T_hat.apply(U)
 
     # with removing kernel
@@ -180,8 +203,6 @@ def test_bc_hom(product_name):
     cells_subdomain = df.mesh.locate_entities(domain, tdim, target_subdomain_locator)
     submesh = df.mesh.create_submesh(domain, tdim, cells_subdomain)[0]
     assert np.isclose(cells_subdomain.size, resolution**2)
-    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
-    target_dofs = convert_dofs(zero, target_dofs_, V)
 
     # ### Gamma out
     # Γ_out should be union of top and right boundary excl. points on Σ_D or Σ_N
@@ -193,13 +214,14 @@ def test_bc_hom(product_name):
     )
     gamma_out = df.mesh.create_submesh(domain, tdim - 1, facets_gamma_out)[0]
     assert np.isclose(facets_gamma_out.size, num_cells * resolution * 2 - 2)
-    gamma_dofs_ = df.fem.locate_dofs_topological(V, tdim - 1, facets_gamma_out)
-    gamma_dofs = convert_dofs(zero, gamma_dofs_, V)
 
     # ### source and range space of T
     S = df.fem.functionspace(gamma_out, fe_line)
     R = df.fem.functionspace(submesh, fe_quad)
     range_space = FenicsxVectorSpace(R)
+
+    gamma_dofs = make_mapping(S, V, padding=1e-12, check=True)
+    target_dofs = make_mapping(R, V, padding=1e-12, check=True)
 
     product = None
     if not product_name == "euclidean":
@@ -224,7 +246,6 @@ def test_bc_hom(product_name):
     T = FenicsxMatrixOperator(t_mat, S, R)
     U = T.source.random(1)
     TU = T.apply(U)
-
 
     # ### reference solution
     g = df.fem.Function(V)
@@ -260,5 +281,5 @@ def test_bc_hom(product_name):
 
 
 if __name__ == "__main__":
-    test("h1")
-    test_bc_hom("h1")
+    test("euclidean")
+    # test_bc_hom("h1")
