@@ -10,19 +10,18 @@ from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.bindings.fenicsx import (
     FenicsxVectorSpace,
     FenicsxMatrixOperator,
-    FenicsxVisualizer,
 )
 from pymor.operators.constructions import LincombOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from multi.preprocessing import create_rectangle
-from multi.domain import Domain, RectangularDomain, RectangularSubdomain
+from multi.domain import Domain
 from multi.bcs import get_boundary_dofs
 from multi.boundary import within_range, plane_at
 from multi.materials import LinearElasticMaterial
 from multi.product import InnerProduct
 from multi.projection import orthogonal_part
-from multi.problems import LinearElasticityProblem, TransferProblem, LinElaSubProblem
+from multi.problems import LinearElasticityProblem
 from multi.solver import build_nullspace
 from multi.transfer_operator import (
     discretize_transfer_operator,
@@ -31,52 +30,6 @@ from multi.transfer_operator import (
 from multi.misc import x_dofs_vectorspace
 from multi.interpolation import make_mapping
 import pytest
-
-
-def convert_dofs(value, dofs, V):
-    bc = df.fem.dirichletbc(value, dofs, V)
-    dofs = bc._cpp_object.dof_indices()[0]
-    return dofs
-
-
-def return_transfer_problem(omega, facet_markers, V, target_subdomain, product_name):
-    gdim = omega.geometry.dim
-    domain = RectangularDomain(omega, facet_tags=facet_markers)
-    emod = df.fem.Constant(omega, df.default_scalar_type(30e3))
-    nu = df.fem.Constant(omega, df.default_scalar_type(0.2))
-    phases = LinearElasticMaterial(gdim, E=emod, NU=nu, plane_stress=False)
-    problem = LinearElasticityProblem(domain, V, phases)
-    # subdomain problem
-    cells_submesh = df.mesh.locate_entities(domain.grid, 2, target_subdomain)
-    submesh = df.mesh.create_submesh(domain.grid, 2, cells_submesh)[0]
-    Vsub = df.fem.functionspace(submesh, V.ufl_element())
-
-    subdomain = RectangularSubdomain(1023, submesh)
-    subproblem = LinElaSubProblem(subdomain, Vsub, phases)
-
-    gamma_out = lambda x: np.full(x[0].shape, True, dtype=bool)  # noqa: E731
-
-    # facets_gamma_out = df.mesh.locate_entities_boundary(V.mesh, 1, gamma_out)
-    if product_name == "euclidean":
-        range_product = None
-    else:
-        inner_range_product = InnerProduct(Vsub, product_name)
-        range_product_mat = inner_range_product.assemble_matrix()
-        range_product = FenicsxMatrixOperator(range_product_mat, Vsub, Vsub)
-    ns_vecs = build_nullspace(Vsub, gdim=submesh.geometry.dim)
-    range_space = FenicsxVectorSpace(Vsub)
-    nullspace = range_space.make_array(ns_vecs)
-    gram_schmidt(nullspace, product=range_product, copy=False)
-    tp = TransferProblem(
-        problem,
-        subproblem,
-        gamma_out,
-        dirichlet=[],
-        source_product={"product": "mass", "bcs": ()},
-        range_product=range_product,
-        kernel=nullspace,
-    )
-    return tp
 
 
 @pytest.mark.parametrize("product_name", ["euclidean", "h1"])
@@ -110,7 +63,6 @@ def test(product_name):
     fe_quad = basix.ufl.element("P", omega.basix_cell(), fe_deg, shape=(gdim,))
     fe_line = basix.ufl.element("P", basix.CellType.interval, fe_deg, shape=(gdim,))
     V = df.fem.functionspace(omega, fe_quad)
-    zero = df.fem.Constant(omega, (df.default_scalar_type(0.0),) * gdim)
 
     # ### Full operator A
     mat = LinearElasticMaterial(gdim, 30e3, 0.2, plane_stress=False)
@@ -127,8 +79,6 @@ def test(product_name):
     cells_subdomain = df.mesh.locate_entities(omega, tdim, marker_omega_in)
     submesh = df.mesh.create_submesh(omega, tdim, cells_subdomain)[0]
     assert np.isclose(cells_subdomain.size, resolution**2)
-    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
-    target_dofs = convert_dofs(zero, target_dofs_, V)
 
     # ### Gamma out (the whole boundary)
     def everywhere(x):
