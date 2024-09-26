@@ -25,12 +25,6 @@ from multi.transfer_operator import (
 import pytest
 
 
-def convert_dofs(value, dofs, V):
-    bc = df.fem.dirichletbc(value, dofs, V)
-    dofs = bc._cpp_object.dof_indices()[0]
-    return dofs
-
-
 @pytest.mark.parametrize("product_name", ["euclidean", "h1"])
 def test(product_name):
     """test transfer operator with ∂Ω=Γ_out"""
@@ -51,7 +45,6 @@ def test(product_name):
     fe_quad = basix.ufl.element("P", domain.basix_cell(), fe_deg, shape=(gdim,))
     fe_line = basix.ufl.element("P", basix.CellType.interval, fe_deg, shape=(gdim,))
     V = df.fem.functionspace(domain, fe_quad)
-    zero = df.fem.Constant(domain, (df.default_scalar_type(0.0),) * gdim)
 
     # ### Full operator A
     mat = LinearElasticMaterial(gdim, 30e3, 0.3, plane_stress=True)
@@ -70,8 +63,14 @@ def test(product_name):
     cells_subdomain = df.mesh.locate_entities(domain, tdim, target_subdomain_locator)
     submesh = df.mesh.create_submesh(domain, tdim, cells_subdomain)[0]
     assert np.isclose(cells_subdomain.size, resolution**2)
-    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
-    target_dofs = convert_dofs(zero, target_dofs_, V)
+    target_dofs = np.sort(
+        np.hstack(
+            [
+                df.fem.locate_dofs_topological(V.sub(i), tdim, cells_subdomain)
+                for i in range(gdim)
+            ]
+        )
+    )
 
     # ### Gamma out (the whole boundary)
     def everywhere(x):
@@ -81,7 +80,14 @@ def test(product_name):
     gamma_out = df.mesh.create_submesh(domain, tdim - 1, facets_gamma_out)[0]
     assert np.isclose(facets_gamma_out.size, num_cells * resolution * 4)
     gamma_dofs_ = df.fem.locate_dofs_topological(V, tdim - 1, facets_gamma_out)
-    gamma_dofs = convert_dofs(zero, gamma_dofs_, V)
+    gamma_dofs = np.sort(
+        np.hstack(
+            [
+                df.fem.locate_dofs_topological(V.sub(i), tdim - 1, facets_gamma_out)
+                for i in range(gdim)
+            ]
+        )
+    )
 
     # ### source and range space of T
     S = df.fem.functionspace(gamma_out, fe_line)
@@ -180,8 +186,14 @@ def test_bc_hom(product_name):
     cells_subdomain = df.mesh.locate_entities(domain, tdim, target_subdomain_locator)
     submesh = df.mesh.create_submesh(domain, tdim, cells_subdomain)[0]
     assert np.isclose(cells_subdomain.size, resolution**2)
-    target_dofs_ = df.fem.locate_dofs_topological(V, tdim, cells_subdomain)
-    target_dofs = convert_dofs(zero, target_dofs_, V)
+    target_dofs = np.sort(
+        np.hstack(
+            [
+                df.fem.locate_dofs_topological(V.sub(i), tdim, cells_subdomain)
+                for i in range(gdim)
+            ]
+        )
+    )
 
     # ### Gamma out
     # Γ_out should be union of top and right boundary excl. points on Σ_D or Σ_N
@@ -193,8 +205,14 @@ def test_bc_hom(product_name):
     )
     gamma_out = df.mesh.create_submesh(domain, tdim - 1, facets_gamma_out)[0]
     assert np.isclose(facets_gamma_out.size, num_cells * resolution * 2 - 2)
-    gamma_dofs_ = df.fem.locate_dofs_topological(V, tdim - 1, facets_gamma_out)
-    gamma_dofs = convert_dofs(zero, gamma_dofs_, V)
+    gamma_dofs = np.sort(
+        np.hstack(
+            [
+                df.fem.locate_dofs_topological(V.sub(i), tdim - 1, facets_gamma_out)
+                for i in range(gdim)
+            ]
+        )
+    )
 
     # ### source and range space of T
     S = df.fem.functionspace(gamma_out, fe_line)
@@ -224,7 +242,6 @@ def test_bc_hom(product_name):
     T = FenicsxMatrixOperator(t_mat, S, R)
     U = T.source.random(1)
     TU = T.apply(U)
-
 
     # ### reference solution
     g = df.fem.Function(V)
