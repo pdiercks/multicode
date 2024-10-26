@@ -4,7 +4,8 @@ from typing import Optional
 from pathlib import Path
 
 import pyvista
-from dolfinx import mesh, plot
+import dolfinx as df
+import matplotlib as mpl
 from matplotlib.colors import ListedColormap
 
 
@@ -23,7 +24,13 @@ def read_bam_colormap():
     return cmap
 
 
-def plot_domain(domain: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, colormap: str = "viridis", transparent: bool = False, output: Optional[str] = None):
+def plot_domain(
+    domain: df.mesh.Mesh,
+    cell_tags: Optional[df.mesh.MeshTags] = None,
+    colormap: str = "viridis",
+    transparent: bool = False,
+    output: Optional[str] = None,
+):
     """Visualize the ``domain`` using pyvista.
 
     Args:
@@ -51,9 +58,8 @@ def plot_domain(domain: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, co
     else:
         off_screen = False
 
-
     tdim = domain.topology.dim
-    topology, cell_types, geometry = plot.vtk_mesh(domain, tdim)
+    topology, cell_types, geometry = df.plot.vtk_mesh(domain, tdim)
     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
     if cell_tags is not None:
@@ -68,3 +74,58 @@ def plot_domain(domain: mesh.Mesh, cell_tags: Optional[mesh.MeshTags] = None, co
         plotter.screenshot(output, transparent_background=transparent)
     else:
         plotter.show()
+
+
+def plot_scalar_function(
+    f: df.fem.Function,
+    pngfile: str,
+    axes: bool = False,
+    warp_by: float = 1.0,
+    add_grid: bool = False,
+    cmap: Optional[str] = None,
+):
+    """Plot a scalar function using pyvista.
+
+    Args:
+        f: The Function to plot.
+        pngfile: Filepath for screenshot.
+        axes: Whether coordinate system is plotted.
+        warp_by: Factor for `warp_by_scalar`.
+        add_grid: Whether the mesh is added to the plot.
+        cmap: Matplotlib colormap.
+    """
+    if cmap is None:
+        colormap = mpl.colormaps.get_cmap("viridis").resampled(25)
+    else:
+        colormap = mpl.colormaps.get_cmap(cmap).resampled(25)
+
+    plotter = pyvista.Plotter(off_screen=True)
+    V = f.function_space
+    grid = pyvista.UnstructuredGrid(*df.plot.vtk_mesh(V))
+    if add_grid:
+        plotter.add_mesh(
+            grid,
+            show_edges=True,
+            lighting=False,
+            opacity=0.5,
+            show_scalar_bar=False,
+            color="lightblue",
+        )
+
+    grid.point_data[f.name] = f.x.array
+    warped = grid.warp_by_scalar(f.name, factor=warp_by)
+    plotter.add_mesh(
+        warped,
+        show_edges=True,
+        lighting=False,
+        cmap=colormap,
+        clim=[0, max(f.x.array)],
+        scalar_bar_args={"title": f.name},
+        show_scalar_bar=False,
+    )
+    if axes:
+        plotter.show_axes()
+    plotter.link_views()
+    plotter.view_isometric()
+    plotter.camera.zoom(1.0)
+    plotter.screenshot(pngfile, transparent_background=True)
