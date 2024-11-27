@@ -47,10 +47,8 @@ def plot_domain(
 
         bam_RdBu = read_bam_colormap()
         cmap = ListedColormap(bam_RdBu, name="bam-RdBu")
-    elif colormap == "RdYlBu":
-        cmap = "RdYlBu"
     else:
-        cmap = "viridis"
+        cmap = colormap
 
     if output is not None:
         off_screen = True
